@@ -281,9 +281,15 @@
             <div class="muted" style="margin-bottom:10px">选择接入 QQ 的 agent 使用的模型与推理强度；保存后对新建会话生效，点「应用到现有会话」立即切换。</div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
               <label class="muted" style="white-space:nowrap">模型</label>
-              <select id="modelSelect" class="glass-select" style="min-width:220px"></select>
+              <div class="glass-dd" data-onpick="pickModel" id="modelDD" style="min-width:240px">
+                <button class="glass-dd-trigger">加载中… <span class="glass-dd-arrow">▼</span></button>
+                <div class="glass-dd-menu" id="modelMenu"></div>
+              </div>
               <label class="muted" style="white-space:nowrap">思考模式</label>
-              <select id="effortSelect" class="glass-select" style="min-width:120px"></select>
+              <div class="glass-dd" data-onpick="pickEffort" id="effortDD" style="min-width:150px">
+                <button class="glass-dd-trigger">（模型默认） <span class="glass-dd-arrow">▼</span></button>
+                <div class="glass-dd-menu" id="effortMenu"></div>
+              </div>
             </div>
             <div class="muted" id="modelDesc" style="margin-top:8px"></div>
             <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center">
@@ -558,27 +564,70 @@ async function saveSocial() {
 // ── 模型与思考模式（DSH） ──
 let modelCatalog = [];       // /api/models 拍平的模型列表
 let currentModelConfig = { provider: '', model: '', reasoningEffort: '' };
+let curModelId = '';         // 当前选中的模型 id（玻璃下拉选中态）
+let curEffortId = '';        // 当前选中的思考模式（'' = 模型默认）
+
+const EFFORT_LABEL = { off: 'Off 关闭', low: 'Low 低', high: 'High 高', max: 'Max 最高' };
+
+function modelLabel(x) {
+  return (x.providerName ? x.providerName + ' · ' : '') + x.name;
+}
+
+/** 渲染模型下拉（菜单 + trigger 文本），并联动刷新思考模式下拉。 */
+function renderModelDD() {
+  const menu = document.getElementById('modelMenu');
+  menu.innerHTML = modelCatalog.map((x) =>
+    '<div class="glass-dd-item' + (x.id === curModelId ? ' active' : '') + '" data-v="' + esc(x.id) + '">' +
+    esc(modelLabel(x)) + '</div>').join('');
+  const entry = modelCatalog.find((x) => x.id === curModelId);
+  const label = entry ? modelLabel(entry) : (curModelId || '（未选择）');
+  document.querySelector('#modelDD .glass-dd-trigger').innerHTML =
+    esc(label) + ' <span class="glass-dd-arrow">▼</span>';
+  renderEffortDD();
+}
+
+/** 渲染思考模式下拉（菜单 + trigger 文本）。 */
+function renderEffortDD() {
+  const menu = document.getElementById('effortMenu');
+  const entry = modelCatalog.find((x) => x.id === curModelId);
+  const effortIds = entry?.efforts?.length ? entry.efforts.map((e) => e.id) : ['off', 'low', 'high', 'max'];
+  const defaultLabel = entry?.defaultEffort ? (EFFORT_LABEL[entry.defaultEffort] || entry.defaultEffort) : '';
+  let html = '<div class="glass-dd-item' + (!curEffortId ? ' active' : '') + '" data-v="">（模型默认' +
+    (defaultLabel ? '：' + esc(defaultLabel) : '') + '）</div>';
+  html += effortIds.map((e) =>
+    '<div class="glass-dd-item' + (e === curEffortId ? ' active' : '') + '" data-v="' + esc(e) + '">' +
+    (EFFORT_LABEL[e] || esc(e)) + '</div>').join('');
+  menu.innerHTML = html;
+  const label = curEffortId ? (EFFORT_LABEL[curEffortId] || curEffortId) : '（模型默认' + (defaultLabel ? '：' + defaultLabel : '') + '）';
+  document.querySelector('#effortDD .glass-dd-trigger').innerHTML =
+    esc(label) + ' <span class="glass-dd-arrow">▼</span>';
+}
+
+/** 玻璃下拉回调：选择模型（切换后思考模式重置为该模型默认）。 */
+function pickModel(id) {
+  curModelId = String(id ?? '');
+  curEffortId = '';
+  renderModelDD();
+}
+
+/** 玻璃下拉回调：选择思考模式（'' = 模型默认）。 */
+function pickEffort(id) {
+  curEffortId = String(id ?? '');
+}
 
 async function refreshModelConfig() {
   try {
     const [c, m] = await Promise.all([api('/api/config'), api('/api/models')]);
     currentModelConfig = { provider: c.dsh?.provider ?? '', model: c.dsh?.model ?? '', reasoningEffort: c.dsh?.reasoningEffort ?? '' };
     modelCatalog = Array.isArray(m.models) ? m.models : [];
-    const modelSel = document.getElementById('modelSelect');
     // 模型下拉：目录模型 + 当前配置值（若不在目录中，保留以便手动输入回显）
     const ids = new Set(modelCatalog.map((x) => x.id));
-    const curModel = currentModelConfig.model;
-    if (curModel && !ids.has(curModel)) {
-      modelCatalog = [{ id: curModel, name: curModel, provider: currentModelConfig.provider, providerName: currentModelConfig.provider, efforts: [], defaultEffort: '' }, ...modelCatalog];
+    if (currentModelConfig.model && !ids.has(currentModelConfig.model)) {
+      modelCatalog = [{ id: currentModelConfig.model, name: currentModelConfig.model, provider: currentModelConfig.provider, providerName: currentModelConfig.provider, efforts: [], defaultEffort: '' }, ...modelCatalog];
     }
-    modelSel.innerHTML = modelCatalog.map((x) =>
-      '<option value="' + esc(x.id) + '"' + (x.id === curModel ? ' selected' : '') + '>' +
-      esc((x.providerName ? x.providerName + ' · ' : '') + x.name) + '</option>').join('');
-    const effSel = document.getElementById('effortSelect');
-    effSel.innerHTML = '<option value="">（模型默认）</option>' +
-      ['off', 'low', 'high', 'max'].map((e) =>
-        '<option value="' + e + '"' + (e === currentModelConfig.reasoningEffort ? ' selected' : '') + '>' +
-        ({ off: 'Off 关闭', low: 'Low 低', high: 'High 高', max: 'Max 最高' }[e]) + '</option>').join('');
+    curModelId = currentModelConfig.model;
+    curEffortId = currentModelConfig.reasoningEffort || '';
+    renderModelDD();
     document.getElementById('modelDesc').textContent =
       (m.error ? '⚠️ 模型目录加载失败：' + m.error : '') +
       (modelCatalog.length ? '共 ' + modelCatalog.length + ' 个可用模型（来自 DSH llm.models）' : '');
@@ -586,13 +635,13 @@ async function refreshModelConfig() {
 }
 
 async function saveModelConfig() {
-  const model = document.getElementById('modelSelect').value;
-  const reasoningEffort = document.getElementById('effortSelect').value;
+  const model = curModelId;
+  const reasoningEffort = curEffortId;
   const entry = modelCatalog.find((x) => x.id === model);
   const body = { dsh: { model, reasoningEffort, provider: entry?.provider ?? currentModelConfig.provider } };
   const r = await api('/api/config', 'POST', body);
   document.getElementById('modelStatus').textContent = r.ok
-    ? '✅ 已保存：' + model + (reasoningEffort ? ' · ' + reasoningEffort : '（默认）') + '，新会话生效'
+    ? '✅ 已保存：' + model + (reasoningEffort ? ' · ' + reasoningEffort : '（模型默认）') + '，新会话生效'
     : '❌ 保存失败：' + (r.error || '');
   if (r.ok) toast('模型配置已保存');
 }
