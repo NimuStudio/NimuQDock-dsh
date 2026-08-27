@@ -38,7 +38,7 @@ async function main() {
   const killer = setTimeout(() => abort.abort(), 120000);
   const collector = createTurnCollector();
   let sessionId = null;
-  let completed = false;
+  let endedInfo = null; // { ok: boolean, text, reason }
 
   const streamPromise = (async () => {
     for await (const envelope of api.events.mux({}, abort.signal)) {
@@ -46,7 +46,7 @@ async function main() {
       if (frame.type !== 'session/event' || frame.sessionId !== sessionId) continue;
       const ended = collector.push(frame.event);
       if (ended) {
-        completed = true;
+        endedInfo = ended;
         if (ended.reason.kind === 'completed' && ended.text.trim()) {
           console.log(`\n[self-test] ✅ agent 回复（${ended.text.length} 字）：\n${ended.text}`);
         } else {
@@ -100,8 +100,15 @@ async function main() {
   }
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
 
-  if (!completed) {
+  if (!endedInfo) {
     console.error('[self-test] ❌ 120s 内未收到回合结束事件');
+    process.exit(1);
+  }
+  // 成功标准收紧：必须 completed 且文本含 pong（error/blocked/空文本一律失败，防止假绿）
+  const ok = endedInfo.reason.kind === 'completed'
+    && String(endedInfo.text ?? '').trim().toLowerCase().includes('pong');
+  if (!ok) {
+    console.error(`[self-test] ❌ 回合未按预期完成：reason=${endedInfo.reason.kind} text=${String(endedInfo.text ?? '').slice(0, 120)}`);
     process.exit(1);
   }
   console.log('\n[self-test] 链路验证通过。');

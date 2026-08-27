@@ -14,7 +14,7 @@
 //   qq_poke / qq_mark_read
 // agent 模式工具（M4 待实现，占位注册见文件尾部）：
 //   qq_get_unread_messages / qq_get_recent_messages / qq_get_message_detail /
-//   qq_wait_for_messages / qq_set_wake_config / qq_social_state /
+//   qq_wait_for_messages / qq_set_presence / qq_social_state /
 //   qq_send_message（数组分条）/ qq_send_burst / qq_get_message_images / qq_get_forward_msg /
 //   qq_memory_* / qq_slang_* / qq_get_prompt
 import fs from 'node:fs';
@@ -31,9 +31,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
 const CONFIG_FILE = path.join(ROOT, 'config.json');
 
-/** 每次调用实时读配置：管理员改 config.json 后无需重启 MCP。 */
+/** 每次调用实时读配置：管理员改 config.json 后无需重启 MCP。allow/deny 归一化为字符串数组（与 loadConfig 一致）。 */
 function getConfig() {
-  return readJsonSafe(CONFIG_FILE, {}, false) ?? {};
+  const cfg = readJsonSafe(CONFIG_FILE, {}, false) ?? {};
+  const norm = (v) => {
+    const list = Array.isArray(v) ? v : v == null ? [] : [v];
+    return [...new Set(list.map((x) => String(x).trim()).filter((s) => s.length > 0 && s !== '0'))];
+  };
+  if (cfg.allow) {
+    cfg.allow.groups = norm(cfg.allow.groups);
+    cfg.allow.private = norm(cfg.allow.private);
+  }
+  if (cfg.deny) {
+    cfg.deny.groups = norm(cfg.deny.groups);
+    cfg.deny.private = norm(cfg.deny.private);
+  }
+  return cfg;
 }
 
 /** 白名单语义与 bridge/policy/allowlist.js 完全一致。 */
@@ -144,6 +157,11 @@ server.tool(
     if (!allowed('group', group_id, cfg)) throw new Error('群不在白名单内');
     const m = await bot.getMessage(message_id);
     if (!m) return textResult('（未找到该消息）');
+    // 关键校验：get_msg 是跨群全局的，必须确认返回消息确实属于声称的群，
+    // 否则可用任意白名单群号「作掩护」读取非白名单群的消息（越权）
+    if (m.group_id != null && String(m.group_id) !== String(group_id)) {
+      throw new Error('该消息不属于指定群（拒绝跨会话读取）');
+    }
     return jsonResult({
       message_id: m.message_id,
       time: m.time ?? null,
@@ -247,6 +265,9 @@ server.tool(
       return textResult(JSON.stringify(body));
     }
     if (args.channel && args.id) {
+      // 与其它 chat 工具一致：chat 用法必须命中白名单（此前缺失，可对任意会话执行已读操作）
+      const cfg = getConfig();
+      requireAllowed(args.channel === 'group' ? 'group' : 'private', args.id, cfg);
       if (args.channel === 'group') await bot.markGroupMsgAsRead(args.id);
       else await bot.markPrivateMsgAsRead(args.id);
       return textResult('已标记已读');

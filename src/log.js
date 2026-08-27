@@ -14,9 +14,9 @@ function ts() {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-/** 控制台日志。 */
+/** 控制台日志（所有参数统一过敏感脱敏，防用户可控文本/凭据/路径明文进控制台）。 */
 export function log(...args) {
-  console.log(`[${ts()}] [bridge]`, ...args);
+  console.log(`[${ts()}] [bridge]`, ...args.map((a) => (typeof a === 'string' ? redactSensitiveText(a) : a)));
 }
 
 /** 把 SENSITIVE_RE 命中的片段替换为 ***（用于日志/活动记录写入前）。 */

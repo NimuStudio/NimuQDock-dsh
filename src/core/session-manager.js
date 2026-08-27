@@ -99,6 +99,16 @@ export class SessionManager {
       this.reverse.set(sessionId, key);
       saveSessions(this.state.sessions);
       await this.applyModel(sessionId);
+      // applyModel 是真实挂起点（最长数秒重试）：期间若发生 reset，刚创建的新会话会变成
+      // 未归档僵尸且映射被删。完成后二次校验 epoch，不一致则归档新会话并抛错。
+      if (epoch !== this.epoch) {
+        this.log(`applyModel 期间发生 reset，归档 ${key} 的新会话（${sessionId}）`);
+        delete this.state.sessions[key];
+        if (this.reverse.get(sessionId) === key) this.reverse.delete(sessionId);
+        saveSessions(this.state.sessions);
+        try { await this.api.workspace.archiveSession({ sessionId }); } catch {}
+        throw new Error('会话创建期间已重置，丢弃新会话');
+      }
       this.log(`新会话 ${key} -> ${sessionId}（模式 ${mode}，preset: ${this.presetFor(mode) ?? '默认'}）`);
       return sessionId;
     })();

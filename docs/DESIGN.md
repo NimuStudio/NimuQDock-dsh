@@ -145,7 +145,7 @@ web 搜索为 `mcp__web-search-safe__web_search / web_fetch`（统一命名，pr
 
 ### 7.3 agent 模式工具（M4）
 `qq_get_prompt` / `qq_get_unread_messages` / `qq_get_recent_messages` / `qq_send_message`（数组分条）/
-`qq_wait_for_messages`（长轮询）/ `qq_set_wake_config` / `qq_social_state` / `qq_mark_read` /
+`qq_wait_for_messages`（长轮询）/ `qq_set_presence` / `qq_social_state` / `qq_mark_read` /
 `qq_get_message_images` / `qq_get_forward_msg` / `qq_poke` / `qq_memory_*` / `qq_slang_*`。
 
 ### 7.4 MCP ↔ 桥接内部通道（M4 关键设计）

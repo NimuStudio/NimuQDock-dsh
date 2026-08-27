@@ -38,8 +38,11 @@ check('2606:4700::1111（公网）', isPrivateIp('2606:4700::1111'), false);
 // 内嵌 IPv4 绕过
 check('::ffff:127.0.0.1', isPrivateIp('::ffff:127.0.0.1'), true);
 check('::ffff:7f00:1', isPrivateIp('::ffff:7f00:1'), true);
+check('::ffff:1（单组短形式→0.0.0.1）', isPrivateIp('::ffff:1'), true);
 check('::ffff:0:c0a8:101（→192.168.1.1）', isPrivateIp('::ffff:0:c0a8:101'), true);
 check('64:ff9b::c0a8:101（NAT64→192.168.1.1）', isPrivateIp('64:ff9b::c0a8:101'), true);
+check('64:ff9b::1（NAT64 单组→0.0.0.1）', isPrivateIp('64:ff9b::1'), true);
+check('64:ff9b:1::1（NAT64 48→0.0.0.1）', isPrivateIp('64:ff9b:1::1'), true);
 check('2002:c0a8:0101::（6to4→192.168.1.1）', isPrivateIp('2002:c0a8:0101::'), true);
 
 console.log('\n── MCP 工具联测 ──');

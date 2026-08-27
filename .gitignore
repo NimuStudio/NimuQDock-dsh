@@ -2,3 +2,8 @@ node_modules/
 config.json
 state/
 *.log
+.env
+.env.*
+NapCatShell/
+napcat*.exe
+*.dll

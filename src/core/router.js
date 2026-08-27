@@ -35,17 +35,19 @@ function sniffImageMime(buf) {
 export class Router {
   /**
    * @param {{ api, bot, cfg, sessions, sender, log,
-   *           persona?: { state: PersonaStateStore, memory: MemoryStore, tokens: TokenStore } }} deps
+   *           persona?: { state: PersonaStateStore, memory: MemoryStore, tokens: TokenStore },
+   *           mode?: string }} deps
    * persona 为 agent 模式依赖（main.js 装配）；chat 模式可缺省。
+   * mode 覆盖 state/mode.json（测试用，不落盘）。
    */
-  constructor({ api, bot, cfg, sessions, sender, log, persona }) {
+  constructor({ api, bot, cfg, sessions, sender, log, persona, mode }) {
     this.api = api;
     this.bot = bot;
     this.cfg = cfg;
     this.sessions = sessions;
     this.sender = sender;
     this.log = log;
-    this.mode = loadMode();
+    this.mode = mode ?? loadMode();
     this.dshOnline = true;
     this.pending = new Map();       // key -> { kind:'question'|'approval', rpcId, sessionId, ... }
     this.queued = new Map();        // key -> { prompts: [{promptText, parts, at}], hintAt }  TODO(M2)
@@ -56,6 +58,7 @@ export class Router {
     this.readSeqs = new Map();      // key -> lastReadSeq（mark_read 水位）
     this.noActionCounts = new Map(); // key -> 连续无行动唤醒次数（agent 模式防卡死）
     this.heartbeatTimers = new Map(); // key -> setTimeout（主动心跳）
+    this.flushTimer = null;           // 队列补投兜底定时器（enqueuePrompt 安排）
     this.newMsgEmitter = new EventEmitter(); // 'new' 事件（/agent/v1/wait 长轮询用）
     this.autoSeqs = new Map(); // key -> 自增序号（message_seq 缺失时的未读水位兜底）
   }
@@ -248,10 +251,18 @@ export class Router {
       const res = await this.bot.action('get_image', { file });
       // get_image 返回 {file,url}：file 可能是 base64://、本地路径、文件名——不能直接按 base64 解码
       let buf = null;
+      // 外链下载仅允许 NapCat 返回的 http(s) URL，且主机必须是回环/私有地址（NapCat 本地服务的图片缓存），
+      // 防止 get_image 响应被污染后让桥接对任意外网地址发起请求（SSRF 面）
       if (res?.url && /^https?:\/\//.test(String(res.url))) {
         try {
-          const r = await fetch(res.url, { signal: AbortSignal.timeout(15000) });
-          if (r.ok) buf = Buffer.from(await r.arrayBuffer());
+          const u = new URL(String(res.url));
+          const host = u.hostname;
+          const safeHost = host === 'localhost' || host === '127.0.0.1' || host === '::1'
+            || /^192\.168\./.test(host) || /^10\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+          if (safeHost) {
+            const r = await fetch(res.url, { signal: AbortSignal.timeout(15000) });
+            if (r.ok) buf = Buffer.from(await r.arrayBuffer());
+          }
         } catch {}
       }
       const resFile = String(res?.file ?? '');
@@ -340,6 +351,14 @@ export class Router {
     const max = this.cfg.queue?.maxPerSession ?? 50;
     while (q.prompts.length > max) q.prompts.shift();
     this.log(`DSH 离线，消息入队 ${key}（队列 ${q.prompts.length} 条）`);
+    // 兜底重试：若 DSH 实际在线（投递因其他原因失败），30s 后补投一次，
+    // 否则消息会一直卡到下一次「离线→在线」转变
+    if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => {
+        this.flushTimer = null;
+        this.flushQueued().catch((e) => this.log('补投失败:', e?.message ?? e));
+      }, 30000);
+    }
   }
 
   /** DSH 恢复后补投缓存（按入队顺序逐条投递；失败保留队列等待下次补投）。 */
@@ -381,9 +400,11 @@ export class Router {
         writeRoleState(null, roleState.mode);
         await this.sender.notify(key, '已清除角色，恢复正常人格。');
       } else {
-        const roleFile = path.join(ROOT, 'roles', `${name}.md`);
-        if (!fs.existsSync(roleFile)) {
-          await this.sender.notify(key, `角色「${name}」不存在。角色文件放 roles/ 目录。`);
+        // 角色卡可能是 .yaml（人格卡，prompt 内嵌）或 .md（旧格式），二者其一即可
+        const hasYaml = fs.existsSync(path.join(ROOT, 'roles', `${name}.yaml`));
+        const hasMd = fs.existsSync(path.join(ROOT, 'roles', `${name}.md`));
+        if (!hasYaml && !hasMd) {
+          await this.sender.notify(key, `角色「${name}」不存在。角色卡（.yaml/.md）放 roles/ 目录。`);
         } else {
           writeRoleState(name, roleState.mode);
           await this.sender.notify(key, `已切换角色「${name}」。`);
@@ -431,16 +452,19 @@ export class Router {
     const text = String(answerText ?? '').trim();
     if (!text) return;
     if (entry.kind === 'approval' && !isOwner) return; // 群友无权审批
-    if (entry.kind === 'approval') {
-      const approved = /^(通过|同意|批准|确认|approved|approve|y|yes)$/i.test(text);
-      await this.respondApproval(entry, approved ? 'approved' : 'rejected');
-      await this.sender.notify(key, approved ? '已通过审批。' : '已拒绝审批。');
+    try {
+      if (entry.kind === 'approval') {
+        const approved = /^(通过|同意|批准|确认|approved|approve|y|yes)$/i.test(text);
+        await this.respondApproval(entry, approved ? 'approved' : 'rejected');
+        await this.sender.notify(key, approved ? '已通过审批。' : '已拒绝审批。');
+        return;
+      }
+      await this.respondQuestion(entry, text);
+      await this.sender.notify(key, '已收到你的回答。');
+    } finally {
+      // 无论回执成败都取消本地挂起：失败保留会让超时定时器对同一 rpcId 二次回执
       this.cancelPending(key);
-      return;
     }
-    await this.respondQuestion(entry, text);
-    await this.sender.notify(key, '已收到你的回答。');
-    this.cancelPending(key);
   }
 
   async respondQuestion(entry, customText) {
@@ -729,6 +753,7 @@ export class Router {
     this.autoSeqs.delete(key);
     this.noActionCounts.delete(key);
     this.stopHeartbeat(key);
+    this.cancelPending(key); // 挂起提问/审批一并取消，防对已归档会话二次回执
     const token = this.persona?.tokens?.getToken(key);
     if (token) this.knownAgentTokens.delete(token); // 吊销后从审计名单移除，防死令牌堆积
     this.persona?.state?.drop(key);

@@ -76,9 +76,27 @@ async function main() {
     return;
   }
 
-  // 清理残留测试会话映射
-  const sessionsFile = path.join(ROOT, 'state', 'sessions.json');
-  try { fs.unlinkSync(sessionsFile); } catch {}
+  // 测试状态隔离：备份生产 state 文件（会话映射/模式/角色），结束后恢复——
+  // 测试绝不破坏桥接的生产状态（此前会直接删除，导致桥接重启后模式/会话映射丢失）
+  const stateDir = path.join(ROOT, 'state');
+  const PROD_STATE_FILES = ['sessions.json', 'mode.json', 'current-role.json'];
+  const backups = new Map();
+  for (const f of PROD_STATE_FILES) {
+    const p = path.join(stateDir, f);
+    try {
+      if (fs.existsSync(p)) backups.set(p, fs.readFileSync(p));
+    } catch {}
+  }
+  const restoreState = () => {
+    for (const [p, buf] of backups) {
+      try { fs.writeFileSync(p, buf); } catch {}
+    }
+    for (const f of PROD_STATE_FILES) {
+      if (!backups.has(path.join(stateDir, f))) {
+        try { fs.unlinkSync(path.join(stateDir, f)); } catch {}
+      }
+    }
+  };
 
   const api = new NodeApiClient(cfg.dsh.baseUrl, 180000);
   try {
@@ -91,7 +109,7 @@ async function main() {
 
   const sessions = new SessionManager({ api, cfg, state: { sessions: {} }, log });
   const sender = new Sender({ bot: fakeBot, cfg, log });
-  const router = new Router({ api, bot: fakeBot, cfg, sessions, sender, log });
+  const router = new Router({ api, bot: fakeBot, cfg, sessions, sender, log, mode: 'chat' });
 
   const pumpAbort = new AbortController();
   startPump({ api, cfg, sessions, sender, router, log, signal: pumpAbort.signal });
@@ -130,7 +148,7 @@ async function main() {
   }
 
   pumpAbort.abort();
-  // 清理：归档测试会话、删除测试工作区、清掉本地残留状态文件
+  // 清理：归档测试会话、删除测试工作区、恢复生产状态文件
   try {
     await sessions.resetSession(TEST_KEY);
   } catch {}
@@ -139,9 +157,7 @@ async function main() {
     const mine = (wsList?.items ?? []).find((w) => w.title === cfg.workspaceTitle);
     if (mine) await api.workspace.delete({ workspaceId: mine.workspaceId });
   } catch {}
-  for (const f of [sessionsFile, path.join(ROOT, 'state', 'mode.json'), path.join(ROOT, 'state', 'current-role.json')]) {
-    try { fs.unlinkSync(f); } catch {}
-  }
+  restoreState();
 
   if (!received) {
     console.error('[test-loop] ❌ 180s 内未收到 agent 回复');
@@ -152,8 +168,9 @@ async function main() {
     console.log('[test-loop] ✅ M2 回复闭环验证通过（真实 DSH 链路）。');
     process.exit(0);
   }
-  console.log('[test-loop] ⚠️ 收到回复但内容不是 pong（模型可能没按要求回复），链路本身已通。');
-  process.exit(0);
+  // 回复内容不含 pong = 闭环不成立（模型没按要求回复/被带偏），按失败处理
+  console.error('[test-loop] ❌ 收到回复但内容不是 pong，闭环验证失败。');
+  process.exit(1);
 }
 
 main().catch((error) => {
@@ -170,8 +187,16 @@ async function runAgentModeTest() {
     if (!cond) failed += 1;
   };
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'napcat-agent-test-'));
+  // 测试状态隔离：备份生产 sessions.json（测试期间临时清理），结束后恢复
   const sessionsFile = path.join(ROOT, 'state', 'sessions.json');
-  try { fs.unlinkSync(sessionsFile); } catch {}
+  let sessionsBackup = null;
+  try { if (fs.existsSync(sessionsFile)) sessionsBackup = fs.readFileSync(sessionsFile); } catch {}
+  const restoreSessions = () => {
+    try {
+      if (sessionsBackup) fs.writeFileSync(sessionsFile, sessionsBackup);
+      else fs.unlinkSync(sessionsFile);
+    } catch {}
+  };
 
   const api = new NodeApiClient(cfg.dsh.baseUrl, 180000);
   try {
@@ -192,8 +217,8 @@ async function runAgentModeTest() {
   const router = new Router({
     api, bot: fakeBot, cfg, sessions, sender, log,
     persona: { state: personaState, memory: personaMemory, tokens: personaTokens },
+    mode: 'agent',
   });
-  router.mode = 'agent'; // 测试直接赋值，避免写 state/mode.json
 
   // prompt 调用计数（断言唤醒投递）
   let promptCalls = 0;
@@ -254,7 +279,7 @@ async function runAgentModeTest() {
     if (mine) await api.workspace.delete({ workspaceId: mine.workspaceId });
   } catch {}
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
-  try { fs.unlinkSync(sessionsFile); } catch {}
+  restoreSessions();
 
   console.log(failed === 0 ? '[agent] ✅ 人格引擎链路验证通过（P4）' : `[agent] ${failed} 项失败 ❌`);
   process.exit(failed === 0 ? 0 : 1);

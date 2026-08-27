@@ -61,22 +61,58 @@ function hexPairToV4(hi, lo) {
   return `${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`;
 }
 
+/** IPv6 展开为 8 个十六进制组（不合法返回 null）。left 填头部、right 填尾部、中间补 0。 */
+function expandIpv6(h) {
+  const lower = String(h).toLowerCase().replace(/^\[|\]$/g, '');
+  if (!lower.includes(':')) return null;
+  const parts = lower.split('::');
+  if (parts.length > 2) return null;
+  const left = parts[0] ? parts[0].split(':') : [];
+  const right = parts.length === 2 && parts[1] ? parts[1].split(':') : [];
+  if (left.some((x) => x === '') || right.some((x) => x === '')) return null;
+  const total = left.length + right.length;
+  if (parts.length === 1 ? total !== 8 : total > 7) return null;
+  const g = new Array(8).fill('0');
+  left.forEach((x, i) => { g[i] = x; });
+  right.forEach((x, i) => { g[8 - right.length + i] = x; });
+  return g;
+}
+
 /**
  * 从 IPv6 中提取内嵌的 IPv4（仅识别明确的映射形式，避免误判 ULA/link-local 等）。
- * 覆盖：末尾点分十进制、IPv4-mapped（::ffff:x.x.x.x / ::ffff:xxxx:xxxx / ::ffff:0:xxxx:xxxx）、
- * NAT64（64:ff9b::/96 及 64:ff9b:1::/48）、6to4（2002:xxxx:xxxx::/16）。
+ * 覆盖：末尾点分十进制、IPv4-mapped（::ffff:0:0/96，含 ::ffff:1 单组形式）、
+ * NAT64（64:ff9b::/96 及 64:ff9b:1::/48，含 64:ff9b::1 单组形式）、6to4（2002::/16）。
+ * 用组展开统一处理，杜绝「单十六进制组形式绕过」。
  */
 function extractEmbeddedV4(h) {
   const lower = String(h).toLowerCase().replace(/^\[|\]$/g, '');
   if (!lower.includes(':')) return null;
   const dotted = lower.match(/(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/);
   if (dotted) return dotted[1];
-  let m = lower.match(/^::ffff:(?:0:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (m) return hexPairToV4(m[1], m[2]);
-  m = lower.match(/^64:ff9b:(?::)?(?:0:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (m) return hexPairToV4(m[1], m[2]);
-  m = lower.match(/^2002:([0-9a-f]{1,4}):([0-9a-f]{1,4}):/);
-  if (m) return hexPairToV4(m[1], m[2]);
+  const g = expandIpv6(lower);
+  if (!g) return null;
+  const isZeroRange = (arr, from, to) => arr.slice(from, to).every((x) => x === '0');
+  // IPv4-mapped 家族（::ffff:0:0/96 及其全部文本变体，末尾 32 位即 IPv4）：
+  //   0:0:0:0:ffff:x:y  （组 4 = ffff，如 ::ffff:0:c0a8:101 → 192.168.1.1）
+  //   0:0:0:0:0:ffff:x:y（组 5 = ffff，标准形式）
+  //   0:0:0:0:0:0:ffff:x（组 6 = ffff，单组短形式 ::ffff:1 → 0.0.0.1，Linux 视为 mapped）
+  if (isZeroRange(g, 0, 4) && g[4] === 'ffff') {
+    return hexPairToV4(g[6], g[7]);
+  }
+  if (isZeroRange(g, 0, 5) && g[5] === 'ffff') {
+    return hexPairToV4(g[6], g[7]);
+  }
+  if (isZeroRange(g, 0, 6) && g[6] === 'ffff') {
+    return hexPairToV4('0', g[7]);
+  }
+  // NAT64 64:ff9b::/96 与 64:ff9b:1::/48：前缀后 32 位即 IPv4
+  if (g[0] === '64' && g[1] === 'ff9b') {
+    return hexPairToV4(g[6], g[7]);
+  }
+  // 6to4 2002::/16：第 2、3 组为 IPv4
+  if (g[0] === '2002') {
+    return hexPairToV4(g[1], g[2]);
+  }
   return null;
 }
 
