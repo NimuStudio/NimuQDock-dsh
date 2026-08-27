@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NimuQDock-dsh 控制台</title>
+<link rel="stylesheet" href="ysti-glass.css">
+<style>
+  /* ── 控制台专用补充样式（基于 Nimu Glass UI 组件体系） ── */
+  body{background:linear-gradient(135deg,#b0c8f0 0%,#f0d8c0 25%,#b8d8f0 50%,#d8c0f0 75%,#c0d0f0 100%)!important;background-attachment:fixed!important}
+  html{background:transparent}
+  .app-container{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  .topbar{background:rgba(255,255,255,.32);backdrop-filter:blur(50px) saturate(1.8);-webkit-backdrop-filter:blur(50px) saturate(1.8);border:1px solid rgba(255,255,255,.5);border-radius:20px;margin:12px 12px 0 12px;box-shadow:0 8px 32px rgba(0,0,0,.04);z-index:100}
+  .topbar-logo{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--accent)}
+  .status-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;background:rgba(255,255,255,.25);backdrop-filter:blur(24px) saturate(1.2);-webkit-backdrop-filter:blur(24px) saturate(1.2);border:1px solid rgba(255,255,255,.35);border-radius:var(--radius-pill);font-size:12px;font-weight:600;white-space:nowrap}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim)}
+  .status-dot.ok{background:#4a9}
+  .status-dot.bad{background:var(--danger)}
+  .status-pill.mode{color:#a07008;background:rgba(232,184,48,.2);border-color:rgba(232,184,48,.35)}
+  .main-layout{display:flex;flex:1;min-height:0;overflow:hidden}
+  .sidebar{width:200px;background:rgba(255,255,255,.35);backdrop-filter:blur(50px) saturate(1.8);-webkit-backdrop-filter:blur(50px) saturate(1.8);border:1px solid rgba(255,255,255,.55);border-radius:20px;margin:12px 6px 12px 12px;box-shadow:0 8px 32px rgba(0,0,0,.04);padding:16px 10px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;overflow-y:auto}
+  .game-btn{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.22);border-radius:10px;font-size:13px;font-weight:500;color:var(--text-secondary);cursor:pointer;transition:all .3s ease;font-family:inherit;text-align:left;width:100%;margin-bottom:2px}
+  .game-btn:hover{background:rgba(255,255,255,.5);border-color:rgba(255,255,255,.7);color:var(--text)}
+  .game-btn.active{background:rgba(232,184,48,.28);backdrop-filter:blur(36px) saturate(1.8);-webkit-backdrop-filter:blur(36px) saturate(1.8);border-color:rgba(232,184,48,.4);color:#a07008;font-weight:700}
+  .main-content{flex:1;padding:20px 24px;overflow-y:auto;min-width:0;background:rgba(255,255,255,.22);backdrop-filter:blur(44px) saturate(1.6);-webkit-backdrop-filter:blur(44px) saturate(1.6);border:1px solid rgba(255,255,255,.45);border-radius:20px;margin:12px 12px 12px 6px;box-shadow:0 8px 32px rgba(0,0,0,.04);scrollbar-gutter:stable}
+  .section-header{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+  .section-header-icon{font-size:24px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.35);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:12px;border:1px solid rgba(255,255,255,.4)}
+  .section-title{font-size:20px;font-weight:700;letter-spacing:-.02em}
+  .section-subtitle{font-size:13px;color:var(--text-dim);margin-top:2px}
+  .hidden-view{display:none!important}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-bottom:16px}
+  .order-card{background:rgba(255,255,255,.45);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.5);border-radius:var(--radius);padding:18px 20px;transition:transform .3s var(--spring),box-shadow .3s ease}
+  .order-card:hover{transform:translateY(-2px);box-shadow:var(--glass-shadow-hover)}
+  .card-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);margin-bottom:12px}
+  .kv{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:13px}
+  .kv .k{color:var(--text-secondary)}
+  .kv .v{font-weight:600}
+  .btn-group{display:flex;gap:8px;flex-wrap:wrap}
+  .btn-accept,.btn-cancel{padding:8px 18px;border-radius:var(--radius-pill);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .3s var(--spring)}
+  .btn-accept{background:rgba(107,149,137,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(255,255,255,.3)}
+  .btn-accept:hover{background:rgba(107,149,137,.7);transform:translateY(-2px)}
+  .btn-accept.active{background:rgba(200,164,92,.7);border-color:rgba(200,164,92,.4)}
+  .btn-cancel{background:rgba(0,0,0,.03);border:1px solid rgba(0,0,0,.08);color:var(--text)}
+  .btn-cancel:hover{background:rgba(0,0,0,.06)}
+  .btn-cancel.danger{color:var(--danger);border-color:rgba(196,85,77,.25)}
+  .chip{display:inline-block;padding:4px 12px;border-radius:var(--radius-pill);font-size:12px;background:rgba(255,255,255,.25);border:1px solid rgba(255,255,255,.4);cursor:pointer;margin:2px 3px 2px 0;transition:all .2s ease;color:var(--text-secondary)}
+  .chip:hover{border-color:var(--accent);color:var(--text)}
+  .chip.cur{background:rgba(232,184,48,.3);border-color:rgba(232,184,48,.5);color:#a07008;font-weight:700}
+  .muted{font-size:12px;color:var(--text-dim)}
+  .row-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:rgba(255,255,255,.25);border:1px solid rgba(255,255,255,.35);border-radius:var(--radius-sm);margin-bottom:8px;font-size:13px}
+  .row-item .sid{font-size:11px;color:var(--text-dim);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .switch{position:relative;width:44px;height:24px;background:rgba(0,0,0,.08);border:1px solid rgba(0,0,0,.1);border-radius:24px;cursor:pointer;transition:.25s;flex-shrink:0}
+  .switch.on{background:var(--teal);border-color:var(--teal)}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.25s;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+  .switch.on::after{left:22px}
+  .persona-card{background:rgba(255,255,255,.28);backdrop-filter:blur(36px) saturate(1.4);-webkit-backdrop-filter:blur(36px) saturate(1.4);border:1px solid rgba(255,255,255,.38);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:10px}
+  .p-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .p-name{font-weight:700;font-size:14px}
+  .p-key{font-size:11px;color:var(--text-dim)}
+  .meter{height:6px;background:rgba(0,0,0,.06);border-radius:3px;margin:4px 0 8px;overflow:hidden}
+  .meter>div{height:100%;border-radius:3px}
+  .meter .mood{background:linear-gradient(90deg,#e8d5a3,#c8a45c)}
+  .meter .energy{background:linear-gradient(90deg,#6b9589,#9fc0b5)}
+  .log-area{background:rgba(0,0,0,.05);border:1px solid rgba(0,0,0,.06);border-radius:var(--radius-sm);padding:12px;font-size:12px;line-height:1.7;height:420px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:var(--text);font-family:ui-monospace,Consolas,monospace}
+  /* 玻璃化表单控件 */
+  .glass-select,.glass-input{
+    background:rgba(255,255,255,.35);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);
+    border:1px solid rgba(255,255,255,.5);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;
+    padding:7px 12px;font-size:13px;outline:none;transition:all .25s ease;box-shadow:0 2px 10px rgba(0,0,0,.05);
+  }
+  .glass-select:hover,.glass-input:hover{border-color:rgba(200,164,92,.45);background:rgba(255,255,255,.5)}
+  .glass-select:focus,.glass-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+  .glass-input::placeholder{color:var(--text-dim)}
+  body.dark-mode .glass-select,body.dark-mode .glass-input{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#e8e6e3}
+  body.dark-mode .glass-select:hover,body.dark-mode .glass-input:hover{background:rgba(255,255,255,.14);border-color:rgba(200,164,92,.4)}
+  body.light-mode .glass-select,body.light-mode .glass-input{background:rgba(255,255,255,.85);border-color:rgba(0,0,0,.08)}
+  /* 调节滑块玻璃化 */
+  .glass-range{appearance:none;-webkit-appearance:none;height:6px;border-radius:3px;background:linear-gradient(90deg,var(--accent),rgba(200,164,92,.3));outline:none;cursor:pointer;flex:1}
+  .glass-range::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer}
+  .glass-range::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--accent);cursor:pointer}
+  /* 自定义玻璃下拉（原生 select 弹层无法样式化，用组件替代） */
+  .glass-dd{position:relative;display:inline-block}
+  .glass-dd-trigger{display:flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(255,255,255,.35);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);border:1px solid rgba(255,255,255,.5);border-radius:var(--radius-pill);font-size:12px;color:var(--text);cursor:pointer;font-family:inherit;transition:all .25s ease;box-shadow:0 2px 10px rgba(0,0,0,.05);user-select:none}
+  .glass-dd-trigger:hover{border-color:rgba(200,164,92,.5);background:rgba(255,255,255,.55)}
+  .glass-dd.open .glass-dd-trigger{border-color:rgba(200,164,92,.5);box-shadow:0 0 0 3px var(--accent-glow)}
+  .glass-dd-arrow{font-size:9px;color:var(--text-dim);transition:transform .25s ease}
+  .glass-dd.open .glass-dd-arrow{transform:rotate(180deg)}
+  .glass-dd-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;background:rgba(255,255,255,.72);backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8);border:1px solid rgba(255,255,255,.7);border-radius:var(--radius-sm);padding:4px;box-shadow:0 12px 40px rgba(0,0,0,.12);opacity:0;visibility:hidden;transform:translateY(-6px);transition:all .2s var(--ease-out);z-index:999}
+  .glass-dd.open .glass-dd-menu{opacity:1;visibility:visible;transform:translateY(0)}
+  .glass-dd-item{padding:7px 14px;font-size:12px;border-radius:8px;cursor:pointer;white-space:nowrap;color:var(--text-secondary);transition:all .15s ease}
+  .glass-dd-item:hover{background:rgba(200,164,92,.14);color:var(--text)}
+  .glass-dd-item.active{background:rgba(200,164,92,.2);color:#a07008;font-weight:700}
+  body.dark-mode .glass-dd-trigger{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#e8e6e3}
+  body.dark-mode .glass-dd-menu{background:rgba(42,42,48,.92);border-color:rgba(255,255,255,.16);box-shadow:0 12px 40px rgba(0,0,0,.4)}
+  body.dark-mode .glass-dd-item{color:rgba(232,230,227,.8)}
+  body.light-mode .glass-dd-trigger{background:rgba(255,255,255,.85);border-color:rgba(0,0,0,.08)}
+  body.light-mode .glass-dd-menu{background:rgba(255,255,255,.97);border-color:rgba(0,0,0,.08)}
+  .empty-state{padding:32px;text-align:center;color:var(--text-dim)}
+  .login-overlay{background:rgba(245,243,238,.92)!important;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+  .login-panel{background:#fff!important;border:1px solid rgba(0,0,0,.06)!important;box-shadow:0 2px 20px rgba(0,0,0,.06)!important}
+  .toast{top:80px}
+</style>
+</head>
+<body>
+
+<div class="login-overlay" id="login" style="display:none">
+  <div class="login-panel">
+    <div class="login-icon">🐳</div>
+    <h2>NimuQDock-dsh</h2>
+    <div class="muted" style="margin-bottom:20px">输入控制台访问令牌（见桥接启动日志）</div>
+    <div class="login-field">
+      <span class="field-icon">🔑</span>
+      <input id="tokenInput" type="text" placeholder="粘贴完整 token" autocomplete="off">
+    </div>
+    <button class="login-btn" onclick="login()">进入控制台</button>
+    <div class="login-hint">令牌在启动日志「控制台已启动：…（token: xxx…）」中</div>
+  </div>
+</div>
+
+<div class="app-container" id="app" style="display:none">
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-logo">🐳 NimuQDock-dsh</span>
+    </div>
+    <div class="topbar-right" style="display:flex;align-items:center;gap:10px">
+      <span class="status-pill mode" id="bMode">模式 -</span>
+      <span class="status-pill"><span class="status-dot" id="dDsh"></span><span id="bDsh">DSH -</span></span>
+      <span class="status-pill"><span class="status-dot" id="dNap"></span><span id="bNap">NapCat -</span></span>
+      <button class="icon-btn" onclick="cycleTheme()" title="切换主题">🎨</button>
+    </div>
+  </div>
+  <div class="main-layout">
+    <aside class="sidebar">
+      <button class="game-btn active" data-view="overview" onclick="showView('overview')">📊 概览</button>
+      <button class="game-btn" data-view="sessions" onclick="showView('sessions')">💬 会话</button>
+      <button class="game-btn" data-view="persona" onclick="showView('persona')">🧠 人格状态</button>
+      <button class="game-btn" data-view="qq" onclick="showView('qq')">👥 QQ 管理</button>
+      <button class="game-btn" data-view="memory" onclick="showView('memory')">📚 记忆</button>
+      <button class="game-btn" data-view="roles" onclick="showView('roles')">🎭 人格卡</button>
+      <button class="game-btn" data-view="remote" onclick="showView('remote')">🚀 远程指令</button>
+      <button class="game-btn" data-view="config" onclick="showView('config')">⚙️ 配置</button>
+      <button class="game-btn" data-view="logs" onclick="showView('logs')">📜 活动日志</button>
+    </aside>
+    <main class="main-content">
+      <!-- 概览 -->
+      <div id="view-overview">
+        <div class="section-header">
+          <div class="section-header-icon">📊</div>
+          <div><div class="section-title">概览</div><div class="section-subtitle">桥接运行状态与基本控制</div></div>
+        </div>
+        <div class="cards">
+          <div class="order-card">
+            <div class="card-title">运行状态</div>
+            <div class="kv" id="statusKV"></div>
+          </div>
+          <div class="order-card">
+            <div class="card-title">运行模式</div>
+            <div class="btn-group" id="modeBtns"></div>
+            <div class="muted" style="margin-top:10px">chat = 文本自动转发 · agent = 仿真群友（人格引擎）</div>
+          </div>
+          <div class="order-card">
+            <div class="card-title">人格 / 角色</div>
+            <div class="muted" style="margin-bottom:6px">当前角色：<b id="curRole">-</b>（点击下方人格卡切换，✕ 清除）</div>
+            <div id="roleChips"></div>
+          </div>
+          <div class="order-card">
+            <div class="card-title">静默</div>
+            <div class="row-item" style="margin-bottom:0">
+              <span>群友消息静默（仅管理员可对话）</span>
+              <div class="switch" id="silentSwitch" onclick="toggleSilent()"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- 会话 -->
+      <div id="view-sessions" class="hidden-view">
+        <div class="section-header">
+          <div class="section-header-icon">💬</div>
+          <div><div class="section-title">会话</div><div class="section-subtitle">QQ 会话 ↔ DSH 会话映射</div></div>
+        </div>
+        <div id="sessionList"></div>
+      </div>
+      <!-- 人格状态 -->
+      <div id="view-persona" class="hidden-view">
+        <div class="section-header">
+          <div class="section-header-icon">🧠</div>
+          <div><div class="section-title">人格状态</div><div class="section-subtitle">每个会话的心情 / 精力 / 在场状态（agent 模式）</div></div>
+        </div>
+        <div id="personaStates"></div>
+      </div>
+      <!-- QQ 管理 -->
+      <div id="view-qq" class="hidden-view">
+        <div class="section-header">
+          <div class="section-header-icon">👥</div>
+          <div><div class="section-title">QQ 管理</div><div class="section-subtitle">群列表 / 白名单标注 / 发测试消息</div></div>
+        </div>
+        <div class="cards">
+          <div class="order-card" style="grid-column:1/-1">
+            <div class="card-title">群列表（点击切换白名单）</div>
+            <div id="groupList"></div>
+          </div>
+          <div class="order-card" style="grid-column:1/-1">
+            <div class="card-title">发测试消息</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <div class="glass-dd" data-onpick="setSendChannel">
+                <button class="glass-dd-trigger">私聊 <span class="glass-dd-arrow">▼</span></button>
+                <div class="glass-dd-menu">
+                  <div class="glass-dd-item active" data-v="private">私聊</div>
+                  <div class="glass-dd-item" data-v="group">群聊</div>
+                </div>
+              </div>
+              <input id="sendId" class="glass-input" placeholder="QQ 号 / 群号" style="width:170px">
+              <input id="sendText" class="glass-input" placeholder="消息内容" style="flex:1;min-width:200px">
+              <button class="btn-accept" onclick="sendTestMsg()">发送</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- 记忆 -->
+      <div id="view-memory" class="hidden-view">
+        <div class="section-header">
+          <div class="section-header-icon">📚</div>
+          <div><div class="section-title">记忆管理</div><div class="section-subtitle">各会话长期记忆 / 群话题 / 手动唤醒 / 会话历史</div></div>
+        </div>
+        <div id="memoryList"></div>
+      </div>
+      <!-- 人格卡 -->
+      <div id="view-roles" class="hidden-view">
+        <div class="section-header">
+          <div class="section-header-icon">🎭</div>
+          <div><div class="section-title">人格卡</div><div class="section-subtitle">一个 .yaml 文件 = 完整人格（人设 prompt + 性格/心情/精力参数），保存即生效</div></div>
+        </div>
+        <div class="cards">
+          <div class="order-card" style="grid-column:1/-1">
+            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+              <span>人格卡（roles/*.yaml）</span>
+              <button class="btn-accept" onclick="newRoleCard('yaml')">＋ 新建人格卡</button>
+            </div>
+            <div id="roleCardList"></div>
+          </div>
+        </div>
+        <div id="roleEditor" style="display:none"></div>
+      </div>
+      <!-- 远程指令 -->
+      <div id="view-remote" class="hidden-view">
+        <div class="section-header">
+          <div class="section-header-icon">🚀</div>
+          <div><div class="section-title">远程指令</div><div class="section-subtitle">在独立完整工具会话里执行指令（不进 QQ），结果回显在此处</div></div>
+        </div>
+        <div class="cards">
+          <div class="order-card" style="grid-column:1/-1">
+            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+              <span>指令</span>
+              <span><button class="btn-cancel" onclick="resetRemote()">清空会话上下文</button></span>
+            </div>
+            <textarea id="remoteCmd" class="glass-input" placeholder="例如：列出当前目录文件 / 写一段代码并运行 / 查看 DSH 版本" style="width:100%;height:90px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6;resize:vertical"></textarea>
+            <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
+              <button class="btn-accept" onclick="remoteExec()">▶ 执行</button>
+              <span class="muted">超时 <select id="remoteTimeout" class="glass-select"><option value="60000">1 分钟</option><option value="180000" selected>3 分钟</option><option value="300000">5 分钟</option><option value="600000">10 分钟</option></select></span>
+            </div>
+          </div>
+          <div class="order-card" style="grid-column:1/-1">
+            <div class="card-title">执行结果</div>
+            <div id="remoteResult" style="font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-all;max-height:420px;overflow-y:auto"></div>
+          </div>
+          <div class="order-card" style="grid-column:1/-1">
+            <div class="card-title">历史记录</div>
+            <div id="remoteHistory"></div>
+          </div>
+        </div>
+      </div>
+      <!-- 配置 -->
+      <div id="view-config" class="hidden-view">
+        <div class="section-header">
+          <div class="section-header-icon">⚙️</div>
+          <div><div class="section-title">配置</div><div class="section-subtitle">白名单 / 社交参数（保存即热生效）</div></div>
+        </div>
+        <div class="cards">
+          <div class="order-card">
+            <div class="card-title">白名单</div>
+            <div id="allowlistBox"></div>
+          </div>
+          <div class="order-card">
+            <div class="card-title">社交参数（agent 模式）</div>
+            <div id="socialForm"></div>
+            <button class="btn-accept" style="margin-top:10px" onclick="saveSocial()">保存参数</button>
+          </div>
+        </div>
+      </div>
+      <!-- 日志 -->
+      <div id="view-logs" class="hidden-view">
+        <div class="section-header">
+          <div class="section-header-icon">📜</div>
+          <div><div class="section-title">活动日志</div><div class="section-subtitle">QQ 消息收发实时记录</div></div>
+        </div>
+        <pre class="log-area" id="log"></pre>
+      </div>
+    </main>
+  </div>
+</div>
+<div class="toast" id="toast" style="display:none"></div>
+
+<script>
+let TOKEN = localStorage.getItem('napcat_token') || '';
+const MODES = ['chat', 'agent'];
+
+// ── 主题（三主题循环：glass → light → dark） ──
+var theme = localStorage.getItem('ysti_theme') || 'glass';
+function applyTheme(t) {
+  document.body.className = t === 'light' ? 'light-mode' : t === 'dark' ? 'dark-mode' : '';
+  localStorage.setItem('ysti_theme', t);
+  theme = t;
+}
+function cycleTheme() { applyTheme(theme === 'glass' ? 'light' : theme === 'light' ? 'dark' : 'glass'); }
+applyTheme(theme);
+
+// ── API ──
+async function api(path, method = 'GET', body = null) {
+  const res = await fetch(path, {
+    method,
+    headers: { 'content-type': 'application/json', ...(TOKEN ? { authorization: 'Bearer ' + TOKEN } : {}) },
+    body: body ? JSON.stringify(body) : null,
+  });
+  if (res.status === 401) { showLogin(); throw new Error('unauthorized'); }
+  return res.json();
+}
+
+// ── 视图切换 ──
+function showView(name) {
+  document.querySelectorAll('.main-content > div').forEach((el) => el.classList.add('hidden-view'));
+  document.getElementById('view-' + name).classList.remove('hidden-view');
+  document.querySelectorAll('.game-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
+  if (name === 'sessions') refreshSessions();
+  if (name === 'persona') refreshPersona();
+  if (name === 'qq') refreshGroups();
+  if (name === 'memory') refreshMemory();
+  if (name === 'roles') refreshRoleCards();
+  if (name === 'remote') refreshRemoteHistory();
+  if (name === 'config') { refreshAllowlist(); refreshSocialForm(); }
+  if (name === 'logs') refreshLog();
+}
+
+// ── 人格卡管理（统一 .yaml） ──
+async function refreshRoleCards() {
+  try {
+    const r = await api('/api/roles');
+    const yaml = r.personas || [];
+    const item = (n) => '<div class="row-item"><span><b>' + n + '</b> <span class="muted">.yaml</span></span>' +
+      '<span><button class="btn-accept" onclick="openRoleEditor(\'yaml\',\'' + n + '\')">编辑</button> ' +
+      '<button class="btn-cancel danger" onclick="deleteRoleCard(\'yaml\',\'' + n + '\')">删除</button></span></div>';
+    document.getElementById('roleCardList').innerHTML = yaml.length ? yaml.map(item).join('') : '<div class="empty-state">暂无人格卡（点右上角新建）</div>';
+  } catch (e) {}
+}
+function newRoleCard() {
+  openRoleEditor('yaml', '');
+}
+async function openRoleEditor(type, name) {
+  let content = '';
+  if (name) {
+    const r = await api('/api/role-card?type=yaml&name=' + encodeURIComponent(name));
+    if (r.content !== undefined) content = r.content;
+  } else {
+    content = '# 人格卡：新人格\nname: 新人格\naliases: [新人格]\nprompt: |\n  # 你是谁\n  描述角色身份与性格...\n\n  # 说话方式\n  回复风格与铁律...\n\n  # 回复示例\n  群友：\n  你：\ninterests: []\nproactiveness: 0.35\nmood:\n  initial: 0.5\n  decay_per_hour: 0.02\nenergy:\n  initial: 1.0\n  cost_per_reply: 0.15\n  recharge_per_hour: 0.3\n  active_floor: 0.4\nrelationship:\n  default: 0.0\n  growth_per_conversation: 0.02\n  familiar_threshold: 0.25\nspeech:\n  max_len: 40\n  emoji_rate: 0.3\n  style_note: 短句、口语、偶尔玩梗\n';
+  }
+  const el = document.getElementById('roleEditor');
+  el.style.display = 'block';
+  el.innerHTML = '<div class="order-card">' +
+    '<div class="card-title">编辑人格卡</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">' +
+    '<input id="rcName" class="glass-input" placeholder="名称（不含 .yaml）" value="' + (name || '') + '" style="width:220px">' +
+    '<span class="muted">.yaml</span>' +
+    '<button class="btn-accept" onclick="saveRoleCard(\'yaml\')">保存</button> ' +
+    '<button class="btn-cancel" onclick="document.getElementById(\'roleEditor\').style.display=\'none\'">取消</button></div>' +
+    '<textarea id="rcContent" class="glass-input" style="width:100%;height:320px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6;resize:vertical">' +
+    content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea>' +
+    '<div class="muted" style="margin-top:6px">prompt 字段 = 人设文本（群聊注入）；traits/mood/energy/speech = 人格引擎参数。字段说明见 docs/PERSONA_ENGINE.md §3</div>' +
+    '</div>';
+  el.scrollIntoView({ behavior: 'smooth' });
+}
+async function saveRoleCard(type) {
+  const name = document.getElementById('rcName').value.trim();
+  const content = document.getElementById('rcContent').value;
+  if (!name) { toast('请填写名称'); return; }
+  const r = await api('/api/role-card', 'POST', { type, name, content });
+  if (r.ok) { toast('已保存「' + name + '」'); document.getElementById('roleEditor').style.display = 'none'; refreshRoleCards(); refreshRoles(); }
+  else toast('保存失败：' + (r.error || ''));
+}
+async function deleteRoleCard(type, name) {
+  if (!confirm('删除 ' + name + '.' + type + '？')) return;
+  const r = await api('/api/role-card/delete', 'POST', { type, name });
+  if (r.ok) { toast('已删除'); refreshRoleCards(); refreshRoles(); }
+}
+
+// ── QQ 管理 ──
+async function refreshGroups() {
+  try {
+    const r = await api('/api/groups');
+    const el = document.getElementById('groupList');
+    el.innerHTML = r.groups?.length
+      ? r.groups.map((g) => '<div class="row-item">' +
+          '<span><b>' + g.group_name + '</b> <span class="muted">(' + g.group_id + ' · ' + g.member_count + '人)</span></span>' +
+          '<span class="chip' + (g.allowed ? ' cur' : '') + '" onclick="toggleGroupAllow(\'' + g.group_id + '\')">' + (g.allowed ? '✅ 白名单' : '⛔ 未授权') + '</span>' +
+          '</div>').join('')
+      : '<div class="empty-state">机器人不在任何群里（或无权限读取群列表）</div>';
+  } catch (e) {}
+}
+async function toggleGroupAllow(id) {
+  const r = await api('/api/allowlist', 'GET');
+  const inAllow = (r.allow?.groups ?? []).includes(id);
+  const res = await api('/api/allowlist', 'POST', { scope: 'allow', channel: 'group', id, action: inAllow ? 'remove' : 'add' });
+  if (res.ok) { toast(inAllow ? '已移出白名单' : '已加入白名单'); refreshGroups(); }
+}
+async function sendTestMsg() {
+  const channel = sendChannel;
+  const id = document.getElementById('sendId').value.trim();
+  const message = document.getElementById('sendText').value.trim();
+  if (!id || !message) { toast('请填 QQ 号和消息'); return; }
+  const r = await api('/api/send', 'POST', { channel, id, message });
+  if (r.ok) toast('已发送（message_id ' + r.message_id + '）');
+  else toast('发送失败：' + (r.error || ''));
+}
+
+// ── 记忆管理 ──
+async function refreshMemory() {
+  try {
+    const s = await api('/api/sessions');
+    const keys = Object.keys(s.sessions ?? {});
+    const el = document.getElementById('memoryList');
+    if (!keys.length) { el.innerHTML = '<div class="empty-state">暂无会话</div>'; return; }
+    const html = [];
+    for (const key of keys) {
+      const m = await api('/api/memory?key=' + encodeURIComponent(key));
+      const hist = await api('/api/session-history?key=' + encodeURIComponent(key));
+      html.push('<div class="order-card" style="margin-bottom:12px">');
+      html.push('<div class="p-head"><span class="p-name">' + key + '</span>' +
+        '<button class="btn-accept" onclick="wakeAgent(\'' + key + '\')">手动唤醒</button></div>');
+      html.push('<div class="card-title" style="margin-top:10px">群话题</div>');
+      html.push('<div>' + (m.topics?.length ? m.topics.map((t) => '<span class="chip">' + t + '</span>').join('') : '<span class="muted">暂无</span>') + '</div>');
+      html.push('<div class="card-title" style="margin-top:10px">长期记忆（' + (m.entries?.length ?? 0) + ' 条）</div>');
+      html.push('<div>' + (m.entries?.length
+        ? m.entries.map((e) => '<div class="row-item"><span>' + e.text + ' <span class="muted">[' + e.type + (e.target ? ' →' + e.target : '') + ']</span></span><button class="btn-cancel danger" onclick="removeMemory(\'' + key + '\',\'' + e.id + '\')">删</button></div>').join('')
+        : '<span class="muted">暂无记忆</span>') + '</div>');
+      html.push('<div class="card-title" style="margin-top:10px">最近对话</div>');
+      html.push('<div>' + (hist.messages?.length
+        ? hist.messages.slice(-5).map((msg) => '<div class="muted" style="margin:2px 0"><b>' + (msg.role === 'user' ? '👤' : '🤖') + '</b> ' + msg.text.replace(/\n/g, ' ') + '</div>').join('')
+        : '<span class="muted">暂无</span>') + '</div>');
+      html.push('</div>');
+    }
+    el.innerHTML = html.join('');
+  } catch (e) {}
+}
+async function removeMemory(key, id) {
+  const r = await api('/api/memory/remove', 'POST', { key, id });
+  if (r.ok) { toast('已删除'); refreshMemory(); }
+}
+async function wakeAgent(key) {
+  const r = await api('/api/agent/wake', 'POST', { key });
+  if (r.ok) toast('已触发唤醒投递');
+}
+
+// ── 配置 ──
+async function refreshAllowlist() {
+  try {
+    const r = await api('/api/allowlist');
+    const rows = [];
+    const fmt = (label, channel, list) => list.map((id) => '<div class="row-item"><span>' + label + ' <b>' + id + '</b></span><button class="btn-cancel danger" onclick="allowlistOp(\'' + channel + '\',\'' + id + '\',\'remove\')">移除</button></div>').join('');
+    rows.push(fmt('私聊白名单', 'private', r.allow?.private ?? []));
+    rows.push(fmt('群白名单', 'group', r.allow?.groups ?? []));
+    rows.push(fmt('私聊黑名单', 'private', r.deny?.private ?? []));
+    rows.push(fmt('群黑名单', 'group', r.deny?.groups ?? []));
+    rows.push('<div style="display:flex;gap:8px;margin-top:10px;align-items:center">' +
+      '<input id="wlInput" class="glass-input" placeholder="QQ 号 / 群号" style="flex:1">' +
+      '<div class="glass-dd" data-onpick="setWlChannel">' +
+      '<button class="glass-dd-trigger">私聊 <span class="glass-dd-arrow">▼</span></button>' +
+      '<div class="glass-dd-menu"><div class="glass-dd-item active" data-v="private">私聊</div><div class="glass-dd-item" data-v="group">群</div></div>' +
+      '</div>' +
+      '<button class="btn-accept" onclick="allowlistAdd()">加入白名单</button></div>');
+    document.getElementById('allowlistBox').innerHTML = rows.join('');
+  } catch (e) {}
+}
+async function allowlistOp(channel, id, action) {
+  const r = await api('/api/allowlist', 'POST', { scope: 'allow', channel, id, action });
+  if (r.ok) { toast('已更新'); refreshAllowlist(); refreshGroups(); }
+}
+async function allowlistAdd() {
+  const id = document.getElementById('wlInput').value.trim();
+  const channel = wlChannel;
+  if (!id) return;
+  const r = await api('/api/allowlist', 'POST', { scope: 'allow', channel, id, action: 'add' });
+  if (r.ok) { toast('已加入白名单'); refreshAllowlist(); }
+}
+async function refreshSocialForm() {
+  try {
+    const r = await api('/api/config');
+    const e = r.social?.engagement ?? {};
+    const hb = r.social?.heartbeat ?? {};
+    const num = (v) => '<input class="sf glass-input" data-k="' + v[0] + '" type="number" step="0.1" value="' + (v[1] ?? '') + '" style="width:80px">';
+    const row = (label, input) => '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span class="muted">' + label + '</span>' + input + '</div>';
+    const form = [
+      row('唤醒阈值 threshold', num(['threshold', e.threshold])),
+      row('点名权重 wAttention', num(['wAttention', e.wAttention])),
+      row('话题权重 wInterest', num(['wInterest', e.wInterest])),
+      row('精力权重 wEnergy', num(['wEnergy', e.wEnergy])),
+      row('心情权重 wMood', num(['wMood', e.wMood])),
+      row('随机扰动 wNoise', num(['wNoise', e.wNoise])),
+      row('冷却(ms) cooldownMs', num(['cooldownMs', e.cooldownMs])),
+      row('心跳概率 heartbeat.probability', num(['hb_probability', hb.probability])),
+      row('心跳最小间隔(ms)', num(['hb_min', hb.minIntervalMs])),
+      row('心跳最大间隔(ms)', num(['hb_max', hb.maxIntervalMs])),
+      row('记忆条数上限', num(['mem_max', r.social?.memory?.maxEntries])),
+      row('记忆注入条数', num(['mem_inject', r.social?.memory?.injectMax])),
+    ];
+    document.getElementById('socialForm').innerHTML = form.join('');
+  } catch (e) {}
+}
+async function saveSocial() {
+  const get = (k) => { const el = document.querySelector('.sf[data-k="' + k + '"]'); return el ? Number(el.value) : undefined; };
+  const body = {
+    social: {
+      engagement: {
+        threshold: get('threshold'), wAttention: get('wAttention'), wInterest: get('wInterest'),
+        wEnergy: get('wEnergy'), wMood: get('wMood'), wNoise: get('wNoise'), cooldownMs: get('cooldownMs'),
+      },
+      heartbeat: { probability: get('hb_probability'), minIntervalMs: get('hb_min'), maxIntervalMs: get('hb_max') },
+      memory: { maxEntries: get('mem_max'), injectMax: get('mem_inject') },
+    },
+  };
+  const r = await api('/api/config', 'POST', body);
+  if (r.ok) toast('参数已保存并热生效');
+}
+
+// ── 自定义玻璃下拉（事件委托，防动态重建/双重触发） ──
+let sendChannel = 'private';
+let wlChannel = 'private';
+function setSendChannel(v) { sendChannel = v; }
+function setWlChannel(v) { wlChannel = v; }
+function adjustPersonaPresence(key, v) { adjustPersona(key, 'presence', v); }
+document.addEventListener('click', (e) => {
+  const trigger = e.target.closest('.glass-dd-trigger');
+  const item = e.target.closest('.glass-dd-item');
+  if (trigger) {
+    const dd = trigger.closest('.glass-dd');
+    e.stopPropagation();
+    document.querySelectorAll('.glass-dd.open').forEach((el) => { if (el !== dd) el.classList.remove('open'); });
+    dd.classList.toggle('open');
+    return;
+  }
+  if (item) {
+    const dd = item.closest('.glass-dd');
+    const val = item.dataset.v;
+    dd.querySelectorAll('.glass-dd-item').forEach((i) => i.classList.toggle('active', i === item));
+    const t = dd.querySelector('.glass-dd-trigger');
+    const label = item.childNodes[0]?.textContent || item.textContent;
+    t.innerHTML = label + ' <span class="glass-dd-arrow">▼</span>';
+    dd.classList.remove('open');
+    const cb = dd.dataset.onpick;
+    const key = dd.dataset.key;
+    if (cb && typeof window[cb] === 'function') { if (key !== undefined) window[cb](key, val); else window[cb](val); }
+    return;
+  }
+  if (!e.target.closest('.glass-dd')) {
+    document.querySelectorAll('.glass-dd.open').forEach((el) => el.classList.remove('open'));
+  }
+});
+
+// ── 远程指令 ──
+async function remoteExec() {
+  const command = document.getElementById('remoteCmd').value.trim();
+  if (!command) { toast('请输入指令'); return; }
+  const timeout_ms = Number(document.getElementById('remoteTimeout').value) || 180000;
+  const el = document.getElementById('remoteResult');
+  el.innerHTML = '⏳ 执行中（最多 ' + Math.round(timeout_ms / 60000) + ' 分钟）…';
+  const r = await api('/api/remote/exec', 'POST', { command, timeout_ms });
+  const tools = r.tools?.length ? '\n\n🛠 工具调用：' + r.tools.join(', ') : '';
+  el.innerHTML = (r.timedOut ? '⏰ 超时未完成\n\n' : '✅ 完成（' + Math.round((r.durationMs || 0) / 1000) + 's）\n\n') +
+    (r.output || '（无文本输出）') + tools;
+  refreshRemoteHistory();
+}
+async function resetRemote() {
+  if (!confirm('清空远程会话上下文？下次执行将开新会话')) return;
+  const r = await api('/api/remote/reset', 'POST', {});
+  if (r.ok) { toast('已清空'); document.getElementById('remoteResult').innerHTML = ''; }
+}
+async function refreshRemoteHistory() {
+  try {
+    const r = await api('/api/remote/log');
+    const el = document.getElementById('remoteHistory');
+    el.innerHTML = r.entries?.length
+      ? r.entries.map((e) => '<div class="row-item"><span><b>' + (e.timedOut ? '⏰' : '✅') + '</b> ' + e.command + '</span>' +
+          '<span class="muted">' + Math.round((e.durationMs || 0) / 1000) + 's' + (e.tools?.length ? ' · ' + e.tools.length + ' 工具' : '') + '</span></div>').join('')
+      : '<span class="muted">暂无执行记录</span>';
+  } catch (e) {}
+}
+
+// ── Toast ──
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, 2200);
+}
+
+// ── 登录 ──
+function showLogin() { document.getElementById('login').style.display = 'flex'; document.getElementById('app').style.display = 'none'; }
+function login() {
+  TOKEN = document.getElementById('tokenInput').value.trim();
+  if (!TOKEN) return;
+  localStorage.setItem('napcat_token', TOKEN);
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  refreshAll();
+}
+
+// ── 数据刷新 ──
+async function refreshStatus() {
+  try {
+    const s = await api('/api/status');
+    document.getElementById('statusKV').innerHTML = [
+      ['机器人 QQ', s.napcatSelfId || '-'], ['昵称', s.napcatNickname || '-'],
+      ['会话数', s.sessions ?? 0], ['启动时间', new Date(s.startedAt).toLocaleString()],
+    ].map(([k, v]) => '<div class="k">' + k + '</div><div class="v">' + v + '</div>').join('');
+    document.getElementById('bMode').textContent = '模式 ' + s.mode;
+    document.getElementById('bDsh').textContent = s.dshOnline ? 'DSH 在线' : 'DSH 离线';
+    document.getElementById('dDsh').className = 'status-dot ' + (s.dshOnline ? 'ok' : 'bad');
+    document.getElementById('bNap').textContent = s.napcatConnected ? 'NapCat 在线' : 'NapCat 离线';
+    document.getElementById('dNap').className = 'status-dot ' + (s.napcatConnected ? 'ok' : 'bad');
+    document.getElementById('modeBtns').innerHTML = MODES.map((m) =>
+      '<button class="btn-accept' + (m === s.mode ? ' active' : '') + '" onclick="setMode(\'' + m + '\')">' + m + '</button>').join('');
+  } catch (e) {}
+}
+async function setMode(mode) {
+  const r = await api('/api/mode', 'POST', { mode });
+  if (r.ok) { toast('模式已切换为 ' + mode); refreshStatus(); }
+}
+async function refreshRoles() {
+  try {
+    const r = await api('/api/roles');
+    document.getElementById('curRole').textContent = r.currentRole?.role || '无（默认人格）';
+    // 人格卡即角色（合并后）：点击切换聊天角色
+    document.getElementById('roleChips').innerHTML = r.personas.map((n) =>
+      '<span class="chip' + (n === r.currentRole?.role ? ' cur' : '') + '" onclick="setRole(\'' + n + '\')">' + n + '</span>').join('') +
+      '<span class="chip" onclick="clearRole()">✕ 清除</span>';
+    document.getElementById('silentSwitch').className = 'switch' + (r.currentRole?.mode === 'silent' ? ' on' : '');
+  } catch (e) {}
+}
+async function setRole(name) { const r = await api('/api/role', 'POST', { role: name }); if (r.ok) { toast('已切换角色：' + name); refreshRoles(); } }
+async function clearRole() { const r = await api('/api/role', 'POST', { role: null }); if (r.ok) { toast('已清除角色'); refreshRoles(); } }
+async function toggleSilent() {
+  const isOn = document.getElementById('silentSwitch').classList.contains('on');
+  const r = await api('/api/silent', 'POST', { silent: !isOn });
+  if (r.ok) { toast(isOn ? '已恢复' : '已静默'); refreshRoles(); }
+}
+async function refreshSessions() {
+  try {
+    const r = await api('/api/sessions');
+    const entries = Object.entries(r.sessions ?? {});
+    document.getElementById('sessionList').innerHTML = entries.length
+      ? entries.map(([key, sid]) => '<div class="row-item"><span><b>' + key + '</b></span><span class="sid">' + sid + '</span><button class="btn-cancel danger" onclick="resetSession(\'' + key + '\')">重置</button></div>').join('')
+      : '<div class="empty-state">暂无会话（给机器人发条消息即创建）</div>';
+  } catch (e) {}
+}
+async function resetSession(key) {
+  if (!confirm('重置会话 ' + key + '？（agent 模式连带清空人格状态/记忆）')) return;
+  const r = await api('/api/reset', 'POST', { key });
+  if (r.ok) { toast('已重置 ' + key); refreshSessions(); refreshPersona(); }
+}
+async function refreshPersona() {
+  try {
+    const r = await api('/api/persona');
+    if (!r.persona) { document.getElementById('personaStates').innerHTML = '<div class="empty-state">agent 模式未启用</div>'; return; }
+    const states = Object.entries(r.states ?? {});
+    document.getElementById('personaStates').innerHTML = states.length
+      ? states.map(([key, st]) => '<div class="persona-card">' +
+          '<div class="p-head"><span class="p-name">' + key + '</span><span class="p-key">' + st.personaId + '</span></div>' +
+          '<div style="display:flex;align-items:center;gap:10px;margin:4px 0"><span class="muted" style="width:44px">心情</span>' +
+          '<input type="range" class="glass-range" min="0" max="1" step="0.05" value="' + st.mood + '" onchange="adjustPersona(\'' + key + '\',\'mood\',this.value)">' +
+          '<b style="width:38px;text-align:right">' + st.mood + '</b></div>' +
+          '<div style="display:flex;align-items:center;gap:10px;margin:4px 0"><span class="muted" style="width:44px">精力</span>' +
+          '<input type="range" class="glass-range" min="0" max="1" step="0.05" value="' + st.energy + '" onchange="adjustPersona(\'' + key + '\',\'energy\',this.value)">' +
+          '<b style="width:38px;text-align:right">' + st.energy + '</b></div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">' +
+          '<span class="muted">在场 <div class="glass-dd" data-onpick="adjustPersonaPresence" data-key="' + key + '">' +
+          '<button class="glass-dd-trigger">' + (st.presence?.mode === 'diving' ? 'diving 潜水' : st.presence?.mode === 'paused' ? 'paused 暂停' : 'active 活跃') + ' <span class="glass-dd-arrow">▼</span></button>' +
+          '<div class="glass-dd-menu">' +
+          '<div class="glass-dd-item' + (st.presence?.mode === 'active' ? ' active' : '') + '" data-v="active">active 活跃</div>' +
+          '<div class="glass-dd-item' + (st.presence?.mode === 'diving' ? ' active' : '') + '" data-v="diving">diving 潜水</div>' +
+          '<div class="glass-dd-item' + (st.presence?.mode === 'paused' ? ' active' : '') + '" data-v="paused">paused 暂停</div>' +
+          '</div></div></span>' +
+          '<span class="muted">发言 ' + st.replies + ' · 未读 ' + st.unread + '</span></div>' +
+          '</div>').join('')
+      : '<div class="empty-state">无活动会话状态（agent 模式参与对话后显示）</div>';
+  } catch (e) {}
+}
+async function adjustPersona(key, field, value) {
+  const body = { key };
+  if (field === 'presence') body.presence = { mode: value };
+  else body[field] = Number(value);
+  const r = await api('/api/persona/adjust', 'POST', body);
+  if (r.ok) toast('已调整：心情 ' + Number(r.mood).toFixed(2) + ' · 精力 ' + Number(r.energy).toFixed(2) + ' · ' + r.presence?.mode);
+  refreshPersona();
+}
+async function refreshLog() {
+  try {
+    const r = await api('/api/logs?n=120');
+    const el = document.getElementById('log');
+    el.textContent = r.logs || '（暂无活动日志）';
+    el.scrollTop = el.scrollHeight;
+  } catch (e) {}
+}
+async function refreshAll() { await Promise.allSettled([refreshStatus(), refreshRoles(), refreshSessions(), refreshPersona(), refreshLog()]); }
+
+// ── 初始化 ──
+if (TOKEN) { document.getElementById('login').style.display = 'none'; document.getElementById('app').style.display = 'flex'; refreshAll(); }
+else { showLogin(); }
+setInterval(() => { if (TOKEN) { refreshStatus(); if (!document.getElementById('view-logs').classList.contains('hidden-view')) refreshLog(); } }, 5000);
+</script>
+</body>
+</html>

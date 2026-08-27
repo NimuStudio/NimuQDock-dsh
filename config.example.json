@@ -1,0 +1,80 @@
+{
+  "dsh": {
+    "baseUrl": "http://127.0.0.1:3080",
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash-vision-exp",
+    "reasoningEffort": "max"
+  },
+  "napcat": {
+    "wsUrl": "ws://127.0.0.1:3001",
+    "httpUrl": "http://127.0.0.1:3000",
+    "accessToken": ""
+  },
+  "ownerQQ": 0,
+  "agentPreset": "qq-chat",
+  "agentPresetAgent": "qq-agent",
+  "workspaceTitle": "QQ 聊天",
+  "allow": {
+    "private": [],
+    "groups": []
+  },
+  "deny": {
+    "private": [],
+    "groups": []
+  },
+  "allowAllWhenEmpty": false,
+  "ackMessage": "",
+  "sendDelayMs": 300,
+  "maxReplyChars": 1000,
+  "questionTimeoutMs": 300000,
+  "console": {
+    "port": 3100,
+    "token": ""
+  },
+  "security": {
+    "interceptNotify": true
+  },
+  "vision": {
+    "enabled": true,
+    "maxImageBytes": 8388608
+  },
+  "queue": {
+    "maxPerSession": 50
+  },
+  "social": {
+    "enabled": true,
+    "defaultPersona": "小鲸鱼",
+    "wakeKeywords": [],
+    "engagement": {
+      "wAttention": 2.5,
+      "wInterest": 1.5,
+      "wEnergy": 1.0,
+      "wMood": 0.8,
+      "wNoise": 0.6,
+      "threshold": 2.0,
+      "cooldownMs": 45000
+    },
+    "heartbeat": {
+      "enabled": true,
+      "minIntervalMs": 600000,
+      "maxIntervalMs": 1800000,
+      "idleThresholdMs": 900000,
+      "probability": 0.3
+    },
+    "memory": {
+      "maxEntries": 200,
+      "injectMax": 6,
+      "decayDays": 30
+    },
+    "topics": {
+      "windowSize": 200,
+      "minCount": 3,
+      "maxTopics": 20
+    },
+    "unread": {
+      "maxPerSession": 100
+    },
+    "noActionLimit": 3
+  },
+  "dshCheckIntervalMs": 5000
+}
