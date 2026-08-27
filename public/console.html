@@ -277,6 +277,22 @@
         </div>
         <div class="cards">
           <div class="order-card">
+            <div class="card-title">模型与思考模式（DSH）</div>
+            <div class="muted" style="margin-bottom:10px">选择接入 QQ 的 agent 使用的模型与推理强度；保存后对新建会话生效，点「应用到现有会话」立即切换。</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <label class="muted" style="white-space:nowrap">模型</label>
+              <select id="modelSelect" class="glass-select" style="min-width:220px"></select>
+              <label class="muted" style="white-space:nowrap">思考模式</label>
+              <select id="effortSelect" class="glass-select" style="min-width:120px"></select>
+            </div>
+            <div class="muted" id="modelDesc" style="margin-top:8px"></div>
+            <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center">
+              <button class="btn-accept" onclick="saveModelConfig()">保存（作用于新会话）</button>
+              <button class="btn-accept" onclick="applyModelAll()">应用到现有会话</button>
+              <span class="muted" id="modelStatus"></span>
+            </div>
+          </div>
+          <div class="order-card">
             <div class="card-title">白名单</div>
             <div id="allowlistBox"></div>
           </div>
@@ -346,7 +362,7 @@ function showView(name) {
   if (name === 'memory') refreshMemory();
   if (name === 'roles') refreshRoleCards();
   if (name === 'remote') refreshRemoteHistory();
-  if (name === 'config') { refreshAllowlist(); refreshSocialForm(); }
+  if (name === 'config') { refreshAllowlist(); refreshSocialForm(); refreshModelConfig(); }
   if (name === 'logs') refreshLog();
 }
 
@@ -537,6 +553,59 @@ async function saveSocial() {
   };
   const r = await api('/api/config', 'POST', body);
   if (r.ok) toast('参数已保存并热生效');
+}
+
+// ── 模型与思考模式（DSH） ──
+let modelCatalog = [];       // /api/models 拍平的模型列表
+let currentModelConfig = { provider: '', model: '', reasoningEffort: '' };
+
+async function refreshModelConfig() {
+  try {
+    const [c, m] = await Promise.all([api('/api/config'), api('/api/models')]);
+    currentModelConfig = { provider: c.dsh?.provider ?? '', model: c.dsh?.model ?? '', reasoningEffort: c.dsh?.reasoningEffort ?? '' };
+    modelCatalog = Array.isArray(m.models) ? m.models : [];
+    const modelSel = document.getElementById('modelSelect');
+    // 模型下拉：目录模型 + 当前配置值（若不在目录中，保留以便手动输入回显）
+    const ids = new Set(modelCatalog.map((x) => x.id));
+    const curModel = currentModelConfig.model;
+    if (curModel && !ids.has(curModel)) {
+      modelCatalog = [{ id: curModel, name: curModel, provider: currentModelConfig.provider, providerName: currentModelConfig.provider, efforts: [], defaultEffort: '' }, ...modelCatalog];
+    }
+    modelSel.innerHTML = modelCatalog.map((x) =>
+      '<option value="' + esc(x.id) + '"' + (x.id === curModel ? ' selected' : '') + '>' +
+      esc((x.providerName ? x.providerName + ' · ' : '') + x.name) + '</option>').join('');
+    const effSel = document.getElementById('effortSelect');
+    effSel.innerHTML = '<option value="">（模型默认）</option>' +
+      ['off', 'low', 'high', 'max'].map((e) =>
+        '<option value="' + e + '"' + (e === currentModelConfig.reasoningEffort ? ' selected' : '') + '>' +
+        ({ off: 'Off 关闭', low: 'Low 低', high: 'High 高', max: 'Max 最高' }[e]) + '</option>').join('');
+    document.getElementById('modelDesc').textContent =
+      (m.error ? '⚠️ 模型目录加载失败：' + m.error : '') +
+      (modelCatalog.length ? '共 ' + modelCatalog.length + ' 个可用模型（来自 DSH llm.models）' : '');
+  } catch (e) {}
+}
+
+async function saveModelConfig() {
+  const model = document.getElementById('modelSelect').value;
+  const reasoningEffort = document.getElementById('effortSelect').value;
+  const entry = modelCatalog.find((x) => x.id === model);
+  const body = { dsh: { model, reasoningEffort, provider: entry?.provider ?? currentModelConfig.provider } };
+  const r = await api('/api/config', 'POST', body);
+  document.getElementById('modelStatus').textContent = r.ok
+    ? '✅ 已保存：' + model + (reasoningEffort ? ' · ' + reasoningEffort : '（默认）') + '，新会话生效'
+    : '❌ 保存失败：' + (r.error || '');
+  if (r.ok) toast('模型配置已保存');
+}
+
+async function applyModelAll() {
+  const btn = document.querySelector('#view-config .btn-accept[onclick="applyModelAll()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '应用中…'; }
+  document.getElementById('modelStatus').textContent = '';
+  const r = await api('/api/model/apply', 'POST', {});
+  document.getElementById('modelStatus').textContent = r.ok
+    ? '✅ 已应用到 ' + r.applied + '/' + r.total + ' 个会话' + (r.failed?.length ? '；失败 ' + r.failed.length + ' 个（' + r.failed.map((f) => f.key).join(', ') + '）' : '')
+    : '❌ 应用失败：' + (r.error || '');
+  if (btn) { btn.disabled = false; btn.textContent = '应用到现有会话'; }
 }
 
 // ── 自定义玻璃下拉（事件委托，防动态重建/双重触发） ──
