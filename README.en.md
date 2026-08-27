@@ -54,25 +54,82 @@ The journey of a single message:
 |---|---|
 | Node.js | ≥ 22.13 |
 | DeepSeek Harness | running and reachable (default `http://127.0.0.1:3080`, changeable in `config.json`) |
-| NapCat | QQ protocol implementation, [download](https://github.com/NapNeko/NapCatQQ/releases/latest); configure OneBot11: HTTP `3000` + WS `3001` |
+| NapCat | QQ protocol implementation, [download](https://github.com/NapNeko/NapCatQQ/releases/latest) |
+| QQ account | one dedicated for the bot (an alt account is recommended) |
 
-### Run it in four steps
+### ① Install dependencies
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Generate the config and fill it in (ownerQQ / whitelist / napcat.accessToken)
-copy config.example.json config.json
-
-# 3. Install the presets / MCP / plugin into DSH, then restart DSH
-node scripts/setup-dsh.mjs
-
-# 4. Start (or double-click start.bat for watchdog mode)
-npm start
 ```
 
-Success looks like `NapCat 已连接` and `桥接已启动` in the logs; then try @-ing the bot in a QQ group or sending it a private message.
+### ② Bring NapCat online
+
+1. Download NapCat and follow its official guide to log in with your QQ account (QR-code login; a QQ client must be installed).
+2. Open the NapCat WebUI: `http://127.0.0.1:6099/webui` (default password `napcat`).
+3. Go to **Network config** and create two connections, with **message format set to `array`** for both:
+   - **HTTP server**: `127.0.0.1:3000`
+   - **WebSocket server**: `127.0.0.1:3001`
+4. If you set an accessToken in the WebUI, note it down and put it into `config.json` next; leaving both empty also works, but they must match.
+
+The generated OneBot11 config lives at `config/onebot11_<QQ号>.json` in the NapCat directory.
+
+### ③ Fill in config.json
+
+```bash
+copy config.example.json config.json
+```
+
+Key fields:
+
+| Field | Description |
+|---|---|
+| `dsh.baseUrl` | DSH web service URL, default `http://127.0.0.1:3080` |
+| `dsh.provider` / `dsh.model` / `dsh.reasoningEffort` | model provider / model name / reasoning effort; if your DSH lacks the example model, pick one available in the DSH settings page |
+| `napcat.wsUrl` | NapCat WebSocket server URL, default `ws://127.0.0.1:3001` |
+| `napcat.httpUrl` | NapCat HTTP server URL, default `http://127.0.0.1:3000` (**do not use the WS port**) |
+| `napcat.accessToken` | must match the accessToken set in the WebUI; leave empty if unset |
+| `ownerQQ` | admin QQ number (agent-mode private wake-up, admin actions, etc.) |
+| `agentPreset` | DSH agent preset used in chat mode, default `qq-chat` |
+| `agentPresetAgent` | DSH agent preset used in agent mode, default `qq-agent` |
+| `workspaceTitle` | group name for QQ sessions in the DSH UI, default 「QQ 聊天」 |
+| `allow.private` / `allow.groups` | private / group whitelists (arrays of QQ numbers / group IDs), **recommended to fill in first** |
+| `deny.private` / `deny.groups` | blacklists, take priority over whitelists |
+| `allowAllWhenEmpty` | allow everyone when the whitelist is empty, default `false` (keep it) |
+| `ackMessage` | instant acknowledgement text on receiving a message; empty string disables |
+| `sendDelayMs` | interval between consecutive QQ sends, to avoid rate limiting |
+| `maxReplyChars` | max chars per agent reply, longer replies are split automatically |
+| `console.port` / `console.token` | web console port (default `3100`) and access token; if token is empty it is auto-generated and printed at startup |
+| `security.interceptNotify` | whether to notify when a reply is blocked by the sensitive-content filter |
+| `vision.enabled` / `vision.maxImageBytes` | image-understanding switch and size cap (needs a vision model) |
+| `queue.maxPerSession` | max queued messages per session while DSH is offline |
+| `social.*` | persona engine tuning (default persona, participation weights, heartbeat, memory, topics) — defaults are fine |
+
+### ④ Install presets and MCP into DSH
+
+```bash
+node scripts/setup-dsh.mjs
+```
+
+The script installs the `qq-chat` / `qq-agent` agent presets, two MCP servers (safe QQ tools + web search), and a settings-page plugin into the DSH environment, and writes a local `state/mode.json` fallback. It is idempotent; **re-run it after moving the project directory** (MCP/plugin paths are absolute). **Restart DSH** afterwards for it to take effect.
+
+### ⑤ Start
+
+```bash
+npm start
+# or double-click start.bat (watchdog mode: auto-restarts 5s after a crash)
+```
+
+Success looks like the log showing `配置已加载` → `DSH 已连接` → `NapCat 已连接` → `桥接已启动` in order.
+
+> Note: only one bridge instance may run (single-instance lock). If you see 「已有实例在运行」, double-click `restart.bat` or delete `state/bridge.lock`.
+
+### Verify & daily use
+
+- **Private-message** the bot or **@ it in a group** and see if it replies.
+- Open the web console at `http://127.0.0.1:3100` (token printed at startup): check status, switch **chat / agent** mode, tune the persona, manage whitelists, issue remote commands.
+- **agent** mode = simulated group friend: the AI watches messages on its own and decides whether to join based on its persona; private chats in agent mode only respond to `ownerQQ`.
+- Restarting DSH does not require restarting the bridge: the bridge probes DSH automatically, queues messages while DSH is offline, and replays them once it recovers.
 
 ### Offline self-tests (no QQ needed)
 
@@ -85,6 +142,17 @@ npm run test-agent-api   # agent internal API
 npm run test-mcp-web     # SSRF-protected search
 npm run test-onebot      # NapCat connection
 ```
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| HTTP 426 (Upgrade Required) | `napcat.httpUrl` points at the WebSocket port; check that ports match between config.json and `onebot11_<QQ号>.json` |
+| @ in group gets no reply | is the group ID in the `allow.groups` whitelist? in agent mode, it may simply be lurking (participation score below threshold) |
+| Private chat gets no reply | check `allow.private`; agent mode only responds to `ownerQQ` in private chats |
+| MCP or preset changes don't take effect | MCP servers are spawned by DSH — **restart DSH** after editing `src/mcp/*.js` or `dsh/agent-presets/` |
+| 「已有实例在运行」 (instance already running) | stale single-instance lock; double-click `restart.bat` or delete `state/bridge.lock` |
+| Model selection fails | set `dsh.model` to a model actually available in the DSH settings page |
 
 ## Feature matrix
 

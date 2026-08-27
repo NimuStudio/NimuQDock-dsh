@@ -54,25 +54,82 @@ NimuQDock-dsh 把 DeepSeek Harness 的 agent 请进 QQ 群和私聊：群里有�
 |---|---|
 | Node.js | ≥ 22.13 |
 | DeepSeek Harness | 已启动、可访问（默认本机 `http://127.0.0.1:3080`，可在 `config.json` 修改） |
-| NapCat | QQ 协议实现，[下载](https://github.com/NapNeko/NapCatQQ/releases/latest)；配好 OneBot11：HTTP `3000` + WS `3001` |
+| NapCat | QQ 协议实现，[下载](https://github.com/NapNeko/NapCatQQ/releases/latest) |
+| QQ 账号 | 一个用于机器人的 QQ 号（建议小号） |
 
-### 四步跑起来
+### ① 安装依赖
 
 ```bash
-# 1. 安装依赖
 npm install
-
-# 2. 生成配置并填写（ownerQQ / 白名单 / napcat.accessToken）
-copy config.example.json config.json
-
-# 3. 给 DSH 装 preset / MCP / 插件，装完重启 DSH
-node scripts/setup-dsh.mjs
-
-# 4. 启动（或双击 start.bat，守护模式自动拉起）
-npm start
 ```
 
-日志出现 `NapCat 已连接` 和 `桥接已启动` 即代表成功；到 QQ 私聊或群里 @ 机器人试试。
+### ② 让 NapCat 上线
+
+1. 下载 NapCat 并按官方教程把它接入你的 QQ 账号（扫码登录，会要求已安装 QQ 客户端）。
+2. 打开 NapCat WebUI：`http://127.0.0.1:6099/webui`（默认口令 `napcat`）。
+3. 进入 **网络配置**，新建两个连接，**消息格式都选 `array`**：
+   - **HTTP 服务端**：`127.0.0.1:3000`
+   - **WebSocket 服务端**：`127.0.0.1:3001`
+4. 如果在 WebUI 里设置了 accessToken，记下来，下一步填进 `config.json`；两边都留空也可以，但必须一致。
+
+生成的 OneBot11 配置在 NapCat 目录的 `config/onebot11_<QQ号>.json`。
+
+### ③ 填写 config.json
+
+```bash
+copy config.example.json config.json
+```
+
+主要字段：
+
+| 字段 | 说明 |
+|---|---|
+| `dsh.baseUrl` | DSH Web 服务地址，默认 `http://127.0.0.1:3080` |
+| `dsh.provider` / `dsh.model` / `dsh.reasoningEffort` | 模型供应商 / 模型名 / 推理强度；若你的 DSH 没有示例中的模型，改成 DSH 设置页里可用的即可 |
+| `napcat.wsUrl` | NapCat WebSocket 服务端地址，默认 `ws://127.0.0.1:3001` |
+| `napcat.httpUrl` | NapCat HTTP 服务端地址，默认 `http://127.0.0.1:3000`（**别填成 WS 端口**） |
+| `napcat.accessToken` | 与 WebUI 里设置的 accessToken 一致，未配置留空 |
+| `ownerQQ` | 管理员 QQ 号（agent 模式的私聊唤醒、管理操作等） |
+| `agentPreset` | chat 模式使用的 DSH agent preset，默认 `qq-chat` |
+| `agentPresetAgent` | agent 模式使用的 DSH agent preset，默认 `qq-agent` |
+| `workspaceTitle` | QQ 会话在 DSH 界面里的归组名称，默认「QQ 聊天」 |
+| `allow.private` / `allow.groups` | 私聊 / 群聊白名单（QQ 号 / 群号数组），**建议先填上** |
+| `deny.private` / `deny.groups` | 黑名单，优先级高于白名单 |
+| `allowAllWhenEmpty` | 白名单为空时是否放行全部，默认 `false`（保持默认） |
+| `ackMessage` | 收到消息后的即时回复文本，空字符串关闭 |
+| `sendDelayMs` | QQ 连续发送间隔，防止触发频率限制 |
+| `maxReplyChars` | agent 单条回复最大字符数，超出自动分段 |
+| `console.port` / `console.token` | Web 控制台端口（默认 `3100`）与访问令牌；token 留空则启动时自动生成并打印 |
+| `security.interceptNotify` | 回复被敏感拦截时是否提示 |
+| `vision.enabled` / `vision.maxImageBytes` | 图片理解开关与大小上限（需 vision 模型） |
+| `queue.maxPerSession` | DSH 掉线期间每会话缓存的消息条数上限 |
+| `social.*` | 人格引擎参数（默认人格、参与评分权重、心跳、记忆、话题窗口），一般保持默认 |
+
+### ④ 给 DSH 装 preset 和 MCP
+
+```bash
+node scripts/setup-dsh.mjs
+```
+
+脚本会把 `qq-chat` / `qq-agent` 两套 agent preset、两个 MCP server（QQ 安全工具 + 联网搜索）和一个设置页插件装进 DSH 环境，并写入本地 `state/mode.json` 兜底。可重复运行；**移动过项目目录后必须重跑**（MCP/插件路径是绝对路径）。装完**重启 DSH** 生效。
+
+### ⑤ 启动
+
+```bash
+npm start
+# 或双击 start.bat（守护模式：崩溃后 5 秒自动拉起）
+```
+
+日志依次出现 `配置已加载` → `DSH 已连接` → `NapCat 已连接` → `桥接已启动` 即成功。
+
+> 提示：桥接只能跑一个实例（单实例锁）。出现「已有实例在运行」时双击 `restart.bat` 一键重启，或手动删除 `state/bridge.lock`。
+
+### 验证与日常使用
+
+- 给机器人**私聊**或**群里 @ 它**，看它是否回复。
+- 打开 Web 控制台 `http://127.0.0.1:3100`（令牌在启动日志里）：查看状态、切换 **chat / agent** 模式、调节人格、管理白名单、发远程指令。
+- agent 模式 = 仿真群友：AI 主动看消息、按人格决定参不参与；agent 模式私聊只响应 `ownerQQ`。
+- 重启 DSH 不需要动桥接：桥接会自动探活，DSH 掉线期间的消息会入队缓存，恢复后自动补投。
 
 ### 离线自测（不需要 QQ）
 
@@ -85,6 +142,17 @@ npm run test-agent-api   # agent 内部 API
 npm run test-mcp-web     # SSRF 防护搜索
 npm run test-onebot      # NapCat 连接
 ```
+
+## 常见问题
+
+| 现象 | 处理 |
+|---|---|
+| HTTP 426（Upgrade Required） | `napcat.httpUrl` 填成了 WebSocket 端口；检查 config.json 与 `onebot11_<QQ号>.json` 的端口是否一致 |
+| 群里 @ 没反应 | 群号是否在白名单 `allow.groups`；agent 模式下检查它是不是在潜水（参与评分没过阈值） |
+| 私聊没反应 | 私聊白名单 `allow.private`；agent 模式只响应 `ownerQQ` |
+| 改了 MCP 或 preset 不生效 | MCP 由 DSH 拉起，改 `src/mcp/*.js` 或 `dsh/agent-presets/` 后要**重启 DSH** |
+| 提示「已有实例在运行」 | 单实例锁残留，双击 `restart.bat` 或删 `state/bridge.lock` |
+| 模型选择失败 | `dsh.model` 改成 DSH 设置页里实际可用的模型 |
 
 ## 能力一览
 
