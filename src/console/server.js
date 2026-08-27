@@ -435,6 +435,53 @@ export function startConsoleServer({ port, token, deps }) {
         return sendJson(res, {
           social: c.social, sendDelayMs: c.sendDelayMs, maxReplyChars: c.maxReplyChars,
           ackMessage: c.ackMessage, allowAllWhenEmpty: c.allowAllWhenEmpty,
+          dsh: { provider: c.dsh?.provider ?? '', model: c.dsh?.model ?? '', reasoningEffort: c.dsh?.reasoningEffort ?? '' },
+        });
+      }
+      // 模型与思考模式目录：透传 DSH 的 llm.models（拍平分组），失败不阻塞
+      if (req.method === 'GET' && pathname === '/api/models') {
+        try {
+          const r = await api.llm.models({});
+          const v = r?.result?.ok ? r.result.value : null;
+          if (!v) return sendJson(res, { models: [], error: r?.result?.error?.message ?? '模型目录不可用' });
+          const models = [];
+          for (const g of v.groups ?? []) {
+            for (const m of g.models ?? []) {
+              models.push({
+                id: m.id,
+                name: m.name || m.id,
+                description: m.description ?? '',
+                provider: g.id,
+                providerName: g.name,
+                efforts: (m.reasoning?.efforts ?? []).map((e) => ({ id: e.id, name: e.name })),
+                defaultEffort: m.reasoning?.defaultEffort ?? '',
+              });
+            }
+          }
+          return sendJson(res, { models, failures: v.failures ?? [] });
+        } catch (error) {
+          return sendJson(res, { models: [], error: `模型目录不可用：${error?.message ?? error}` });
+        }
+      }
+      // 把当前 cfg.dsh 的模型/思考模式应用到所有现有会话（热生效，不重启）
+      if (req.method === 'POST' && pathname === '/api/model/apply') {
+        const { provider, model, reasoningEffort } = cfg.dsh ?? {};
+        if (!provider || !model) return sendJson(res, { error: '未配置 dsh.provider/dsh.model' }, 400);
+        const keys = Object.keys(sessions.state.sessions ?? {});
+        let applied = 0;
+        const failed = [];
+        for (const key of keys) {
+          const sessionId = sessions.state.sessions[key];
+          try {
+            await sessions.applyModel(sessionId);
+            applied += 1;
+          } catch (error) {
+            failed.push({ key, error: error?.message ?? String(error) });
+          }
+        }
+        return sendJson(res, {
+          ok: true, applied, total: keys.length,
+          failed, model, reasoningEffort,
         });
       }
       if (req.method === 'POST' && pathname === '/api/config') {
@@ -445,6 +492,16 @@ export function startConsoleServer({ port, token, deps }) {
         if ('sendDelayMs' in body) merged.sendDelayMs = Math.max(0, Math.min(60000, Number(body.sendDelayMs) || 0));
         if ('maxReplyChars' in body) merged.maxReplyChars = Math.max(200, Math.min(4000, Number(body.maxReplyChars) || 1000));
         if ('ackMessage' in body) merged.ackMessage = String(body.ackMessage ?? '').slice(0, 200);
+        if (body.dsh) {
+          const d = { ...(cfg.dsh ?? {}) };
+          if (body.dsh.provider !== undefined) d.provider = String(body.dsh.provider ?? '').trim();
+          if (body.dsh.model !== undefined) d.model = String(body.dsh.model ?? '').trim();
+          if (body.dsh.reasoningEffort !== undefined) {
+            const effort = String(body.dsh.reasoningEffort ?? '').trim();
+            d.reasoningEffort = ['off', 'low', 'high', 'max'].includes(effort) ? effort : '';
+          }
+          merged.dsh = d;
+        }
         if (body.social) {
           merged.social = { ...(cfg.social ?? {}) };
           for (const sk of ['engagement', 'heartbeat', 'memory', 'topics', 'unread', 'wakeKeywords', 'defaultPersona', 'noActionLimit']) {
