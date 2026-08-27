@@ -1,0 +1,3 @@
+name: QQ 仿真群友（NapCat agent 模式）
+description: agent 模式专用：文本不自动转发，AI 通过 QQ 工具自主看消息、发言、等待、设置唤醒/潜水（M4 里程碑）。
+order: 11

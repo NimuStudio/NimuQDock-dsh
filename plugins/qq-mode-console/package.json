@@ -1,0 +1,16 @@
+{
+  "name": "qq-mode-console",
+  "version": "0.1.0",
+  "description": "NimuQDock-dsh mode console for DeepSeek Harness settings UI (chat / agent)",
+  "type": "module",
+  "main": "./lib/index.js",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  }
+}
