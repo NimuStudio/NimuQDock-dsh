@@ -37,6 +37,47 @@ The journey of a single message:
 
 > In **chat** mode, steps ①–④ run fully automatically. In **agent** mode, the AI reads messages by itself, decides whether to reply, and picks which topics to jump into.
 
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph QQ_SIDE["QQ side"]
+        G["QQ group"]
+        P["QQ private chat"]
+    end
+    NC["NapCat (OneBot v11)"]
+    subgraph BRIDGE["NimuQDock-dsh bridge"]
+        R["Router / Session manager"]
+        PE["Persona engine<br/>mood·energy·memory·participation"]
+        CON["Web console :3100"]
+    end
+    DSH["DeepSeek Harness"]
+
+    G -->|group messages| NC
+    P -->|private messages| NC
+    NC <-->|WS 3001 events / HTTP 3000 actions| R
+    PE -.persona state & score.-> R
+    CON -.manage / remote commands.-> R
+    R <-->|prompt / event stream| DSH
+```
+
+- **QQ side**: NapCat speaks the QQ protocol and reports group/private messages over OneBot v11
+- **Bridge process**: routes each message into the matching DSH session; the agent's replies (including questions and tool approvals) go back to QQ
+- **Persona engine** (agent mode): computes participation from mood/energy/memory to decide whether to join in
+- **Web console**: local management UI — switch modes, tune the persona, manage whitelists, issue remote commands
+
+## Screenshots
+
+| Web console overview | Persona state (agent mode) |
+|---|---|
+| ![Overview](docs/screenshots/console-overview.png) | ![Persona state](docs/screenshots/console-persona.png) |
+
+| Remote command panel | Persona card management |
+|---|---|
+| ![Remote commands](docs/screenshots/console-remote.png) | ![Persona cards](docs/screenshots/console-roles.png) |
+
+> QQ numbers / group IDs in the screenshots are masked.
+
 ## Features
 
 - 🧠 **Persona engine**: mood / energy / relationships evolve with every interaction — getting roasted lowers mood, chatting more deepens bonds, low energy makes it lurk
