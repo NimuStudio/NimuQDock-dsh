@@ -14,15 +14,26 @@
 
 ---
 
-## 是什么
+## 这是什么
 
-NimuQDock-dsh 是一个 **QQ ↔ DeepSeek Harness 对接坞**：把 DSH 的 agent「停靠」进 QQ 群/私聊，让它以**带人格引擎的仿真群友**身份存在——不是客服机器人，而是一个有心情、有精力、有记忆、会像真人一样潜水与参与的群友。
+NimuQDock-dsh 把 DeepSeek Harness 的 agent 请进 QQ 群和私聊：群里有人说话，它就能听见；它想开口时，回复会出现在群里。在此基础上，**人格引擎**让它不是有问必答的客服，而是一个有心情、有精力、有记忆、会潜水也会冒泡的**仿真群友**。
+
+一条消息的旅程：
 
 ```
-QQ 消息 ──► NapCat (OneBot v11) ──► 桥接进程 ──► DeepSeek Harness (DSH Web API)
-                                        ▲                    │
-                                        └── 回复 / 提问 / 审批 ──┘
+① 群友在 QQ 发言（NapCat 以 OneBot v11 协议上报）
+        │
+        ▼
+② 桥接进程把消息投入对应的 DSH 会话
+        │
+        ▼
+③ agent 思考完毕：产出回复 / 提问 / 工具审批
+        │
+        ▼
+④ 结果发回 QQ（chat 模式自动回；agent 模式由 AI 用工具自主收发）
 ```
+
+> chat 模式：①②③④ 全自动；agent 模式：AI 自己看消息、自己决定回不回、自己挑话题接。
 
 ## 特性
 
@@ -33,38 +44,38 @@ QQ 消息 ──► NapCat (OneBot v11) ──► 桥接进程 ──► DeepSee
 - 🎛️ **Web 控制台**（玻璃拟态 UI）：人格状态可视化调节、白名单管理、角色卡管理、远程指令面板（完整工具会话）、记忆/日志/会话管理
 - 🚀 **远程指令面板**：登录控制台即可让 DSH 的完整工具（pwsh/文件等）执行任务，结果回显——不经 QQ 传输层
 
-## 快速开始
+## 开始使用
 
-### 前置
+### 需要准备
 
-- Node.js ≥ 22.13
-- 运行中的 DeepSeek Harness Web（默认 `http://127.0.0.1:3080`）
-- NapCat（QQ 协议实现，[下载](https://github.com/NapNeko/NapCatQQ/releases/latest)）
+| 依赖 | 说明 |
+|---|---|
+| Node.js | ≥ 22.13 |
+| DeepSeek Harness | 已启动、可访问（默认本机 `http://127.0.0.1:3080`，可在 `config.json` 修改） |
+| NapCat | QQ 协议实现，[下载](https://github.com/NapNeko/NapCatQQ/releases/latest)；配好 OneBot11：HTTP `3000` + WS `3001` |
 
-### 步骤
+### 四步跑起来
 
 ```bash
 # 1. 安装依赖
 npm install
 
-# 2. 配置（NapCat 配好 OneBot11 的 HTTP 3000 + WS 3001 后）
+# 2. 生成配置并填写（ownerQQ / 白名单 / napcat.accessToken）
 copy config.example.json config.json
-# 编辑 config.json：ownerQQ / allow 白名单 / napcat.accessToken
 
-# 3. 安装 DSH 端 preset / MCP / 插件，然后重启 DSH
+# 3. 给 DSH 装 preset / MCP / 插件，装完重启 DSH
 node scripts/setup-dsh.mjs
 
-# 4. 启动
+# 4. 启动（或双击 start.bat，守护模式自动拉起）
 npm start
-# 或双击 start.bat（守护模式）
 ```
 
-看到 `NapCat 已连接` + `桥接已启动` 即成功；QQ 私聊/群里 @ 机器人即可对话。
+日志出现 `NapCat 已连接` 和 `桥接已启动` 即代表成功；到 QQ 私聊或群里 @ 机器人试试。
 
-### 自测（不需要 QQ 在线）
+### 离线自测（不需要 QQ）
 
 ```bash
-npm run self-test        # DSH 链路
+npm run self-test        # 桥接与 DSH 的连接链路
 npm run test-loop        # chat 闭环（真实 DSH + 假 QQ）
 npm run test-loop -- --mode agent   # agent 闭环（唤醒/潜水）
 npm run test-persona     # 人格引擎单测
@@ -73,7 +84,7 @@ npm run test-mcp-web     # SSRF 防护搜索
 npm run test-onebot      # NapCat 连接
 ```
 
-## 功能一览
+## 能力一览
 
 | 功能 | 说明 |
 |---|---|
@@ -86,21 +97,19 @@ npm run test-onebot      # NapCat 连接
 | 远程指令 | 完整工具会话执行，结果回显 |
 | 安全 MCP | 白名单发送 + SSRF 防护搜索 |
 
-## 目录结构
+## 项目结构
 
-```
-src/
-├── transport/     NapCat OneBot11 客户端 + DSH 客户端（WebSocket 下行流）
-├── core/          会话管理 / 消息路由 / 发送链 / 事件泵 / turn 收集
-├── persona/       人格引擎：definition / state / memory / engagement / inject / tokens / lexicon
-├── policy/        白名单准入
-├── mcp/           安全 QQ 工具 MCP + SSRF 防护搜索 MCP
-└── console/       本地控制台 + /agent/v1 内部 API
-dsh/               DSH 端 agent preset（qq-chat / qq-agent）
-roles/             人格卡（YAML，prompt 内嵌人设）
-scripts/           安装 / 测试脚本
-docs/              架构与实现规格（DESIGN.md / PERSONA_ENGINE.md）
-```
+| 目录 | 作用 |
+|---|---|
+| `src/transport/` | NapCat OneBot11 客户端、DSH WebSocket 下行客户端 |
+| `src/core/` | 会话管理 / 消息路由 / 发送链 / 事件泵 / turn 收集 |
+| `src/persona/` | 人格引擎：状态 / 记忆 / 参与度 / 词库 / 令牌 |
+| `src/mcp/` | 安全 QQ 工具 MCP + SSRF 防护搜索 MCP |
+| `src/console/` | Web 控制台 + `/agent/v1` 内部 API |
+| `dsh/` | DSH 端 agent preset（qq-chat / qq-agent） |
+| `roles/` | 人格卡（YAML，prompt 内嵌人设） |
+| `scripts/` | 安装 / 测试脚本 |
+| `docs/` | 架构与实现规格（DESIGN.md / PERSONA_ENGINE.md） |
 
 ## 讨论
 
@@ -125,9 +134,11 @@ docs/              架构与实现规格（DESIGN.md / PERSONA_ENGINE.md）
 
 喜欢这个项目？☕ [去爱发电请我喝杯咖啡](https://ifdian.net/a/NimuStudio)
 
-## 合规提醒
+## 使用提醒
 
-NapCat 是独立第三方项目，与腾讯/QQ 无隶属关系，仅供学习与技术研究；使用前请阅读其使用条款与《QQ 用户协议》。把 agent 接入 QQ 等于把账号发言权交给模型：**先填白名单**。
+QQ 协议层由第三方开源项目 NapCat 提供，与腾讯公司及其产品无任何隶属关系；本项目仅用于学习与技术研究，请在使用前自行了解并遵守相关条款与《QQ 用户协议》。
+
+另外请注意：把 agent 接进 QQ，等于把账号的发言权交给了模型。对外使用前请务必先配置好白名单（`allow.private` / `allow.groups`），谨慎评估风险。
 
 ## 许可证
 
