@@ -37,6 +37,47 @@ NimuQDock-dsh 把 DeepSeek Harness 的 agent 请进 QQ 群和私聊：群里有�
 
 > chat 模式：①②③④ 全自动；agent 模式：AI 自己看消息、自己决定回不回、自己挑话题接。
 
+## 架构
+
+```mermaid
+flowchart TB
+    subgraph QQ_SIDE["QQ 侧"]
+        G["QQ 群"]
+        P["QQ 私聊"]
+    end
+    NC["NapCat（OneBot v11）"]
+    subgraph BRIDGE["NimuQDock-dsh 桥接"]
+        R["消息路由 / 会话管理"]
+        PE["人格引擎<br/>心情·精力·记忆·参与评分"]
+        CON["Web 控制台 :3100"]
+    end
+    DSH["DeepSeek Harness"]
+
+    G -->|群消息| NC
+    P -->|私聊消息| NC
+    NC <-->|WS 3001 事件 / HTTP 3000 动作| R
+    PE -.人格状态与评分.-> R
+    CON -.管理 / 远程指令.-> R
+    R <-->|prompt / 事件流| DSH
+```
+
+- **QQ 侧**：NapCat 负责接入 QQ 协议，把群/私聊消息以 OneBot v11 协议上报
+- **桥接进程**：收到消息后路由到对应 DSH 会话；agent 的回复（含提问、工具审批）原路发回 QQ
+- **人格引擎**（agent 模式）：用心情/精力/记忆计算参与意愿，决定"这条要不要接"
+- **Web 控制台**：本地管理界面，可切换模式、调人格、管白名单、发远程指令
+
+## 截图
+
+| Web 控制台概览 | 人格状态（agent 模式） |
+|---|---|
+| ![概览](docs/screenshots/console-overview.png) | ![人格状态](docs/screenshots/console-persona.png) |
+
+| 远程指令面板 | 人格卡管理 |
+|---|---|
+| ![远程指令](docs/screenshots/console-remote.png) | ![人格卡](docs/screenshots/console-roles.png) |
+
+> 截图中的 QQ 号/群号已打码。
+
 ## 特性
 
 - 🧠 **人格引擎**：心情 / 精力 / 与群友的关系随互动演化，被怼心情下降、聊得多关系变熟、精力低了倾向潜水
