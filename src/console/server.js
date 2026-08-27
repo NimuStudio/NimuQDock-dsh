@@ -15,6 +15,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { readActivityTail } from '../log.js';
 import { writeRoleState, readRoleState } from '../state.js';
@@ -47,22 +48,39 @@ function persistConfig(cfgObj) {
 
 function sendJson(res, obj, status = 200) {
   const body = JSON.stringify(obj);
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+    'referrer-policy': 'no-referrer',
+  });
   res.end(body);
+}
+
+/** 恒定时间比较两个字符串（sha256 摘要后 timingSafeEqual；长度不同先失败）。 */
+function safeTokenEqual(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a ?? '')).digest();
+  const hb = crypto.createHash('sha256').update(String(b ?? '')).digest();
+  if (ha.length !== hb.length) return false;
+  return crypto.timingSafeEqual(ha, hb);
 }
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let raw = '';
+    const chunks = [];
+    let bytes = 0;
     req.on('data', (chunk) => {
-      raw += chunk;
-      if (raw.length > 1024 * 1024) {
+      bytes += chunk.length;
+      if (bytes > 1024 * 1024) {
         reject(new Error('请求体过大'));
         req.destroy();
+        return;
       }
+      chunks.push(chunk);
     });
     req.on('end', () => {
       try {
+        const raw = Buffer.concat(chunks).toString('utf8');
         resolve(raw ? JSON.parse(raw) : {});
       } catch {
         reject(new Error('非法 JSON'));
@@ -110,9 +128,15 @@ async function imageBufferFromGetImage(res) {
   return null;
 }
 
+/** 解析会话键为 {kind, id}；剥离多人格后缀 #personaId。 */
 function parseKey(key) {
-  const m = /^(group|private):(.+)$/.exec(String(key ?? ''));
+  const m = /^(group|private):([^#\s]+)(?:#.+)?$/.exec(String(key ?? '').trim());
   return m ? { kind: m[1], id: m[2] } : null;
+}
+
+/** 会话键形式校验：group:/private: 前缀 + 纯数字 id（管理 API 防御性校验）。 */
+function validConvKey(key) {
+  return /^(group|private):[0-9]{5,12}(?:#.+)?$/.test(String(key ?? ''));
 }
 
 /** qq_get_prompt 的提示文本（人格摘要 + 状态 + 推荐值 + 工具清单）。 */
@@ -148,11 +172,13 @@ function buildAgentPrompt(router, key, stateStore) {
  */
 export function startConsoleServer({ port, token, deps }) {
   const { cfg, router, sessions, bot, api, getStatus } = deps;
+  const waitingKeys = new Set(); // /agent/v1/wait 在途 key（每会话互斥）
 
   // ── 远程指令面板：独立完整工具会话（不映射 QQ），轮询 history 收集结果 ──
   let remoteSessionId = null;
   const remoteExecLog = []; // 最近 20 条执行记录
   const MAX_REMOTE_EXEC_MS = 600000;
+  let remoteExecRunning = false; // 并发互斥：同一时间只跑一条远程指令（轮询共用会话，并发会串输出）
 
   async function ensureRemoteSession() {
     if (remoteSessionId) return remoteSessionId;
@@ -167,60 +193,66 @@ export function startConsoleServer({ port, token, deps }) {
   }
 
   async function remoteExec(command, timeoutMs = 300000) {
-    const sessionId = await ensureRemoteSession();
-    const cap = Math.min(MAX_REMOTE_EXEC_MS, Math.max(5000, Number(timeoutMs) || 300000));
-    // 记录执行前状态：最大 turn 号 + assistant/message 数
-    const h0 = await api.sessions.history({ sessionId, maxMessages: 200 });
-    const ev0 = h0?.result?.ok ? h0.result.value.events : [];
-    let maxTurn0 = 0;
-    let asst0 = 0;
-    for (const { event } of ev0) {
-      if (event.type === 'turn/end') maxTurn0 = Math.max(maxTurn0, Number(event.data?.turn) || 0);
-      if (event.type === 'assistant/message') asst0 += 1;
-    }
-    const start = Date.now();
-    await api.sessions.prompt({ sessionId, mode: 'queue', content: [{ type: 'text', text: command }] });
-    const tools = new Set();
-    const texts = [];
-    let timedOut = false;
-    let done = false;
-    while (!done && Date.now() - start < cap) {
-      await sleep(1200);
-      const h = await api.sessions.history({ sessionId, maxMessages: 200 });
-      const ev = h?.result?.ok ? h.result.value.events : [];
-      let asstSeen = 0;
-      let turnEnded = false;
-      let lastTurnEnd = 0;
-      for (const { event } of ev) {
-        if (event.type === 'tool/call') {
-          const name = String(event.data?.name ?? '');
-          if (name) tools.add(name);
-        } else if (event.type === 'assistant/message') {
-          asstSeen += 1;
-          if (asstSeen > asst0) {
-            const t = blocksToText(event.data?.message?.content ?? []);
-            if (t) texts.push(t);
-          }
-        } else if (event.type === 'turn/end') {
-          const turn = Number(event.data?.turn) || 0;
-          if (turn > maxTurn0) { turnEnded = true; lastTurnEnd = turn; }
-        }
+    if (remoteExecRunning) throw new Error('已有远程指令在执行中，请稍后再试');
+    remoteExecRunning = true;
+    try {
+      const sessionId = await ensureRemoteSession();
+      const cap = Math.min(MAX_REMOTE_EXEC_MS, Math.max(5000, Number(timeoutMs) || 300000));
+      // 记录执行前状态：最大 turn 号 + assistant/message 数
+      const h0 = await api.sessions.history({ sessionId, maxMessages: 200 });
+      const ev0 = h0?.result?.ok ? h0.result.value.events : [];
+      let maxTurn0 = 0;
+      let asst0 = 0;
+      for (const { event } of ev0) {
+        if (event.type === 'turn/end') maxTurn0 = Math.max(maxTurn0, Number(event.data?.turn) || 0);
+        if (event.type === 'assistant/message') asst0 += 1;
       }
-      if (turnEnded) done = true;
-      if (lastTurnEnd > 0) maxTurn0 = Math.max(maxTurn0, lastTurnEnd);
+      const start = Date.now();
+      await api.sessions.prompt({ sessionId, mode: 'queue', content: [{ type: 'text', text: command }] });
+      const tools = new Set();
+      const texts = [];
+      let timedOut = false;
+      let done = false;
+      while (!done && Date.now() - start < cap) {
+        await sleep(1200);
+        const h = await api.sessions.history({ sessionId, maxMessages: 200 });
+        const ev = h?.result?.ok ? h.result.value.events : [];
+        let asstSeen = 0;
+        let turnEnded = false;
+        let lastTurnEnd = 0;
+        for (const { event } of ev) {
+          if (event.type === 'tool/call') {
+            const name = String(event.data?.name ?? '');
+            if (name) tools.add(name);
+          } else if (event.type === 'assistant/message') {
+            asstSeen += 1;
+            if (asstSeen > asst0) {
+              const t = blocksToText(event.data?.message?.content ?? []);
+              if (t) texts.push(t);
+            }
+          } else if (event.type === 'turn/end') {
+            const turn = Number(event.data?.turn) || 0;
+            if (turn > maxTurn0) { turnEnded = true; lastTurnEnd = turn; }
+          }
+        }
+        if (turnEnded) done = true;
+        if (lastTurnEnd > 0) maxTurn0 = Math.max(maxTurn0, lastTurnEnd);
+      }
+      if (!done) timedOut = true;
+      const record = {
+        time: new Date().toISOString(),
+        command: String(command).slice(0, 200),
+        output: texts.join('\n').slice(-3000),
+        tools: [...tools],
+        durationMs: Date.now() - start,
+        timedOut,
+      };
+      remoteExecLog.unshift(record);
+      while (remoteExecLog.length > 20) remoteExecLog.pop();
+      return record;
+    } finally {
+      remoteExecRunning = false;
     }
-    if (!done) timedOut = true;
-    const record = {
-      time: new Date().toISOString(),
-      command: String(command).slice(0, 200),
-      output: texts.join('\n').slice(-3000),
-      tools: [...tools],
-      durationMs: Date.now() - start,
-      timedOut,
-    };
-    remoteExecLog.unshift(record);
-    while (remoteExecLog.length > 20) remoteExecLog.pop();
-    return record;
   }
 
   /** /agent/v1 的通用前置：读 body + key/token 校验，返回 { key, body } 或 null（已响应）。 */
@@ -249,7 +281,7 @@ export function startConsoleServer({ port, token, deps }) {
     // 静态页面/资源免鉴权（页面内的 API 调用带 token）；/agent/v1 走 body 内令牌校验
     const isStatic = pathname === '/' || pathname === '/index.html' || pathname === '/console.html'
       || /\.(css|js|png|jpg|svg|woff2?)$/.test(pathname);
-    if (!isStatic && !pathname.startsWith('/agent/v1/') && pathname !== '/health' && supplied !== token) {
+    if (!isStatic && !pathname.startsWith('/agent/v1/') && pathname !== '/health' && !safeTokenEqual(supplied, token)) {
       return sendJson(res, { error: 'unauthorized' }, 401);
     }
 
@@ -261,8 +293,16 @@ export function startConsoleServer({ port, token, deps }) {
         const file = path.join(ROOT, 'public', safeName);
         if (!fs.existsSync(file)) return sendJson(res, { error: '404: ' + safeName }, 404);
         const ext = path.extname(file).toLowerCase();
-        const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml' }[ext] || 'application/octet-stream';
-        res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-cache' }); // 页面迭代频繁，禁用缓存防旧页面
+        const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml' }[ext] || 'application/octet-stream';
+        res.writeHead(200, {
+          'content-type': mime,
+          'cache-control': 'no-cache', // 页面迭代频繁，禁用缓存防旧页面
+          'x-content-type-options': 'nosniff',
+          'x-frame-options': 'DENY',
+          'referrer-policy': 'no-referrer',
+          // CSP：脚本仅允许同源 + 内联（页面为单文件无外链脚本；内联 onclick 已在渲染层全量转义，CSP 作为第二道防线限制外联/外域加载）
+          'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        });
         res.end(fs.readFileSync(file));
         return;
       }
@@ -270,7 +310,7 @@ export function startConsoleServer({ port, token, deps }) {
         return sendJson(res, getStatus());
       }
       if (req.method === 'GET' && pathname === '/api/logs') {
-        const n = Math.min(500, Number(url.searchParams.get('n')) || 100);
+        const n = Math.max(1, Math.min(500, Number(url.searchParams.get('n')) || 100));
         return sendJson(res, { logs: readActivityTail(n) });
       }
       if (req.method === 'GET' && pathname === '/api/sessions') {
@@ -303,18 +343,24 @@ export function startConsoleServer({ port, token, deps }) {
         const content = String(body?.content ?? '');
         if (!name) return sendJson(res, { error: 'name 必填或非法' }, 400);
         if (!content.trim()) return sendJson(res, { error: 'content 不能为空' }, 400);
+        if (content.length > 256 * 1024) return sendJson(res, { error: 'content 过大（上限 256KB）' }, 400);
         const file = path.join(ROOT, 'roles', `${name}.${type}`);
+        // YAML 先校验后写盘（防炸弹与半成品文件落盘）；md 无格式要求直接写
+        if (type === 'yaml') {
+          try {
+            const { parse } = await import('yaml');
+            const doc = parse(content, { maxAliasCount: 100 });
+            if (!doc || typeof doc !== 'object') throw new Error('YAML 根节点必须是对象');
+            if (!doc.prompt || typeof doc.prompt !== 'string' || !doc.prompt.trim()) {
+              throw new Error('缺少非空 prompt 字段（人设文本）');
+            }
+          } catch (error) {
+            return sendJson(res, { error: `YAML 无效：${error?.message ?? error}` }, 400);
+          }
+        }
         fs.writeFileSync(file, content, 'utf8');
         if (type === 'yaml') {
           try { clearPersonaCache(); } catch {}
-          // 校验 YAML 可解析；失败则回滚
-          try {
-            const { parse } = await import('yaml');
-            parse(content);
-          } catch (error) {
-            fs.unlinkSync(file);
-            return sendJson(res, { error: `YAML 无效，已回滚：${error?.message ?? error}` }, 400);
-          }
         }
         return sendJson(res, { ok: true, name, type });
       }
@@ -350,49 +396,39 @@ export function startConsoleServer({ port, token, deps }) {
       }
       if (req.method === 'GET' && pathname === '/api/groups') {
         const groups = await bot.getGroupList();
-        const cfgNow = getConfigSafe();
+        // 白名单判断以内存 cfg 为唯一事实源（与 /api/send、/agent/v1/send 一致；
+        // 手工改 config.json 需重启桥接生效）
         const list = (groups ?? []).map((g) => ({
           group_id: String(g.group_id),
           group_name: g.group_name ?? '',
           member_count: g.member_count ?? 0,
-          allowed: isAllowed('group', g.group_id, cfgNow),
+          allowed: isAllowed('group', g.group_id, cfg),
         }));
         return sendJson(res, { groups: list });
       }
       if (req.method === 'GET' && pathname === '/api/allowlist') {
-        const cfgNow = getConfigSafe();
         return sendJson(res, {
-          allow: cfgNow.allow, deny: cfgNow.deny,
-          allowAllWhenEmpty: cfgNow.allowAllWhenEmpty,
-          ownerQQ: cfgNow.ownerQQ,
+          allow: cfg.allow, deny: cfg.deny,
+          allowAllWhenEmpty: cfg.allowAllWhenEmpty,
+          ownerQQ: cfg.ownerQQ,
         });
       }
       if (req.method === 'POST' && pathname === '/api/allowlist') {
         // {scope:'allow'|'deny', channel:'group'|'private', id, action:'add'|'remove'}
         const body = await readBody(req);
-        const cfgNow = getConfigSafe();
         const channel = body.channel === 'private' ? 'private' : 'groups';
         const id = String(body.id ?? '').trim();
         const action = body.action === 'remove' ? 'remove' : 'add';
         if (!id) return sendJson(res, { error: 'id 必填' }, 400);
-        if (body.scope === 'deny') {
-          cfgNow.deny = cfgNow.deny ?? {};
-          const dlist = Array.isArray(cfgNow.deny[channel]) ? cfgNow.deny[channel] : [];
-          const idx = dlist.indexOf(id);
-          if (action === 'remove') { if (idx !== -1) dlist.splice(idx, 1); }
-          else if (idx === -1) dlist.push(id);
-          cfgNow.deny[channel] = dlist;
-        } else {
-          cfgNow.allow = cfgNow.allow ?? {};
-          const list = Array.isArray(cfgNow.allow[channel]) ? cfgNow.allow[channel] : [];
-          const idx = list.indexOf(id);
-          if (action === 'remove') { if (idx !== -1) list.splice(idx, 1); }
-          else if (idx === -1) list.push(id);
-          cfgNow.allow[channel] = list;
-        }
-        persistConfig(cfgNow);
-        Object.assign(cfg, { allow: cfgNow.allow, deny: cfgNow.deny }); // 热更新内存（router.cfg === cfg）
-        return sendJson(res, { ok: true, allow: cfgNow.allow, deny: cfgNow.deny });
+        if (!/^[0-9]{5,12}$/.test(id)) return sendJson(res, { error: 'id 必须是 5~12 位数字（QQ 号/群号）' }, 400);
+        // 以内存 cfg 为基线（与发送侧一致），修改后同时写盘 + 热更新内存
+        const target = body.scope === 'deny' ? cfg.deny : cfg.allow;
+        const list = Array.isArray(target[channel]) ? target[channel] : (target[channel] = []);
+        const idx = list.indexOf(id);
+        if (action === 'remove') { if (idx !== -1) list.splice(idx, 1); }
+        else if (idx === -1) list.push(id);
+        persistConfig(cfg);
+        return sendJson(res, { ok: true, allow: cfg.allow, deny: cfg.deny });
       }
       if (req.method === 'GET' && pathname === '/api/config') {
         const c = getConfigSafe();
@@ -402,18 +438,29 @@ export function startConsoleServer({ port, token, deps }) {
         });
       }
       if (req.method === 'POST' && pathname === '/api/config') {
-        // 深合并白名单字段到 config.json + 内存（热生效）
+        // 合并白名单字段到内存 cfg + config.json（热生效）
+        // 注意：allowAllWhenEmpty 是 fail-open 安全开关，不开放 API 写入（改它请直接编辑 config.json 重启）
         const body = await readBody(req);
-        const cfgNow = getConfigSafe();
-        const merged = { ...cfgNow };
-        for (const k of ['sendDelayMs', 'maxReplyChars', 'ackMessage', 'allowAllWhenEmpty']) {
-          if (k in body) merged[k] = body[k];
-        }
+        const merged = { ...cfg };
+        if ('sendDelayMs' in body) merged.sendDelayMs = Math.max(0, Math.min(60000, Number(body.sendDelayMs) || 0));
+        if ('maxReplyChars' in body) merged.maxReplyChars = Math.max(200, Math.min(4000, Number(body.maxReplyChars) || 1000));
+        if ('ackMessage' in body) merged.ackMessage = String(body.ackMessage ?? '').slice(0, 200);
         if (body.social) {
-          merged.social = { ...(cfgNow.social ?? {}), ...body.social };
+          merged.social = { ...(cfg.social ?? {}) };
           for (const sk of ['engagement', 'heartbeat', 'memory', 'topics', 'unread', 'wakeKeywords', 'defaultPersona', 'noActionLimit']) {
             if (body.social[sk] !== undefined) merged.social[sk] = body.social[sk];
           }
+          // 数值字段规整：防 NaN/负值/字符串污染内存状态
+          const toFinite = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+          const e = merged.social.engagement ?? {};
+          for (const k of ['wAttention', 'wInterest', 'wEnergy', 'wMood', 'wNoise', 'threshold', 'cooldownMs']) {
+            e[k] = toFinite(e[k], 0);
+          }
+          const hb = merged.social.heartbeat ?? {};
+          for (const k of ['minIntervalMs', 'maxIntervalMs', 'idleThresholdMs']) hb[k] = toFinite(hb[k], 0);
+          hb.probability = Math.min(1, Math.max(0, toFinite(hb.probability, 0.3)));
+          merged.social.engagement = e;
+          merged.social.heartbeat = hb;
         }
         persistConfig(merged);
         Object.assign(cfg, merged); // 热更新内存引用（router.cfg === cfg）
@@ -422,7 +469,7 @@ export function startConsoleServer({ port, token, deps }) {
       if (req.method === 'GET' && pathname === '/api/memory') {
         const key = String(url.searchParams.get('key') ?? '');
         const persona = router.persona;
-        if (!persona || !key) return sendJson(res, { entries: [], topics: [] });
+        if (!persona || !key || !validConvKey(key)) return sendJson(res, { entries: [], topics: [] });
         const entries = persona.memory.query(key, '', '');
         const topics = persona.memory.topics(key).map((t) => t.topic).slice(0, 20);
         return sendJson(res, { key, entries, topics });
@@ -458,7 +505,7 @@ export function startConsoleServer({ port, token, deps }) {
       if (req.method === 'GET' && pathname === '/api/session-history') {
         const key = String(url.searchParams.get('key') ?? '');
         const sessionId = sessions.state.sessions?.[key];
-        if (!sessionId || !api) return sendJson(res, { messages: [] });
+        if (!sessionId || !api || !validConvKey(key)) return sendJson(res, { messages: [] });
         const h = await api.sessions.history({ sessionId, maxMessages: 20 });
         const events = h?.result?.ok ? h.result.value.events : [];
         const messages = [];
@@ -497,18 +544,25 @@ export function startConsoleServer({ port, token, deps }) {
         const body = await readBody(req);
         const key = String(body?.key ?? '');
         const persona = router.persona;
-        if (!persona || !key) return sendJson(res, { error: 'key 必填或 persona 未装配' }, 400);
+        if (!persona || !key || !validConvKey(key)) return sendJson(res, { error: 'key 必填或 persona 未装配' }, 400);
         const st = persona.state.get(key);
+        // NaN 防护：非有限数字一律忽略，防止 Math.min/max(NaN) 毒化状态
         if (body.mood !== undefined && body.mood !== null) {
-          st.mood = Math.min(1, Math.max(0, Number(body.mood)));
+          const v = Number(body.mood);
+          if (Number.isFinite(v)) st.mood = Math.min(1, Math.max(0, v));
         }
         if (body.energy !== undefined && body.energy !== null) {
-          st.energy = Math.min(1, Math.max(0, Number(body.energy)));
+          const v = Number(body.energy);
+          if (Number.isFinite(v)) st.energy = Math.min(1, Math.max(0, v));
         }
         if (body.presence?.mode) {
-          const until = body.presence.mode === 'paused' && body.presence.until_ms
-            ? Date.now() + Number(body.presence.until_ms) : 0;
-          st.presence = { mode: body.presence.mode, until };
+          const mode = String(body.presence.mode);
+          if (!['active', 'diving', 'paused'].includes(mode)) {
+            return sendJson(res, { error: `非法在场模式: ${mode}` }, 400);
+          }
+          const until = mode === 'paused' && body.presence.until_ms
+            ? Date.now() + Math.max(0, Number(body.presence.until_ms) || 0) : 0;
+          st.presence = { mode, until };
         }
         st.updatedAt = Date.now();
         persona.state.save(key);
@@ -520,31 +574,40 @@ export function startConsoleServer({ port, token, deps }) {
       if (req.method === 'POST' && pathname === '/api/mode') {
         const body = await readBody(req);
         if (!body || typeof body.mode !== 'string') return sendJson(res, { error: 'mode required' }, 400);
-        router.setMode(body.mode);
+        try {
+          await router.setMode(body.mode); // 必须 await：setMode 重建所有会话后才生效，响应应与实际一致
+        } catch (error) {
+          return sendJson(res, { error: `切换失败: ${error?.message ?? error}` }, 400);
+        }
         return sendJson(res, { ok: true, mode: router.getMode() });
       }
       if (req.method === 'POST' && pathname === '/api/role') {
         const body = await readBody(req);
         const name = body?.role == null || body.role === '' ? null : sanitizeRoleName(String(body.role));
         if (name === null) {
-          writeRoleState(null);
+          writeRoleState(null, readRoleState().mode);
           return sendJson(res, { ok: true, role: null });
         }
-        const roleFile = path.join(path.resolve(__dirname, '../..'), 'roles', `${name}.md`);
-        if (!fs.existsSync(roleFile)) return sendJson(res, { error: `角色「${name}」不存在` }, 404);
-        writeRoleState(name);
+        // 角色卡可能只有 .yaml（人格卡）或 .md（旧格式），二者其一即可
+        const roleDir = path.join(ROOT, 'roles');
+        const hasYaml = fs.existsSync(path.join(roleDir, `${name}.yaml`));
+        const hasMd = fs.existsSync(path.join(roleDir, `${name}.md`));
+        if (!hasYaml && !hasMd) return sendJson(res, { error: `角色「${name}」不存在` }, 404);
+        writeRoleState(name, readRoleState().mode);
         return sendJson(res, { ok: true, role: name });
       }
       if (req.method === 'POST' && pathname === '/api/silent') {
         const body = await readBody(req);
-        writeRoleState(null, body?.silent ? 'silent' : 'active');
+        // 保留已设置的 role（仅切换静默位，与 router 的 /silent 命令行为一致）
+        writeRoleState(readRoleState().role, body?.silent ? 'silent' : 'active');
         return sendJson(res, { ok: true, silent: body?.silent === true });
       }
       if (req.method === 'POST' && pathname === '/api/reset') {
         const body = await readBody(req);
-        if (!body?.key) return sendJson(res, { error: 'key required' }, 400);
+        if (!body?.key || !validConvKey(String(body.key))) return sendJson(res, { error: 'key 必填且格式为 group:/private: 加 QQ 号' }, 400);
         const done = await sessions.resetSession(String(body.key));
         router.resetAgentState(String(body.key));
+        router.cancelPending(String(body.key)); // 挂起提问/审批一并取消，防对已归档会话二次回执
         return sendJson(res, { ok: true, reset: done });
       }
 
@@ -614,10 +677,11 @@ export function startConsoleServer({ port, token, deps }) {
             if (!isAllowed(target.kind, target.id, cfg)) {
               return sendJson(res, { error: '目标不在白名单内' }, 403);
             }
-            const messages = Array.isArray(body.messages) ? body.messages.map(String) : [];
+            const messages = Array.isArray(body.messages) ? body.messages.map(String).slice(0, 8) : [];
             if (!messages.length) return sendJson(res, { error: 'messages 不能为空' }, 400);
-            // @全体拦截：不允许 agent 通过 at_user_id 圈全体成员
-            if (String(body.at_user_id ?? '') === 'all' || String(body.at_user_id ?? '') === '0') {
+            // @全体拦截：trim + 小写归一后比较，防 'ALL'/' all ' 绕过
+            const atRaw = String(body.at_user_id ?? '').trim().toLowerCase();
+            if (atRaw === 'all' || atRaw === '0' || atRaw === '@all') {
               return sendJson(res, { error: '不允许 @全体成员' }, 403);
             }
             const replyToMessageId = body.reply_to_message_id ?? null;
@@ -645,6 +709,9 @@ export function startConsoleServer({ port, token, deps }) {
             return sendJson(res, { ok: true, readSeq: router.readSeqs.get(key) ?? 0 });
           }
           case 'wait': {
+            // 每会话互斥：同一 key 只允许一个在途 wait，防并发长轮询堆积连接/监听器
+            if (waitingKeys.has(key)) return sendJson(res, { error: '该会话已有在途等待，请先结束' }, 409);
+            waitingKeys.add(key);
             const timeoutMs = Math.min(600000, Math.max(5000, Number(body.timeout_ms) || 30000));
             const quietMs = Math.min(120000, Math.max(5000, Number(body.quiet_ms) || 8000));
             let sawNew = false;
@@ -664,6 +731,7 @@ export function startConsoleServer({ port, token, deps }) {
                 if (quiet > 0) await sleep(quiet);
               }
             } finally {
+              waitingKeys.delete(key);
               router.newMsgEmitter.removeListener('new', onNew);
               req.removeListener('close', onClose);
             }
@@ -737,6 +805,8 @@ export function startConsoleServer({ port, token, deps }) {
     }
   });
 
+  server.requestTimeout = 15000;   // 防慢速请求占连接
+  server.headersTimeout = 10000;
   server.listen(port, '127.0.0.1', () => {
     console.log(`[bridge] 控制台已启动：http://127.0.0.1:${port}（token: ${token.slice(0, 8)}…）`);
   });

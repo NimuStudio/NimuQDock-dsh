@@ -304,6 +304,16 @@
 let TOKEN = localStorage.getItem('napcat_token') || '';
 const MODES = ['chat', 'agent'];
 
+// ── 输出安全：任何动态内容进 HTML/属性前必须过这两个函数（防 QQ 内容存储型 XSS） ──
+/** HTML 转义（用于 innerHTML 文本节点与双引号属性）。 */
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+/** 放入单引号 JS 字符串字面量（如 onclick="fn('…')"）：先 JS 转义再 HTML 属性转义。 */
+function escJs(s) {
+  return esc(String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n]+/g, ' '));
+}
+
 // ── 主题（三主题循环：glass → light → dark） ──
 var theme = localStorage.getItem('ysti_theme') || 'glass';
 function applyTheme(t) {
@@ -345,9 +355,9 @@ async function refreshRoleCards() {
   try {
     const r = await api('/api/roles');
     const yaml = r.personas || [];
-    const item = (n) => '<div class="row-item"><span><b>' + n + '</b> <span class="muted">.yaml</span></span>' +
-      '<span><button class="btn-accept" onclick="openRoleEditor(\'yaml\',\'' + n + '\')">编辑</button> ' +
-      '<button class="btn-cancel danger" onclick="deleteRoleCard(\'yaml\',\'' + n + '\')">删除</button></span></div>';
+    const item = (n) => '<div class="row-item"><span><b>' + esc(n) + '</b> <span class="muted">.yaml</span></span>' +
+      '<span><button class="btn-accept" onclick="openRoleEditor(\'yaml\',\'' + escJs(n) + '\')">编辑</button> ' +
+      '<button class="btn-cancel danger" onclick="deleteRoleCard(\'yaml\',\'' + escJs(n) + '\')">删除</button></span></div>';
     document.getElementById('roleCardList').innerHTML = yaml.length ? yaml.map(item).join('') : '<div class="empty-state">暂无人格卡（点右上角新建）</div>';
   } catch (e) {}
 }
@@ -367,7 +377,7 @@ async function openRoleEditor(type, name) {
   el.innerHTML = '<div class="order-card">' +
     '<div class="card-title">编辑人格卡</div>' +
     '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">' +
-    '<input id="rcName" class="glass-input" placeholder="名称（不含 .yaml）" value="' + (name || '') + '" style="width:220px">' +
+    '<input id="rcName" class="glass-input" placeholder="名称（不含 .yaml）" value="' + esc(name || '') + '" style="width:220px">' +
     '<span class="muted">.yaml</span>' +
     '<button class="btn-accept" onclick="saveRoleCard(\'yaml\')">保存</button> ' +
     '<button class="btn-cancel" onclick="document.getElementById(\'roleEditor\').style.display=\'none\'">取消</button></div>' +
@@ -398,8 +408,8 @@ async function refreshGroups() {
     const el = document.getElementById('groupList');
     el.innerHTML = r.groups?.length
       ? r.groups.map((g) => '<div class="row-item">' +
-          '<span><b>' + g.group_name + '</b> <span class="muted">(' + g.group_id + ' · ' + g.member_count + '人)</span></span>' +
-          '<span class="chip' + (g.allowed ? ' cur' : '') + '" onclick="toggleGroupAllow(\'' + g.group_id + '\')">' + (g.allowed ? '✅ 白名单' : '⛔ 未授权') + '</span>' +
+          '<span><b>' + esc(g.group_name) + '</b> <span class="muted">(' + esc(g.group_id) + ' · ' + esc(g.member_count) + '人)</span></span>' +
+          '<span class="chip' + (g.allowed ? ' cur' : '') + '" onclick="toggleGroupAllow(\'' + escJs(g.group_id) + '\')">' + (g.allowed ? '✅ 白名单' : '⛔ 未授权') + '</span>' +
           '</div>').join('')
       : '<div class="empty-state">机器人不在任何群里（或无权限读取群列表）</div>';
   } catch (e) {}
@@ -432,17 +442,17 @@ async function refreshMemory() {
       const m = await api('/api/memory?key=' + encodeURIComponent(key));
       const hist = await api('/api/session-history?key=' + encodeURIComponent(key));
       html.push('<div class="order-card" style="margin-bottom:12px">');
-      html.push('<div class="p-head"><span class="p-name">' + key + '</span>' +
-        '<button class="btn-accept" onclick="wakeAgent(\'' + key + '\')">手动唤醒</button></div>');
+      html.push('<div class="p-head"><span class="p-name">' + esc(key) + '</span>' +
+        '<button class="btn-accept" onclick="wakeAgent(\'' + escJs(key) + '\')">手动唤醒</button></div>');
       html.push('<div class="card-title" style="margin-top:10px">群话题</div>');
-      html.push('<div>' + (m.topics?.length ? m.topics.map((t) => '<span class="chip">' + t + '</span>').join('') : '<span class="muted">暂无</span>') + '</div>');
+      html.push('<div>' + (m.topics?.length ? m.topics.map((t) => '<span class="chip">' + esc(t) + '</span>').join('') : '<span class="muted">暂无</span>') + '</div>');
       html.push('<div class="card-title" style="margin-top:10px">长期记忆（' + (m.entries?.length ?? 0) + ' 条）</div>');
       html.push('<div>' + (m.entries?.length
-        ? m.entries.map((e) => '<div class="row-item"><span>' + e.text + ' <span class="muted">[' + e.type + (e.target ? ' →' + e.target : '') + ']</span></span><button class="btn-cancel danger" onclick="removeMemory(\'' + key + '\',\'' + e.id + '\')">删</button></div>').join('')
+        ? m.entries.map((e) => '<div class="row-item"><span>' + esc(e.text) + ' <span class="muted">[' + esc(e.type) + (e.target ? ' →' + esc(e.target) : '') + ']</span></span><button class="btn-cancel danger" onclick="removeMemory(\'' + escJs(key) + '\',\'' + escJs(e.id) + '\')">删</button></div>').join('')
         : '<span class="muted">暂无记忆</span>') + '</div>');
       html.push('<div class="card-title" style="margin-top:10px">最近对话</div>');
       html.push('<div>' + (hist.messages?.length
-        ? hist.messages.slice(-5).map((msg) => '<div class="muted" style="margin:2px 0"><b>' + (msg.role === 'user' ? '👤' : '🤖') + '</b> ' + msg.text.replace(/\n/g, ' ') + '</div>').join('')
+        ? hist.messages.slice(-5).map((msg) => '<div class="muted" style="margin:2px 0"><b>' + (msg.role === 'user' ? '👤' : '🤖') + '</b> ' + esc(String(msg.text ?? '').replace(/\n/g, ' ')) + '</div>').join('')
         : '<span class="muted">暂无</span>') + '</div>');
       html.push('</div>');
     }
@@ -463,7 +473,7 @@ async function refreshAllowlist() {
   try {
     const r = await api('/api/allowlist');
     const rows = [];
-    const fmt = (label, channel, list) => list.map((id) => '<div class="row-item"><span>' + label + ' <b>' + id + '</b></span><button class="btn-cancel danger" onclick="allowlistOp(\'' + channel + '\',\'' + id + '\',\'remove\')">移除</button></div>').join('');
+    const fmt = (label, channel, list) => list.map((id) => '<div class="row-item"><span>' + label + ' <b>' + esc(id) + '</b></span><button class="btn-cancel danger" onclick="allowlistOp(\'' + channel + '\',\'' + escJs(id) + '\',\'remove\')">移除</button></div>').join('');
     rows.push(fmt('私聊白名单', 'private', r.allow?.private ?? []));
     rows.push(fmt('群白名单', 'group', r.allow?.groups ?? []));
     rows.push(fmt('私聊黑名单', 'private', r.deny?.private ?? []));
@@ -494,7 +504,7 @@ async function refreshSocialForm() {
     const r = await api('/api/config');
     const e = r.social?.engagement ?? {};
     const hb = r.social?.heartbeat ?? {};
-    const num = (v) => '<input class="sf glass-input" data-k="' + v[0] + '" type="number" step="0.1" value="' + (v[1] ?? '') + '" style="width:80px">';
+    const num = (v) => '<input class="sf glass-input" data-k="' + v[0] + '" type="number" step="0.1" value="' + esc(v[1] ?? '') + '" style="width:80px">';
     const row = (label, input) => '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span class="muted">' + label + '</span>' + input + '</div>';
     const form = [
       row('唤醒阈值 threshold', num(['threshold', e.threshold])),
@@ -569,10 +579,11 @@ async function remoteExec() {
   if (!command) { toast('请输入指令'); return; }
   const timeout_ms = Number(document.getElementById('remoteTimeout').value) || 180000;
   const el = document.getElementById('remoteResult');
-  el.innerHTML = '⏳ 执行中（最多 ' + Math.round(timeout_ms / 60000) + ' 分钟）…';
+  el.textContent = '⏳ 执行中（最多 ' + Math.round(timeout_ms / 60000) + ' 分钟）…';
   const r = await api('/api/remote/exec', 'POST', { command, timeout_ms });
   const tools = r.tools?.length ? '\n\n🛠 工具调用：' + r.tools.join(', ') : '';
-  el.innerHTML = (r.timedOut ? '⏰ 超时未完成\n\n' : '✅ 完成（' + Math.round((r.durationMs || 0) / 1000) + 's）\n\n') +
+  // 工具输出是敌意可控内容（文件内容/命令输出），必须 textContent 渲染
+  el.textContent = (r.timedOut ? '⏰ 超时未完成\n\n' : '✅ 完成（' + Math.round((r.durationMs || 0) / 1000) + 's）\n\n') +
     (r.output || '（无文本输出）') + tools;
   refreshRemoteHistory();
 }
@@ -586,8 +597,8 @@ async function refreshRemoteHistory() {
     const r = await api('/api/remote/log');
     const el = document.getElementById('remoteHistory');
     el.innerHTML = r.entries?.length
-      ? r.entries.map((e) => '<div class="row-item"><span><b>' + (e.timedOut ? '⏰' : '✅') + '</b> ' + e.command + '</span>' +
-          '<span class="muted">' + Math.round((e.durationMs || 0) / 1000) + 's' + (e.tools?.length ? ' · ' + e.tools.length + ' 工具' : '') + '</span></div>').join('')
+      ? r.entries.map((e) => '<div class="row-item"><span><b>' + (e.timedOut ? '⏰' : '✅') + '</b> ' + esc(e.command) + '</span>' +
+          '<span class="muted">' + esc(Math.round((e.durationMs || 0) / 1000)) + 's' + (e.tools?.length ? ' · ' + esc(e.tools.length) + ' 工具' : '') + '</span></div>').join('')
       : '<span class="muted">暂无执行记录</span>';
   } catch (e) {}
 }
@@ -618,8 +629,8 @@ async function refreshStatus() {
   try {
     const s = await api('/api/status');
     document.getElementById('statusKV').innerHTML = [
-      ['机器人 QQ', s.napcatSelfId || '-'], ['昵称', s.napcatNickname || '-'],
-      ['会话数', s.sessions ?? 0], ['启动时间', new Date(s.startedAt).toLocaleString()],
+      ['机器人 QQ', esc(s.napcatSelfId || '-')], ['昵称', esc(s.napcatNickname || '-')],
+      ['会话数', esc(s.sessions ?? 0)], ['启动时间', esc(new Date(s.startedAt).toLocaleString())],
     ].map(([k, v]) => '<div class="k">' + k + '</div><div class="v">' + v + '</div>').join('');
     document.getElementById('bMode').textContent = '模式 ' + s.mode;
     document.getElementById('bDsh').textContent = s.dshOnline ? 'DSH 在线' : 'DSH 离线';
@@ -640,7 +651,7 @@ async function refreshRoles() {
     document.getElementById('curRole').textContent = r.currentRole?.role || '无（默认人格）';
     // 人格卡即角色（合并后）：点击切换聊天角色
     document.getElementById('roleChips').innerHTML = r.personas.map((n) =>
-      '<span class="chip' + (n === r.currentRole?.role ? ' cur' : '') + '" onclick="setRole(\'' + n + '\')">' + n + '</span>').join('') +
+      '<span class="chip' + (n === r.currentRole?.role ? ' cur' : '') + '" onclick="setRole(\'' + escJs(n) + '\')">' + esc(n) + '</span>').join('') +
       '<span class="chip" onclick="clearRole()">✕ 清除</span>';
     document.getElementById('silentSwitch').className = 'switch' + (r.currentRole?.mode === 'silent' ? ' on' : '');
   } catch (e) {}
@@ -657,7 +668,7 @@ async function refreshSessions() {
     const r = await api('/api/sessions');
     const entries = Object.entries(r.sessions ?? {});
     document.getElementById('sessionList').innerHTML = entries.length
-      ? entries.map(([key, sid]) => '<div class="row-item"><span><b>' + key + '</b></span><span class="sid">' + sid + '</span><button class="btn-cancel danger" onclick="resetSession(\'' + key + '\')">重置</button></div>').join('')
+      ? entries.map(([key, sid]) => '<div class="row-item"><span><b>' + esc(key) + '</b></span><span class="sid">' + esc(sid) + '</span><button class="btn-cancel danger" onclick="resetSession(\'' + escJs(key) + '\')">重置</button></div>').join('')
       : '<div class="empty-state">暂无会话（给机器人发条消息即创建）</div>';
   } catch (e) {}
 }
@@ -673,15 +684,15 @@ async function refreshPersona() {
     const states = Object.entries(r.states ?? {});
     document.getElementById('personaStates').innerHTML = states.length
       ? states.map(([key, st]) => '<div class="persona-card">' +
-          '<div class="p-head"><span class="p-name">' + key + '</span><span class="p-key">' + st.personaId + '</span></div>' +
+          '<div class="p-head"><span class="p-name">' + esc(key) + '</span><span class="p-key">' + esc(st.personaId) + '</span></div>' +
           '<div style="display:flex;align-items:center;gap:10px;margin:4px 0"><span class="muted" style="width:44px">心情</span>' +
-          '<input type="range" class="glass-range" min="0" max="1" step="0.05" value="' + st.mood + '" onchange="adjustPersona(\'' + key + '\',\'mood\',this.value)">' +
-          '<b style="width:38px;text-align:right">' + st.mood + '</b></div>' +
+          '<input type="range" class="glass-range" min="0" max="1" step="0.05" value="' + esc(st.mood) + '" onchange="adjustPersona(\'' + escJs(key) + '\',\'mood\',this.value)">' +
+          '<b style="width:38px;text-align:right">' + esc(st.mood) + '</b></div>' +
           '<div style="display:flex;align-items:center;gap:10px;margin:4px 0"><span class="muted" style="width:44px">精力</span>' +
-          '<input type="range" class="glass-range" min="0" max="1" step="0.05" value="' + st.energy + '" onchange="adjustPersona(\'' + key + '\',\'energy\',this.value)">' +
-          '<b style="width:38px;text-align:right">' + st.energy + '</b></div>' +
+          '<input type="range" class="glass-range" min="0" max="1" step="0.05" value="' + esc(st.energy) + '" onchange="adjustPersona(\'' + escJs(key) + '\',\'energy\',this.value)">' +
+          '<b style="width:38px;text-align:right">' + esc(st.energy) + '</b></div>' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">' +
-          '<span class="muted">在场 <div class="glass-dd" data-onpick="adjustPersonaPresence" data-key="' + key + '">' +
+          '<span class="muted">在场 <div class="glass-dd" data-onpick="adjustPersonaPresence" data-key="' + esc(key) + '">' +
           '<button class="glass-dd-trigger">' + (st.presence?.mode === 'diving' ? 'diving 潜水' : st.presence?.mode === 'paused' ? 'paused 暂停' : 'active 活跃') + ' <span class="glass-dd-arrow">▼</span></button>' +
           '<div class="glass-dd-menu">' +
           '<div class="glass-dd-item' + (st.presence?.mode === 'active' ? ' active' : '') + '" data-v="active">active 活跃</div>' +

@@ -25,11 +25,37 @@
       - 可以用 mcp__napcat__ 系列只读工具（qq_status / qq_list_groups / qq_get_group_members / qq_get_group_history / qq_get_message）了解状态与消息上下文。
 
       【发送工具禁令】
-      1. 你的回复会自动转发回 QQ，本人【严禁】调用发送类工具（qq_send_group_message / qq_send_private_message / qq_reply / qq_poke）——仅当：管理员在管理端明确指示"往某群/某人发送某内容"，或消息带【管理员】标记且明确要求发送时才可使用。
+      1. 你的回复会自动转发回 QQ，你【没有】发送类工具（qq_send_group_message / qq_send_private_message / qq_reply / qq_poke 已被系统禁用）——不用找、不用试、不用假装调用。需要由管理员代发消息时，请让管理员在桥接控制台操作。
       2. 不要输出"我已在群里回复了""消息已发送成功（message_id xxx）"之类的汇报式总结：你的回复文本就是要发给群友的话，直接以对话口吻说话。
 
 # ── 模型侧工具（全部无害） ──────────────────────────────────────────────────
 # 联网统一走安全 MCP，内置 tool-web 的 search/fetch 关闭。
+
+# ── 安全 MCP（agent 作用域挂载） ─────────────────────────────────────────────
+# 挂在本 preset 的 agent 作用域：只有 qq-chat / qq-agent 会话能看到这些工具，
+# 其它 preset（如默认 coding preset）完全不可见——白名单护栏不会被绕开。
+# __NODE__ / __REPO__ 由 scripts/setup-dsh.mjs 安装时替换为绝对路径。
+
+- insert:
+    - id: mcp-napcat
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: napcat
+        transport: stdio
+        command: __NODE__
+        args:
+          - __REPO__/src/mcp/qq-mcp.js
+        toolCallTimeoutMs: 725000
+
+- insert:
+    - id: mcp-web-search-safe
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: web-search-safe
+        transport: stdio
+        command: __NODE__
+        args:
+          - __REPO__/src/mcp/web-search-mcp.js
 
 - id: tool-web
   name: '@deepseek-ai/dsh-tool-web'

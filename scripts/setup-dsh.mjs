@@ -2,9 +2,10 @@
 // setup-dsh.mjs — 把 NimuQDock-dsh 的 DSH 端配置安装到目标 DSH 环境。
 //
 // 做的事：
-//   1. 复制两套 agent preset（qq-chat / qq-agent）到 ~/.dsh/.agent-presets/
-//   2. 在 DSH profile 的 cordis.patch.yml 挂载两个 MCP server：
-//      mcp-napcat（QQ 安全工具）/ mcp-web-search-safe（只读联网搜索）
+//   1. 复制两套 agent preset（qq-chat / qq-agent）到 ~/.dsh/.agent-presets/，
+//      并把 MCP（mcp-napcat / mcp-web-search-safe）挂载在 preset 的 agent 作用域
+//      （安全边界随 agent 走：非 qq preset 看不到 QQ 工具）
+//   2. 移除旧版 profile 级 cordis.patch.yml MCP 块（若存在）
 //   3. 在 profile package.json 注册 qq-mode-console 插件 bundle
 //   4. 创建本地 state/mode.json 兜底（默认 chat，仅在不存在时写入）
 //   5. 若 dsh CLI 可用，自动执行 `dsh plugin --profile <profile> install`
@@ -24,75 +25,44 @@ const DSH_HOME = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
 const PROFILE = process.argv[2] || 'web';
 const PROFILE_DIR = path.join(DSH_HOME, 'profiles', PROFILE);
 
-const MCP_SERVERS = {
-  'mcp-napcat': {
-    script: path.join(REPO, 'src', 'mcp', 'qq-mcp.js'),
-    toolTimeoutMs: 725000, // QQ 发送类动作可能耗时较长
-  },
-  'mcp-web-search-safe': {
-    script: path.join(REPO, 'src', 'mcp', 'web-search-mcp.js'),
-    toolTimeoutMs: null,
-  },
-};
-
 const log = (msg) => console.log(`[setup-dsh] ${msg}`);
 const fatal = (msg) => {
   console.error(`[setup-dsh] ERROR: ${msg}`);
   process.exit(1);
 };
 const ensureDir = (p) => fs.mkdirSync(p, { recursive: true });
-const yamlQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
 
-// 1) agent preset
+// 1) agent preset（复制到 ~/.dsh/.agent-presets/，并注入 MCP 的绝对路径占位符）
 function installPresets() {
   for (const name of ['qq-chat', 'qq-agent']) {
     const src = path.join(REPO, 'dsh', 'agent-presets', name);
     if (!fs.existsSync(src)) fatal(`preset 不存在: ${src}`);
     ensureDir(path.join(DSH_HOME, '.agent-presets'));
     fs.cpSync(src, path.join(DSH_HOME, '.agent-presets', name), { recursive: true, force: true });
-    log(`preset 已安装: ${name}`);
+    // MCP 由 DSH spawn：agent.cordis.yml 里的 __NODE__ / __REPO__ 替换为绝对路径
+    const cordisFile = path.join(DSH_HOME, '.agent-presets', name, 'agent.cordis.yml');
+    const text = fs.readFileSync(cordisFile, 'utf8')
+      .replaceAll('__NODE__', process.execPath)
+      .replaceAll('__REPO__', REPO);
+    fs.writeFileSync(cordisFile, text, 'utf8');
+    log(`preset 已安装: ${name}（MCP 路径已注入）`);
   }
 }
 
-// 2) cordis.patch.yml 挂载 MCP（用标记块包裹，便于重复运行替换）
-function renderMcpBlock() {
-  const lines = ['# === napcat-bridge MCP BEGIN ==='];
-  for (const [id, cfg] of Object.entries(MCP_SERVERS)) {
-    lines.push('- insert:');
-    lines.push(`    - id: ${id}`);
-    lines.push("      name: '@deepseek-ai/dsh-mcp-client'");
-    lines.push(`      config:`);
-    lines.push(`        serverName: ${id.replace('mcp-', '')}`);
-    lines.push('        transport: stdio');
-    lines.push(`        command: ${yamlQuote(process.execPath)}`);
-    lines.push('        args:');
-    lines.push(`          - ${yamlQuote(cfg.script)}`);
-    if (cfg.toolTimeoutMs) lines.push(`        toolCallTimeoutMs: ${cfg.toolTimeoutMs}`);
-  }
-  lines.push('# === napcat-bridge MCP END ===');
-  return lines.join('\n');
-}
-
+// 2) cordis.patch.yml：MCP 已下沉到 preset 的 agent 作用域（安全边界随 agent 走，
+//    非 qq preset 不可见 QQ 工具）。此处仅负责**移除旧版 profile 级 MCP 块**（若存在）。
 function patchCordis() {
   ensureDir(PROFILE_DIR);
   const patchFile = path.join(PROFILE_DIR, 'cordis.patch.yml');
   const BEGIN = '# === napcat-bridge MCP BEGIN ===';
   const END = '# === napcat-bridge MCP END ===';
-  const block = renderMcpBlock();
-  let text = fs.existsSync(patchFile) ? fs.readFileSync(patchFile, 'utf8') : '';
+  if (!fs.existsSync(patchFile)) return;
+  let text = fs.readFileSync(patchFile, 'utf8');
   if (text.includes(BEGIN) && text.includes(END)) {
-    text = text.replace(/[^\n]*# === napcat-bridge MCP BEGIN ===[\s\S]*?# === napcat-bridge MCP END ===[^\n]*/, block.trimEnd());
-    log('cordis.patch.yml：MCP 块已更新');
-  } else if (text.includes('mcp-napcat') || text.includes('qq-mcp.js')) {
-    log('cordis.patch.yml 已包含 mcp-napcat 条目，跳过（请人工核对路径是否指向本仓库）');
-  } else {
-    // 剥掉 DSH 模板自带、独立成行的空数组 `[]`，避免与追加块组成多个 YAML 根节点
-    text = text.replace(/^[ \t]*\[\][ \t]*(?:\r?\n|$)/gm, '');
-    const sep = text.trim() ? (text.endsWith('\n') ? '' : '\n') + '\n' : '';
-    text += `${sep}${block}`;
-    log('cordis.patch.yml：MCP 块已追加');
+    text = text.replace(/[^\n]*# === napcat-bridge MCP BEGIN ===[\s\S]*?# === napcat-bridge MCP END ===[^\n]*/, '').trimEnd() + '\n';
+    fs.writeFileSync(patchFile, text, 'utf8');
+    log('cordis.patch.yml：旧版 profile 级 MCP 块已移除（MCP 现已挂载在 preset agent 作用域）');
   }
-  fs.writeFileSync(patchFile, text, 'utf8');
 }
 
 // 3) 插件 bundle

@@ -28,12 +28,26 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
   const sendToolSucceeded = new Set();   // sessionId：本回合发送工具已成功
   const pendingSendToolCalls = new Map(); // sessionId -> Set<callId>：在途发送类工具调用
   const toolCallNames = new Map();       // sessionId -> Map<callId, toolName>
+  const turnStartMode = new Map();       // sessionId -> 本回合开始时的运行模式快照
 
   const clearTransient = () => {
     collectors.clear();
     sendToolSucceeded.clear();
     pendingSendToolCalls.clear();
     toolCallNames.clear();
+    turnStartMode.clear();
+  };
+
+  /**
+   * QQ 发送的局部兜底：发送失败只影响本回合通知，绝不冒泡撕裂 DSH 事件流。
+   * （NapCat 瞬时故障时外层 for-await 不能因一条回复发送失败而整体重连。）
+   */
+  const safeSend = async (label, fn) => {
+    try {
+      await fn();
+    } catch (error) {
+      log(`⚠️ QQ 发送失败（${label}）: ${error?.message ?? error}`);
+    }
   };
 
   /** 提问/审批文本过敏感审计，命中则替换为占位，防止敏感内容外泄到 QQ。 */
@@ -63,6 +77,9 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
               sendToolSucceeded.delete(frame.sessionId);
               pendingSendToolCalls.delete(frame.sessionId);
               toolCallNames.delete(frame.sessionId);
+              // 捕获本回合开始时的运行模式快照：回合结束决策用快照，
+              // 防「turn 在途时模式切换」导致该发的不发/不该发的发
+              turnStartMode.set(frame.sessionId, router.getMode());
             }
             if (event.type === 'tool/call') {
               const toolName = String(event.data?.name ?? '');
@@ -111,6 +128,8 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
             sendToolSucceeded.delete(frame.sessionId);
             pendingSendToolCalls.delete(frame.sessionId);
             toolCallNames.delete(frame.sessionId);
+            const turnMode = turnStartMode.get(frame.sessionId) ?? router.getMode();
+            turnStartMode.delete(frame.sessionId);
 
             // 本回合已通过 MCP 发送工具成功发出消息：跳过自动转发（避免重复）
             if (sendToolSucceededNow) {
@@ -132,18 +151,20 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
                 log(`⚠️ 回复被安全策略拦截 (${key})：${reason}`);
                 appendActivity(`${key} agent 回复被拦截（${reason}）`);
                 if (cfg.security?.interceptNotify !== false) {
-                  await sender.notify(key, '⚠️ 本条回复因疑似包含敏感信息（路径/凭据/会话令牌）被安全策略拦截，已记录并通知管理员。');
+                  await safeSend('拦截通知', () => sender.notify(key, '⚠️ 本条回复因疑似包含敏感信息（路径/凭据/会话令牌）被安全策略拦截，已记录并通知管理员。'));
                 }
+                // 拦截也结算回合（agent 模式）：否则精力/统计永不更新
+                router.onAgentTurnEnd?.(key, { replied: false });
                 continue;
               }
               log(`agent 回复 (${key}) ${plain.length} 字`);
               appendActivity(`${key} agent 回复：${plain.slice(0, 80)}${plain.length > 80 ? '…' : ''}`);
               // agent 模式：文本不自动转发（只是思考）
-              if (router.getMode() === 'agent') {
+              if (turnMode === 'agent') {
                 // 私聊兜底：一对一场景没有「潜水」语义——AI 输出纯文本（未调发送工具）视为直接回复
                 if (key.startsWith('private:')) {
                   log(`[agent] 私聊纯文本兜底发送 (${key}): ${plain.slice(0, 60)}`);
-                  await sender.sendToQQ(key, plain);
+                  await safeSend('agent 私聊兜底', () => sender.sendToQQ(key, plain));
                   router.onAgentTurnEnd?.(key, { replied: true });
                   continue;
                 }
@@ -151,18 +172,18 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
                 router.onAgentTurnEnd?.(key, { replied: false });
                 continue;
               }
-              await sender.sendToQQ(key, plain);
+              await safeSend('chat 回复', () => sender.sendToQQ(key, plain));
             } else if (ended.reason.kind === 'error') {
               const msg = ended.reason.error?.message ?? '未知错误';
               log(`agent 回合出错 (${key}): ${msg}`);
-              await sender.notify(key, `⚠️ agent 处理出错：${String(msg).slice(0, 500)}`);
+              await safeSend('错误通知', () => sender.notify(key, `⚠️ agent 处理出错：${String(msg).slice(0, 500)}`));
             } else if (ended.reason.kind === 'aborted') {
-              await sender.notify(key, '⏹️ 已停止');
+              await safeSend('中断通知', () => sender.notify(key, '⏹️ 已停止'));
             } else {
               // completed 但无文本（纯工具回合）/ max-tokens / blocked / interrupted：仅日志
               log(`回合结束（${ended.reason.kind}）无文本 (${key})`);
               // agent 模式：completed 但无输出视为「无行动」回合，参与防卡死计数
-              if (ended.reason.kind === 'completed' && router.getMode() === 'agent') {
+              if (ended.reason.kind === 'completed' && turnMode === 'agent') {
                 router.onAgentTurnEnd?.(key, { replied: false });
               }
             }
@@ -174,21 +195,24 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
             if (!key) continue;
             // mux 断线重连会重放未决帧（rpcId 原样复用）：已挂起过则跳过，避免群里重复通知
             if (router.hasPendingRpc?.(envelope.rpcId)) continue;
-            const lines = frame.questions.map((q, i) => {
-              const qText = safeText(q.question, key, '提问文本');
+            // 防御畸形帧：questions 缺失/非数组不拖垮整条流
+            const qs = Array.isArray(frame.questions) ? frame.questions : [];
+            if (!qs.length) continue;
+            const lines = qs.map((q, i) => {
+              const qText = safeText(q?.question, key, '提问文本');
               let s = `${i + 1}. ${qText}`;
-              if (q.options?.length) {
-                const opts = q.options.map((o) => `「${safeText(o.label, key, '提问选项')}」`);
+              if (q?.options?.length) {
+                const opts = q.options.map((o) => `「${safeText(o?.label, key, '提问选项')}」`);
                 s += '\n   ' + opts.join(' ');
               }
               return s;
             });
-            await sender.notify(key, '❓ agent 需要你回答：\n' + lines.join('\n') + '\n（直接回复你的回答）');
+            await safeSend('提问通知', () => sender.notify(key, '❓ agent 需要你回答：\n' + lines.join('\n') + '\n（直接回复你的回答）'));
             router.registerPending(key, {
               kind: 'question',
               rpcId: envelope.rpcId,
               sessionId: frame.sessionId,
-              questions: frame.questions,
+              questions: qs,
             });
             continue;
           }
@@ -199,7 +223,7 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
             if (router.hasPendingRpc?.(envelope.rpcId)) continue;
             const reason = safeText(frame.reason, key, '审批理由');
             const toolName = safeText(frame.toolName, key, '审批工具名');
-            await sender.notify(key, `🔐 agent 请求审批：${toolName}${reason ? `\n理由：${reason}` : ''}\n回复「通过」或「拒绝」`);
+            await safeSend('审批通知', () => sender.notify(key, `🔐 agent 请求审批：${toolName}${reason ? `\n理由：${reason}` : ''}\n回复「通过」或「拒绝」`));
             router.registerPending(key, {
               kind: 'approval',
               rpcId: envelope.rpcId,

@@ -10,7 +10,7 @@
 import path from 'node:path';
 import { loadConfig } from './config.js';
 import {
-  acquireLock, releaseLock, loadSessions, loadOrCreateConsoleToken, saveSessions, STATE_DIR,
+  acquireLock, releaseLock, loadSessions, loadOrCreateConsoleToken, saveSessions, STATE_DIR, loadMode,
 } from './state.js';
 import { log } from './log.js';
 import { OneBot11Client } from './transport/onebot11.js';
@@ -125,6 +125,18 @@ async function main() {
 
   log('桥接已启动。按 Ctrl+C 退出。');
 
+  // 外部模式开关：DSH 设置页「napcat-mode」卡（插件 qq-mode-console）会写 state/mode.json。
+  // 轮询该文件，与内存模式不一致时切换（桥接控制台仍是权威管理面）。
+  const modePoll = setInterval(() => {
+    try {
+      const external = loadMode();
+      if (external !== router.getMode()) {
+        log(`检测到外部模式切换：${external}`);
+        router.setMode(external).catch((e) => log('外部模式切换失败:', e?.message ?? e));
+      }
+    } catch {}
+  }, 10000);
+
   // 优雅退出
   let exiting = false;
   const shutdown = () => {
@@ -132,6 +144,7 @@ async function main() {
     exiting = true;
     log('退出中…');
     clearInterval(dshTimer);
+    clearInterval(modePoll);
     pumpAbort.abort();
     bot.close();
     saveSessions(sessions.state.sessions);
