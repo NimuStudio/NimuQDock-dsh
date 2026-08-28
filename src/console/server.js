@@ -16,6 +16,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import childProcess from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readActivityTail } from '../log.js';
 import { writeRoleState, readRoleState } from '../state.js';
@@ -849,9 +850,37 @@ export function startConsoleServer({ port, token, deps }) {
   server.headersTimeout = 10000;
   server.listen(port, '127.0.0.1', () => {
     console.log(`[bridge] 控制台已启动：http://127.0.0.1:${port}（token: ${token.slice(0, 8)}…）`);
+    // 启动成功后自动打开浏览器控制台（console.autoOpen 默认 true；URL 带 token 免手动登录）
+    if (cfg.console?.autoOpen !== false) {
+      openConsoleBrowser(`http://127.0.0.1:${port}/console.html?token=${encodeURIComponent(token)}`);
+    }
   });
   server.on('error', (error) => {
     console.error('[bridge] 控制台启动失败:', error?.message ?? error);
   });
   return server;
+}
+
+/** 打开默认浏览器（跨平台；detached 不阻塞、不捕获输出）。失败仅告警。 */
+function openConsoleBrowser(url) {
+  try {
+    const { spawn } = childProcess;
+    let cmd;
+    let args;
+    if (process.platform === 'win32') {
+      cmd = 'cmd';
+      args = ['/c', 'start', '', url];
+    } else if (process.platform === 'darwin') {
+      cmd = 'open';
+      args = [url];
+    } else {
+      cmd = 'xdg-open';
+      args = [url];
+    }
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+    child.on('error', (error) => console.error('[bridge] 自动打开控制台失败:', error?.message ?? error));
+    child.unref();
+  } catch (error) {
+    console.error('[bridge] 自动打开控制台失败:', error?.message ?? error);
+  }
 }

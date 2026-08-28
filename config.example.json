@@ -29,7 +29,8 @@
   "questionTimeoutMs": 300000,
   "console": {
     "port": 3100,
-    "token": ""
+    "token": "",
+    "autoOpen": true
   },
   "security": {
     "interceptNotify": true
