@@ -28,13 +28,19 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install
 
+      - name: Install 7-Zip CLI
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full
+
       - name: Build zip (UTF-8 filenames)
         run: node scripts/make-release-zip.mjs "${{ github.ref_name }}" "dist/NimuQDock-dsh-${{ github.ref_name }}-win-x64.zip"
+
+      - name: Build 7z archive (UTF-8 filenames, for SFX exe)
+        run: node scripts/make-release-7z.mjs "${{ github.ref_name }}" "dist/app.7z"
 
       - name: Build exe (7-Zip SFX)
         run: |
           mkdir -p dist
-          cat scripts/sfx/7z.sfx scripts/sfx/sfx-config.txt "dist/NimuQDock-dsh-${{ github.ref_name }}-win-x64.zip" \
+          cat scripts/sfx/7z.sfx scripts/sfx/sfx-config.txt "dist/app.7z" \
             > "dist/NimuQDock-dsh-${{ github.ref_name }}-setup.exe"
           ls -la dist/
 
