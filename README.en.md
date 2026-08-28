@@ -87,6 +87,17 @@ flowchart TB
 - 🎛️ **Web console** (glassmorphism UI): visualize and tune persona state, manage whitelists, manage persona cards, remote command panel (full-tool session), memory / logs / sessions
 - 🚀 **Remote command panel**: sign in to the console and let DSH's full tools (pwsh / files / etc.) run tasks with results echoed back — never touching the QQ transport layer
 
+## One-click package (Windows)
+
+Don't want to fiddle with setup? Grab **NimuQDock-dsh-v0.1.0-win-x64.zip** from the [Releases](https://github.com/NimuStudio/NimuQDock-dsh/releases) page (all dependencies included, ~9MB, unzip and go):
+
+1. Unzip anywhere
+2. Double-click `install.bat` — it checks Node, generates `config.json`, and probes your environment
+3. Set up NapCat and log in with QQ following the prompts (detailed steps below)
+4. Double-click `start.bat` to start; the web console opens automatically
+
+> Requires Node.js ≥ 22.13 and an installed QQ client.
+
 ## Getting started
 
 ### Prerequisites
