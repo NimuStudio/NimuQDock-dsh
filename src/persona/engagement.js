@@ -29,8 +29,13 @@ const DEFAULT_ENGAGEMENT = {
  */
 export function computeAttention(text, { directed = false, aliases = [], wakeKeywords = [] } = {}) {
   const s = String(text ?? '');
+  // directed：真正被点名（@/引用/私聊）→ 必回
   if (directed) return 1.0;
-  if (containsAny(s, [...(aliases ?? []), ...(wakeKeywords ?? [])])) return 0.9;
+  // wakeKeywords：管理员配置的显式唤醒词 → 强指向（仍必回）
+  if (containsAny(s, wakeKeywords ?? [])) return 0.9;
+  // aliases：提到名字只是参与信号（如「@小明 小鲸鱼是啥」——@的是别人，提名字≠被点名），
+  // 不触发 addressed 必回，仅提高参与评分
+  if (containsAny(s, aliases ?? [])) return 0.6;
   if (containsAny(s, QUESTION_MARKERS)) return 0.35;
   return 0.05;
 }

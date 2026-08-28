@@ -15,6 +15,7 @@
     "test-loop": "node scripts/test-loop.mjs",
     "test-mcp-web": "node scripts/test-mcp-web-search.mjs",
     "test-persona": "node scripts/test-persona.mjs",
+    "test-directed": "node scripts/test-directed.mjs",
     "test-agent-api": "node scripts/test-agent-api.mjs"
   },
   "dependencies": {
