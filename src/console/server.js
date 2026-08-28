@@ -164,9 +164,13 @@ export function startConsoleServer({ port, token, deps }) {
   const MAX_REMOTE_EXEC_MS = 600000;
   let remoteExecRunning = false; // 并发互斥：同一时间只跑一条远程指令（轮询共用会话，并发会串输出）
 
-  /** 工作区目录（按名称建子目录，path 必须存在才能 workspace.create）。 */
+  /** 工作区目录（按名称建子目录，path 必须存在才能 workspace.create）。拒绝路径逃逸（. / .. 等）。 */
   function remoteWorkspaceDir(title) {
-    return path.join(ROOT, 'state', 'remote-workspaces', String(title ?? 'default').replace(/[\\/:*?"<>|]/g, '_'));
+    const t = String(title ?? 'default').trim();
+    if (!t || t === '.' || t === '..' || /[\\/:*?"<>|]/.test(t)) {
+      throw new Error('工作区名称包含非法字符');
+    }
+    return path.join(ROOT, 'state', 'remote-workspaces', t);
   }
 
   async function ensureRemoteSession() {
@@ -235,14 +239,12 @@ export function startConsoleServer({ port, token, deps }) {
     try {
       const sessionId = await ensureRemoteSession();
       const cap = Math.min(MAX_REMOTE_EXEC_MS, Math.max(5000, Number(timeoutMs) || 300000));
-      // 记录执行前状态：最大 turn 号 + assistant/message 数
+      // 记录执行前最大 turn 号（只采集新 turn 的 assistant/message，避免滑动窗口计数差漏采）
       const h0 = await api.sessions.history({ sessionId, maxMessages: 200 });
       const ev0 = h0?.result?.ok ? h0.result.value.events : [];
       let maxTurn0 = 0;
-      let asst0 = 0;
       for (const { event } of ev0) {
         if (event.type === 'turn/end') maxTurn0 = Math.max(maxTurn0, Number(event.data?.turn) || 0);
-        if (event.type === 'assistant/message') asst0 += 1;
       }
       const start = Date.now();
       await api.sessions.prompt({ sessionId, mode: 'queue', content: [{ type: 'text', text: command }] });
@@ -254,7 +256,6 @@ export function startConsoleServer({ port, token, deps }) {
         await sleep(1200);
         const h = await api.sessions.history({ sessionId, maxMessages: 200 });
         const ev = h?.result?.ok ? h.result.value.events : [];
-        let asstSeen = 0;
         let turnEnded = false;
         let lastTurnEnd = 0;
         for (const { event } of ev) {
@@ -262,8 +263,8 @@ export function startConsoleServer({ port, token, deps }) {
             const name = String(event.data?.name ?? '');
             if (name) tools.add(name);
           } else if (event.type === 'assistant/message') {
-            asstSeen += 1;
-            if (asstSeen > asst0) {
+            const turn = Number(event.data?.turn) || 0;
+            if (turn > maxTurn0) {
               const t = blocksToText(event.data?.message?.content ?? []);
               if (t) texts.push(t);
             }
@@ -426,9 +427,9 @@ export function startConsoleServer({ port, token, deps }) {
         }
         return sendJson(res, { ok: true });
       }
-      // 当前远程会话的对话记录（聊天框展示）
+      // 当前远程会话的对话记录（聊天框展示；只允许读取当前选中的会话，防任意 sessionId 跨会话读取）
       if (req.method === 'GET' && pathname === '/api/remote/messages') {
-        const sessionId = String(url.searchParams.get('sessionId') ?? '');
+        const sessionId = remoteSessionId;
         if (!sessionId) return sendJson(res, { messages: [] });
         try {
           const h = await api.sessions.history({ sessionId, maxMessages: 150 });
@@ -491,6 +492,8 @@ export function startConsoleServer({ port, token, deps }) {
         const workspaceId = String(body?.workspaceId ?? remoteWorkspaceId ?? '');
         if (!workspaceId) return sendJson(res, { error: '请先选择工作区' }, 400);
         try {
+          const ws = await listWorkspaces();
+          if (!ws.some((w) => w.id === workspaceId)) return sendJson(res, { error: '工作区不存在' }, 400);
           if (remoteSessionId) {
             try { await api.workspace.archiveSession({ sessionId: remoteSessionId }); } catch {}
           }
@@ -508,8 +511,24 @@ export function startConsoleServer({ port, token, deps }) {
       if (req.method === 'POST' && pathname === '/api/remote/select') {
         // {workspaceId?, sessionId?} 切换选择；sessionId 为空则下次执行新建
         const body = await readBody(req);
-        if (body.workspaceId !== undefined) remoteWorkspaceId = body.workspaceId === '' ? null : String(body.workspaceId);
-        if (body.sessionId !== undefined) remoteSessionId = body.sessionId === '' ? null : String(body.sessionId);
+        try {
+          if (body.workspaceId !== undefined && body.workspaceId !== '') {
+            const ws = await listWorkspaces();
+            if (!ws.some((w) => w.id === body.workspaceId)) return sendJson(res, { error: '工作区不存在' }, 400);
+            remoteWorkspaceId = String(body.workspaceId);
+          } else if (body.workspaceId !== undefined) {
+            remoteWorkspaceId = null;
+          }
+          if (body.sessionId !== undefined && body.sessionId !== '') {
+            const sessions = await listRemoteSessions();
+            if (!sessions.some((s) => s.sessionId === body.sessionId)) return sendJson(res, { error: '会话不存在' }, 400);
+            remoteSessionId = String(body.sessionId);
+          } else if (body.sessionId !== undefined) {
+            remoteSessionId = null;
+          }
+        } catch (error) {
+          return sendJson(res, { error: `选择失败: ${error?.message ?? error}` }, 400);
+        }
         return sendJson(res, { ok: true, workspaceId: remoteWorkspaceId, sessionId: remoteSessionId });
       }
       if (req.method === 'GET' && pathname === '/api/groups') {

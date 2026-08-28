@@ -10,7 +10,7 @@ import { format } from 'node:util';
 
 /** mood 数值 → 文字（供状态注入）。 */
 export function moodLabel(mood) {
-  const m = Number(mood) ?? 0.5;
+  const m = Number.isFinite(Number(mood)) ? Number(mood) : 0.5;
   if (m < 0.2) return '很差';
   if (m <= 0.4) return '偏低';
   if (m < 0.6) return '一般';
@@ -20,7 +20,7 @@ export function moodLabel(mood) {
 
 /** 精力 → 文字。 */
 export function energyLabel(energy, activeFloor) {
-  const e = Number(energy) ?? 0.5;
+  const e = Number.isFinite(Number(energy)) ? Number(energy) : 0.5;
   if (e < (activeFloor ?? 0.4)) return '偏累，倾向少说';
   if (e < 0.6) return '一般';
   return '充沛';

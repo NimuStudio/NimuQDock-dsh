@@ -565,13 +565,14 @@ export class Router {
       (seg) => seg?.type === 'at' && ['0', String(msg.selfId)].includes(String(seg.data?.qq ?? '')),
     );
     if (atSelf) return true;
-    // 文本里显式 @机器人昵称 / @机器人QQ（如「@dsh 在吗」；@ 的是别人才是别人在说话）
+    // 文本里显式 @机器人昵称 / @机器人QQ（如「@dsh 在吗」；@ 的是别人才是别人在说话；
+    // 左边界约束防 foo@dsh、@dshh 误判）
     const nick = this.bot?.nickname;
     if (nick) {
       const esc = String(nick).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (new RegExp(`@${esc}(?![A-Za-z0-9_])`).test(s)) return true;
+      if (new RegExp(`(^|[^@\\w])@${esc}(?![A-Za-z0-9_])`).test(s)) return true;
     }
-    if (new RegExp(`@${msg.selfId}(?![0-9])`).test(s)) return true;
+    if (new RegExp(`(^|[^@0-9])@${msg.selfId}(?![0-9])`).test(s)) return true;
     // 仅「提到别名/名字」不视为被点名——那是参与信号（见 engagement.computeAttention 的 aliases 0.6），
     // 防止「@小明 小鲸鱼是啥」被当成找机器人而必回
     return false;
