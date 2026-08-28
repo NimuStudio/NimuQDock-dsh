@@ -33,7 +33,10 @@
   .sub-tab:hover{background:rgba(255,255,255,.55)}
   .sub-tab.active{background:rgba(232,184,48,.25);border-color:rgba(232,184,48,.45);color:#a07008;font-weight:700}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-bottom:16px}
-  .order-card{background:rgba(255,255,255,.45);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.5);border-radius:var(--radius);padding:18px 20px;transition:transform .3s var(--spring),box-shadow .3s ease}
+  .order-card{position:relative;background:rgba(255,255,255,.45);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.5);border-radius:var(--radius);padding:18px 20px;transition:transform .3s var(--spring),box-shadow .3s ease}
+  /* backdrop-filter 会为卡片创建独立 stacking context：兄弟卡片会盖住溢出内容（如展开的下拉菜单）。
+     含展开下拉的卡片整体提升层级，让菜单浮在后续卡片之上。 */
+  .order-card:has(.glass-dd.open){z-index:20}
   .order-card:hover{transform:translateY(-2px);box-shadow:var(--glass-shadow-hover)}
   .card-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);margin-bottom:12px}
   .kv{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:13px}
