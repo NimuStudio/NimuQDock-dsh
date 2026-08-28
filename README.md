@@ -87,6 +87,17 @@ flowchart TB
 - 🎛️ **Web 控制台**（玻璃拟态 UI）：人格状态可视化调节、白名单管理、角色卡管理、远程指令面板（完整工具会话）、记忆/日志/会话管理
 - 🚀 **远程指令面板**：登录控制台即可让 DSH 的完整工具（pwsh/文件等）执行任务，结果回显——不经 QQ 传输层
 
+## 一键安装包（Windows）
+
+不想手动折腾？去 [Releases](https://github.com/NimuStudio/NimuQDock-dsh/releases) 下载 **NimuQDock-dsh-v0.1.0-win-x64.zip**（已含全部依赖，9MB，解压即用）：
+
+1. 解压到任意目录
+2. 双击 `install.bat` —— 自动检查 Node / 生成 config.json / 检测环境
+3. 按提示装好 NapCat 并登录 QQ（下方有详细步骤）
+4. 双击 `start.bat` 启动，浏览器自动打开 Web 控制台
+
+> 需要 Node.js ≥ 22.13 和已安装的 QQ 客户端。
+
 ## 开始使用
 
 ### 需要准备
