@@ -269,10 +269,6 @@
             <div class="card-title">执行结果</div>
             <div id="remoteResult" style="font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-all;max-height:360px;overflow-y:auto"></div>
           </div>
-          <div class="order-card" style="grid-column:1/-1">
-            <div class="card-title">历史记录</div>
-            <div id="remoteHistory"></div>
-          </div>
         </div>
       </div>
       <!-- 配置 -->
@@ -389,7 +385,7 @@ function showView(name) {
   if (name === 'overview') refreshLog();
   if (name === 'sessions') showSub('sessions', 'sessions');
   if (name === 'persona') showSub('persona', 'state');
-  if (name === 'remote') { refreshRemoteEnv(); refreshRemoteHistory(); }
+  if (name === 'remote') { refreshRemoteEnv(); }
   if (name === 'config') { refreshAllowlist(); refreshSocialForm(); refreshModelConfig(); refreshGroups(); }
 }
 
@@ -857,23 +853,12 @@ async function remoteExec() {
   // 工具输出是敌意可控内容（文件内容/命令输出），必须 textContent 渲染
   el.textContent = (r.timedOut ? '⏰ 超时未完成\n\n' : '✅ 完成（' + Math.round((r.durationMs || 0) / 1000) + 's）\n\n') +
     (r.output || '（无文本输出）') + tools;
-  refreshRemoteHistory();
   refreshRemoteChat(); // 执行后对话记录有新消息，刷新
 }
 async function resetRemote() {
   if (!confirm('清空远程会话上下文？下次执行将开新会话')) return;
   const r = await api('/api/remote/reset', 'POST', {});
   if (r.ok) { toast('已清空'); document.getElementById('remoteResult').innerHTML = ''; refreshRemoteEnv(); }
-}
-async function refreshRemoteHistory() {
-  try {
-    const r = await api('/api/remote/log');
-    const el = document.getElementById('remoteHistory');
-    el.innerHTML = r.entries?.length
-      ? r.entries.map((e) => '<div class="row-item"><span><b>' + (e.timedOut ? '⏰' : '✅') + '</b> ' + esc(e.command) + '</span>' +
-          '<span class="muted">' + esc(Math.round((e.durationMs || 0) / 1000)) + 's' + (e.tools?.length ? ' · ' + esc(e.tools.length) + ' 工具' : '') + '</span></div>').join('')
-      : '<span class="muted">暂无执行记录</span>';
-  } catch (e) {}
 }
 
 // ── Toast ──
