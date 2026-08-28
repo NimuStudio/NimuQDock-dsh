@@ -734,12 +734,26 @@ let curRemoteSess = '';     // 当前选择的会话 id
 
 function renderRemoteWsDD() {
   const menu = document.getElementById('remoteWsMenu');
-  menu.innerHTML = remoteWsList.map((w) =>
-    '<div class="glass-dd-item' + (w.id === curRemoteWs ? ' active' : '') + '" data-v="' + esc(w.id) + '">' +
-    esc((w.title || '(未命名)') + (w.sessionCount ? '（' + w.sessionCount + ' 会话）' : '')) + '</div>').join('');
+  menu.innerHTML = '<div class="glass-dd-item' + (!curRemoteWs ? ' active' : '') + '" data-v="">（全部工作区）</div>' +
+    remoteWsList.map((w) =>
+      '<div class="glass-dd-item' + (w.id === curRemoteWs ? ' active' : '') + '" data-v="' + esc(w.id) + '">' +
+      esc((w.title || '(未命名)') + (w.sessionCount ? '（' + w.sessionCount + ' 会话）' : '')) + '</div>').join('');
   const cur = remoteWsList.find((w) => w.id === curRemoteWs);
   document.querySelector('#remoteWsDD .glass-dd-trigger').innerHTML =
-    esc(cur ? cur.title : '（未选择工作区）') + ' <span class="glass-dd-arrow">▼</span>';
+    esc(cur ? cur.title : '（全部工作区）') + ' <span class="glass-dd-arrow">▼</span>';
+}
+
+/** 按当前工作区加载会话列表（空=全部工作区）。 */
+async function loadRemoteSessions() {
+  const wsParam = curRemoteWs ? '?workspaceId=' + encodeURIComponent(curRemoteWs) : '';
+  const s = await api('/api/remote/sessions' + wsParam);
+  remoteSessList = Array.isArray(s.sessions) ? s.sessions : [];
+  // 若当前选中的会话不在新列表里（切了工作区），清空选择
+  if (curRemoteSess && !remoteSessList.some((x) => x.sessionId === curRemoteSess)) {
+    curRemoteSess = '';
+    await api('/api/remote/select', 'POST', { sessionId: '' });
+  }
+  renderRemoteSessDD();
 }
 
 function renderRemoteSessDD() {
@@ -763,22 +777,21 @@ async function refreshRemoteEnv() {
     curRemoteWs = r.current?.workspaceId ?? '';
     curRemoteSess = r.current?.sessionId ?? '';
     renderRemoteWsDD();
-    // 会话列表跨工作区展示（含正在运行的会话），用户一进来就能看到
-    const s = await api('/api/remote/sessions?workspaceId=');
-    remoteSessList = Array.isArray(s.sessions) ? s.sessions : [];
-    renderRemoteSessDD();
+    await loadRemoteSessions();
     document.getElementById('remoteEnvStatus').textContent =
-      (curRemoteWs ? '工作区已选' : '未选工作区（执行时会自动创建）') +
+      (curRemoteWs ? '已选工作区（会话列表仅显示该工作区）' : '全部工作区（会话列表显示所有会话）') +
       (curRemoteSess ? ' · 会话已选（切换会话会归档旧会话）' : ' · 未选会话（执行时新建；可直接选任意会话复用）');
     refreshRemoteChat();
   } catch (e) {}
 }
 
-/** 玻璃下拉回调：切换工作区（会话列表仍显示全部，只是新建会话的目标变了）。 */
+/** 玻璃下拉回调：切换工作区（会话列表按所选工作区过滤）。 */
 async function pickRemoteWs(id) {
   curRemoteWs = String(id ?? '');
   await api('/api/remote/select', 'POST', { workspaceId: curRemoteWs });
   renderRemoteWsDD();
+  await loadRemoteSessions();
+  refreshRemoteChat();
 }
 
 /** 玻璃下拉回调：选择会话（归档旧会话后复用所选会话）。 */
