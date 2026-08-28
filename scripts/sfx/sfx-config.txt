@@ -1,0 +1,6 @@
+;!@Install@!UTF-8!
+Title="NimuQDock-dsh 安装"
+BeginPrompt="将解压安装 NimuQDock-dsh（QQ x DeepSeek Harness 对接坞，含全部依赖约 40MB），并运行安装向导。继续？"
+RunProgram="install.bat"
+Directory="NimuQDock-dsh"
+;!@Install@!End@!

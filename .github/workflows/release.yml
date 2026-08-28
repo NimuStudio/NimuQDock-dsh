@@ -1,0 +1,56 @@
+# 打 tag 自动构建发布：打包 zip + exe（SFX）→ 打产物来源证明 → 创建 GitHub Release
+# 用法：git tag v0.2.0 && git push origin v0.2.0
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Build zip (UTF-8 filenames)
+        run: node scripts/make-release-zip.mjs "${{ github.ref_name }}" "dist/NimuQDock-dsh-${{ github.ref_name }}-win-x64.zip"
+
+      - name: Build exe (7-Zip SFX)
+        run: |
+          mkdir -p dist
+          cat scripts/sfx/7z.sfx scripts/sfx/sfx-config.txt "dist/NimuQDock-dsh-${{ github.ref_name }}-win-x64.zip" \
+            > "dist/NimuQDock-dsh-${{ github.ref_name }}-setup.exe"
+          ls -la dist/
+
+      - name: Attest build provenance (来源证明)
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            dist/*.zip
+            dist/*.exe
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            "dist/NimuQDock-dsh-${{ github.ref_name }}-win-x64.zip" \
+            "dist/NimuQDock-dsh-${{ github.ref_name }}-setup.exe" \
+            --title "NimuQDock-dsh ${{ github.ref_name }}" \
+            --notes "自动构建发布（GitHub Actions）。安装说明见 README。"
+        env:
+          GH_TOKEN: ${{ github.token }}
