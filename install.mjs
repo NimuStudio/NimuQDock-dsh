@@ -17,8 +17,22 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(fileURLToPath(import.meta.url)); // install.mjs 位于项目根目录
 const DSH_VERSION = '0.1.1-rc.2'; // 与 dsh-host-apiproxy 依赖版本一致，保证 API/preset 兼容
 const NAPCAT_URL = 'https://github.com/NapNeko/NapCatQQ/releases/latest/download/NapCat.Shell.zip';
+const INSTALL_RECORD_DIR = path.join(os.homedir(), 'AppData', 'Roaming', 'NimuQDock-dsh');
+const INSTALL_RECORD = path.join(INSTALL_RECORD_DIR, 'install-path.json');
 const divider = () => console.log('─'.repeat(52));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 记录安装位置（卸载程序 uninstall.exe 据此定位项目目录）。 */
+function recordInstallPath() {
+  try {
+    fs.mkdirSync(INSTALL_RECORD_DIR, { recursive: true });
+    fs.writeFileSync(INSTALL_RECORD, JSON.stringify({
+      installPath: ROOT,
+      installedAt: new Date().toISOString(),
+      version: '0.1.3',
+    }, null, 2) + '\n', 'utf8');
+  } catch {}
+}
 
 function probePort(port, host = '127.0.0.1', timeoutMs = 1500) {
   return new Promise((resolve) => {
@@ -261,6 +275,7 @@ async function main() {
   await ensureNapCat();
 
   console.log('\n[6/6] 完成！');
+  recordInstallPath(); // 记录安装位置，供卸载程序使用
   const dshOk = await probePort(3080);
   const napcatOk = await probePort(3001);
   if (dshOk && napcatOk) {

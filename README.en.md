@@ -100,6 +100,12 @@ The wizard checks Node, generates `config.json`, **auto-installs and starts Deep
 
 > Requires Node.js ≥ 22.13 and an installed QQ client.
 
+## Uninstall
+
+- **exe uninstaller**: download `NimuQDock-dsh-uninstall.exe` (Releases page) → double-click → pick what to remove (project / DeepSeek Harness / NapCat, multi-select).
+- **Source users**: double-click `uninstall.bat` inside the project.
+- The uninstaller stops a running bridge first, then removes by your selection: the project directory, DSH (npm global package + `~/.dsh`), and NapCat (`NapCatShell/` including QQ login config).
+
 ## Getting started
 
 ### Prerequisites
