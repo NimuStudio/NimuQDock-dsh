@@ -94,9 +94,24 @@ flowchart TB
 | Dependency | Notes |
 |---|---|
 | Node.js | ≥ 22.13 |
-| DeepSeek Harness | running and reachable (default `http://127.0.0.1:3080`, changeable in `config.json`) |
+| DeepSeek Harness | see "Install DeepSeek Harness (DSH)" below |
 | NapCat | QQ protocol implementation, [download](https://github.com/NapNeko/NapCatQQ/releases/latest) |
 | QQ account | one dedicated for the bot (an alt account is recommended) |
+
+### Install DeepSeek Harness (DSH)
+
+The AI runs inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), so start it first:
+
+```bash
+# Option 1: run on the fly (good for a quick try)
+npx @deepseek-ai/dsh web
+
+# Option 2: install globally, then run
+npm i -g @deepseek-ai/dsh
+dsh web
+```
+
+Opening `http://127.0.0.1:3080` in a browser and seeing the DSH UI means it's up. The URL/port is configured in `config.json` under `dsh.baseUrl` (default `http://127.0.0.1:3080`) — keep the two in sync if you change it.
 
 ### ① Install dependencies
 
@@ -105,6 +120,8 @@ npm install
 ```
 
 ### ② Bring NapCat online
+
+> **Which version**: on **Windows** use the **Shell build** (a QQNT client must be installed first; QR-code login). On a **Linux server** use the **Docker image** (it bundles a Linux QQ). The steps below use the Windows Shell build as an example.
 
 1. Download NapCat and follow its official guide to log in with your QQ account (QR-code login; a QQ client must be installed).
 2. Open the NapCat WebUI: `http://127.0.0.1:6099/webui` (default password `napcat`).
@@ -171,6 +188,13 @@ Success looks like the log showing `配置已加载` → `DSH 已连接` → `Na
 - Open the web console at `http://127.0.0.1:3100` (token printed at startup): check status, switch **chat / agent** mode, tune the persona, manage whitelists, issue remote commands.
 - **agent** mode = simulated group friend: the AI watches messages on its own and decides whether to join based on its persona; private chats in agent mode only respond to `ownerQQ`.
 - Restarting DSH does not require restarting the bridge: the bridge probes DSH automatically, queues messages while DSH is offline, and replays them once it recovers.
+
+### Configure persona cards (roleplay)
+
+- In the console under **🧠 Persona → Persona cards**, you can **create / edit** `roles/*.yaml`: one file = one complete persona, and saving takes effect immediately (the cache is cleared automatically).
+  The `prompt` field is the persona text (identity, speech style, pet peeves injected into the AI); the other fields (mood / energy / interests / proactiveness) drive the persona engine.
+- **chat mode** role switch: in the console under **📊 Overview → Persona / role**, click a persona card (group members cannot change it).
+- **agent mode** default persona: edit `social.defaultPersona` in `config.json` (e.g. `小鲸鱼`), save, and restart the bridge.
 
 ### Offline self-tests (no QQ needed)
 
