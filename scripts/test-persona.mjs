@@ -177,7 +177,8 @@ import('../src/persona/memory.js').then(async ({ MemoryStore, extractGrams }) =>
   const eCfg = { social: { engagement: { wAttention: 2.5, wInterest: 1.5, wEnergy: 1.0, wMood: 0.8, wNoise: 0.6, threshold: 2.0, cooldownMs: 45000 }, defaultPersona: 'full' } };
 
   check('attention 被点名=1', computeAttention('在吗', { directed: true }) === 1.0);
-  check('attention 别名=0.9', computeAttention('小鲸鱼在吗', { aliases: ['小鲸鱼'], wakeKeywords: [] }) === 0.9);
+  check('attention 别名=0.6（参与信号非必回）', computeAttention('小鲸鱼在吗', { aliases: ['小鲸鱼'], wakeKeywords: [] }) === 0.6);
+  check('attention 唤醒词=0.9', computeAttention('机器人过来', { aliases: [], wakeKeywords: ['机器人'] }) === 0.9);
   check('attention 问句=0.35', computeAttention('这个怎么用', { aliases: [], wakeKeywords: [] }) === 0.35);
   check('attention 普通=0.05', computeAttention('今天天气不错', { aliases: [], wakeKeywords: [] }) === 0.05);
 
