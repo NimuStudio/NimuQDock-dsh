@@ -94,9 +94,24 @@ flowchart TB
 | 依赖 | 说明 |
 |---|---|
 | Node.js | ≥ 22.13 |
-| DeepSeek Harness | 已启动、可访问（默认本机 `http://127.0.0.1:3080`，可在 `config.json` 修改） |
+| DeepSeek Harness | 见下方「先装好 DeepSeek Harness」 |
 | NapCat | QQ 协议实现，[下载](https://github.com/NapNeko/NapCatQQ/releases/latest) |
 | QQ 账号 | 一个用于机器人的 QQ 号（建议小号） |
+
+### 先装好 DeepSeek Harness（DSH）
+
+本项目把 AI 放在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 里运行，需要先把它启动起来：
+
+```bash
+# 方式一：临时运行（想先试试就用这个）
+npx @deepseek-ai/dsh web
+
+# 方式二：全局安装后运行
+npm i -g @deepseek-ai/dsh
+dsh web
+```
+
+浏览器打开 `http://127.0.0.1:3080` 能看到 DSH 界面即成功。DSH 的地址/端口在 `config.json` 的 `dsh.baseUrl` 配置（默认 `http://127.0.0.1:3080`），改了地址就同步改这里。
 
 ### ① 安装依赖
 
@@ -105,6 +120,8 @@ npm install
 ```
 
 ### ② 让 NapCat 上线
+
+> **版本选择**：**Windows** 用 **Shell 版**（需先安装 QQ 客户端 QQNT，扫码登录）；**Linux 服务器**用 **Docker 版**（镜像自带 Linux QQ）。以下步骤以 Windows Shell 版为例。
 
 1. 下载 NapCat 并按官方教程把它接入你的 QQ 账号（扫码登录，会要求已安装 QQ 客户端）。
 2. 打开 NapCat WebUI：`http://127.0.0.1:6099/webui`（默认口令 `napcat`）。
@@ -171,6 +188,13 @@ npm start
 - 打开 Web 控制台 `http://127.0.0.1:3100`（令牌在启动日志里）：查看状态、切换 **chat / agent** 模式、调节人格、管理白名单、发远程指令。
 - agent 模式 = 仿真群友：AI 主动看消息、按人格决定参不参与；agent 模式私聊只响应 `ownerQQ`。
 - 重启 DSH 不需要动桥接：桥接会自动探活，DSH 掉线期间的消息会入队缓存，恢复后自动补投。
+
+### 配置人格卡（角色扮演）
+
+- 控制台「🧠 人格 → 人格卡」页可**新建 / 编辑** `roles/*.yaml`：一个文件 = 一个完整人格，保存即生效（自动清缓存）。
+  `prompt` 字段就是人设文本（注入给 AI 的身份、说话风格、雷点）；其余字段（心情/精力/兴趣/参与度）驱动人格引擎。
+- **chat 模式**切换角色：控制台「📊 概览 → 人格 / 角色」点人格卡即可（群友无法更改）。
+- **agent 模式**默认人格：改 `config.json` 的 `social.defaultPersona`（如 `小鲸鱼`），保存后重启桥接生效。
 
 ### 离线自测（不需要 QQ）
 
