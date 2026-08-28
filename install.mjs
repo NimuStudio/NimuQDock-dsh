@@ -11,6 +11,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
 import os from 'node:os';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -159,32 +161,11 @@ function detectQQ() {
   return null;
 }
 
-/** 下载文件（流式写盘，带背压与错误处理）。 */
+/** 下载文件（流式写盘，用 pipeline 处理背压/错误/清理）。 */
 async function downloadFile(url, dest, timeoutMs = 600000) {
   const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-  const file = fs.createWriteStream(dest);
-  await new Promise((resolve, reject) => {
-    let settled = false;
-    const done = (fn, val) => { if (!settled) { settled = true; fn(val); } };
-    file.on('error', (e) => done(reject, e));
-    file.on('finish', () => done(resolve));
-    const pump = async () => {
-      try {
-        const reader = res.body.getReader();
-        while (true) {
-          const { done: d, value } = await reader.read();
-          if (d) break;
-          if (!file.write(Buffer.from(value))) {
-            // 背压：等 drain 再继续
-            await new Promise((r) => file.once('drain', r));
-          }
-        }
-        file.end();
-      } catch (e) { done(reject, e); }
-    };
-    pump();
-  });
+  await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(dest));
 }
 
 /** 依次尝试镜像下载（国内加速），全部失败抛错。 */
