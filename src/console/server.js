@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { readActivityTail } from '../log.js';
 import { writeRoleState, readRoleState } from '../state.js';
 import { sanitizeRoleName, sleep } from '../lib/utils.js';
+import { imageBufferFromGetImage as getImageBuffer } from '../lib/qq-image.js';
 import { SENSITIVE_RE } from '../lib/sensitive.js';
 import { isAllowed } from '../policy/allowlist.js';
 import { segmentsToPlain } from '../transport/onebot11.js';
@@ -103,29 +104,11 @@ function sniffImageMime(buf) {
 }
 
 /**
- * 从 NapCat get_image 结果解析图片字节。
- * get_image 返回 {file, url}：file 可能是 base64://xxx、本地路径、文件名；
- * 直接按 base64 解码路径会得到垃圾字节。优先 url 下载，再尝试 base64 前缀/纯 base64。
+ * 从 NapCat get_image 结果解析图片字节（与 router.resolveImagePart 共用同一实现）。
+ * 优先本地缓存文件 → URL（本地/QQ CDN 白名单）→ base64；非图片/超限返回 null。
  */
 async function imageBufferFromGetImage(res) {
-  if (!res) return null;
-  // 1) 优先 url 下载
-  if (res.url && /^https?:\/\//.test(String(res.url))) {
-    try {
-      const r = await fetch(res.url, { signal: AbortSignal.timeout(15000) });
-      if (r.ok) return Buffer.from(await r.arrayBuffer());
-    } catch {}
-  }
-  // 2) base64:// 前缀
-  const file = String(res.file ?? '');
-  if (file.startsWith('base64://')) {
-    try { return Buffer.from(file.slice(9), 'base64'); } catch {}
-  }
-  // 3) 纯 base64 且不含路径特征（本地路径会带 \ / : 扩展名，base64 只有字母数字+/=）
-  if (file.length > 200 && /^[A-Za-z0-9+/]+=*$/.test(file) && !file.includes('.')) {
-    try { return Buffer.from(file, 'base64'); } catch {}
-  }
-  return null;
+  return getImageBuffer(res, {}); // 默认 8MB 上限
 }
 
 /** 解析会话键为 {kind, id}；剥离多人格后缀 #personaId。 */

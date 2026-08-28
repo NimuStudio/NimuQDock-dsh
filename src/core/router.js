@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { convKey, sanitizeRoleName } from '../lib/utils.js';
+import { imageBufferFromGetImage } from '../lib/qq-image.js';
 import { isAllowed } from '../policy/allowlist.js';
 import { segmentsToPlain } from '../transport/onebot11.js';
 import { ROOT } from '../config.js';
@@ -242,42 +243,21 @@ export class Router {
     }
   }
 
-  /** 图片段 → DSH image part（get_image 拉字节 → 嗅探 mime → base64）。失败/超限返回 null。 */
+  /** 图片段 → DSH image part（get_image 解析字节 → 嗅探 mime → base64）。失败/超限返回 null。 */
   async resolveImagePart(data) {
     if (!this.cfg.vision?.enabled) return null;
     try {
       const file = data?.file ?? '';
       if (!file) return null;
       const res = await this.bot.action('get_image', { file });
-      // get_image 返回 {file,url}：file 可能是 base64://、本地路径、文件名——不能直接按 base64 解码
-      let buf = null;
-      // 外链下载仅允许 NapCat 返回的 http(s) URL，且主机必须是回环/私有地址（NapCat 本地服务的图片缓存），
-      // 防止 get_image 响应被污染后让桥接对任意外网地址发起请求（SSRF 面）
-      if (res?.url && /^https?:\/\//.test(String(res.url))) {
-        try {
-          const u = new URL(String(res.url));
-          const host = u.hostname;
-          const safeHost = host === 'localhost' || host === '127.0.0.1' || host === '::1'
-            || /^192\.168\./.test(host) || /^10\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-          if (safeHost) {
-            const r = await fetch(res.url, { signal: AbortSignal.timeout(15000) });
-            if (r.ok) buf = Buffer.from(await r.arrayBuffer());
-          }
-        } catch {}
-      }
-      const resFile = String(res?.file ?? '');
-      if (!buf && resFile.startsWith('base64://')) {
-        buf = Buffer.from(resFile.slice(9), 'base64');
-      }
-      if (!buf && resFile.length > 200 && /^[A-Za-z0-9+/]+=*$/.test(resFile) && !resFile.includes('.')) {
-        buf = Buffer.from(resFile, 'base64');
-      }
+      // 解析字节：优先本地缓存文件（get_image 返回的绝对路径），再 URL（本地/QQ CDN 白名单）、base64
+      const buf = await imageBufferFromGetImage(res, {
+        maxBytes: this.cfg.vision?.maxImageBytes ?? 8 * 1024 * 1024,
+      });
       if (!buf || buf.length === 0) return null;
-      if (buf.length > (this.cfg.vision?.maxImageBytes ?? 8 * 1024 * 1024)) {
-        this.log(`图片过大，跳过直通（${buf.length} 字节）`);
-        return null;
-      }
-      const mime = sniffImageMime(buf) ?? 'image/jpeg';
+      // 魔数嗅探硬校验：非图片字节（含被操纵路径读到的任意文件）一律丢弃，不 fallback
+      const mime = sniffImageMime(buf);
+      if (!mime) return null;
       return { type: 'image', mediaType: mime, data: buf.toString('base64'), name: 'qq-image' };
     } catch (error) {
       this.log(`图片获取失败: ${error?.message ?? error}`);
@@ -566,8 +546,12 @@ export class Router {
     this.log(`[agent] ${key} 评分 attention=${attention.toFixed(2)} interest=${interest.toFixed(2)} → ${verdict}（${reason}）`);
 
     if (verdict !== 'wake') return;
-    // 5) 唤醒投递
-    await this.wakeUp(key, { reason, triggerMsg: { textContent, plainContent, userId: msg.userId } });
+    // 5) 唤醒投递（触发消息的图片直通进 prompt，AI 打开上下文即可看到，不依赖工具调用）
+    await this.wakeUp(key, {
+      reason,
+      triggerMsg: { textContent, plainContent, userId: msg.userId },
+      imageParts,
+    });
   }
 
   /** 是否直接指向机器人：私聊必然指向；@机器人 / 引用机器人 / 文本含别名或昵称。 */
@@ -590,8 +574,8 @@ export class Router {
     return aliases.some((a) => a && s.includes(a));
   }
 
-  /** 唤醒投递：组装 prompt → ensureSession → sessions.prompt。 */
-  async wakeUp(key, { reason = 'score', triggerMsg = null } = {}) {
+  /** 唤醒投递：组装 prompt → ensureSession → sessions.prompt。imageParts 为触发消息的图片（直通）。 */
+  async wakeUp(key, { reason = 'score', triggerMsg = null, imageParts = [] } = {}) {
     const { state, memory, tokens } = this.persona;
     const personaDef = state.safePersona(key);
     if (!personaDef) return;
@@ -614,7 +598,12 @@ export class Router {
       token,
     });
     this.log(`[agent] 唤醒投递 (${key})：${reason}`);
-    await this.deliverPrompt(key, promptText, [{ type: 'text', text: promptText }], { ack: false });
+    // 触发消息的图片直通：文本 prompt + 图片 parts（vision 模型直接看，不依赖工具）
+    const parts = [{ type: 'text', text: promptText }];
+    for (const p of imageParts ?? []) {
+      if (p?.type === 'image' && p?.data) parts.push(p);
+    }
+    await this.deliverPrompt(key, promptText, parts, { ack: false });
   }
 
   /** 消息入未读缓冲（按会话上限裁剪）；附带图片/合并转发媒体信息供工具读取。 */
