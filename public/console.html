@@ -28,6 +28,10 @@
   .section-title{font-size:20px;font-weight:700;letter-spacing:-.02em}
   .section-subtitle{font-size:13px;color:var(--text-dim);margin-top:2px}
   .hidden-view{display:none!important}
+  .sub-tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+  .sub-tab{padding:7px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.35);color:var(--text-dim);font-size:13px;font-weight:600;cursor:pointer;transition:all .25s var(--spring)}
+  .sub-tab:hover{background:rgba(255,255,255,.55)}
+  .sub-tab.active{background:rgba(232,184,48,.25);border-color:rgba(232,184,48,.45);color:#a07008;font-weight:700}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-bottom:16px}
   .order-card{background:rgba(255,255,255,.45);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.5);border-radius:var(--radius);padding:18px 20px;transition:transform .3s var(--spring),box-shadow .3s ease}
   .order-card:hover{transform:translateY(-2px);box-shadow:var(--glass-shadow-hover)}
@@ -132,14 +136,10 @@
   <div class="main-layout">
     <aside class="sidebar">
       <button class="game-btn active" data-view="overview" onclick="showView('overview')">📊 概览</button>
-      <button class="game-btn" data-view="sessions" onclick="showView('sessions')">💬 会话</button>
-      <button class="game-btn" data-view="persona" onclick="showView('persona')">🧠 人格状态</button>
-      <button class="game-btn" data-view="qq" onclick="showView('qq')">👥 QQ 管理</button>
-      <button class="game-btn" data-view="memory" onclick="showView('memory')">📚 记忆</button>
-      <button class="game-btn" data-view="roles" onclick="showView('roles')">🎭 人格卡</button>
+      <button class="game-btn" data-view="sessions" onclick="showView('sessions')">💬 会话与记忆</button>
+      <button class="game-btn" data-view="persona" onclick="showView('persona')">🧠 人格</button>
       <button class="game-btn" data-view="remote" onclick="showView('remote')">🚀 远程指令</button>
       <button class="game-btn" data-view="config" onclick="showView('config')">⚙️ 配置</button>
-      <button class="game-btn" data-view="logs" onclick="showView('logs')">📜 活动日志</button>
     </aside>
     <main class="main-content">
       <!-- 概览 -->
@@ -171,75 +171,55 @@
             </div>
           </div>
         </div>
+        <div class="cards">
+          <div class="order-card" style="grid-column:1/-1">
+            <div class="card-title">活动日志（QQ 消息收发实时记录）</div>
+            <pre class="log-area" id="log" style="max-height:280px"></pre>
+          </div>
+        </div>
       </div>
-      <!-- 会话 -->
+      <!-- 会话与记忆（子 tab：会话 / 记忆） -->
       <div id="view-sessions" class="hidden-view">
         <div class="section-header">
           <div class="section-header-icon">💬</div>
-          <div><div class="section-title">会话</div><div class="section-subtitle">QQ 会话 ↔ DSH 会话映射</div></div>
+          <div><div class="section-title">会话与记忆</div><div class="section-subtitle">QQ 会话 ↔ DSH 会话映射 · 长期记忆 / 群话题 / 会话历史</div></div>
         </div>
-        <div id="sessionList"></div>
+        <div class="sub-tabs">
+          <button class="sub-tab active" data-sub="sessions" onclick="showSub('sessions','sessions')">💬 会话</button>
+          <button class="sub-tab" data-sub="memory" onclick="showSub('sessions','memory')">📚 记忆</button>
+        </div>
+        <div id="sub-sessions" class="sub-panel">
+          <div id="sessionList"></div>
+        </div>
+        <div id="sub-memory" class="sub-panel hidden-view">
+          <div id="memoryList"></div>
+        </div>
       </div>
-      <!-- 人格状态 -->
+      <!-- 人格（子 tab：状态 / 人格卡） -->
       <div id="view-persona" class="hidden-view">
         <div class="section-header">
           <div class="section-header-icon">🧠</div>
-          <div><div class="section-title">人格状态</div><div class="section-subtitle">每个会话的心情 / 精力 / 在场状态（agent 模式）</div></div>
+          <div><div class="section-title">人格</div><div class="section-subtitle">每个会话的心情 / 精力 / 在场状态 · 人格卡（.yaml）管理</div></div>
         </div>
-        <div id="personaStates"></div>
-      </div>
-      <!-- QQ 管理 -->
-      <div id="view-qq" class="hidden-view">
-        <div class="section-header">
-          <div class="section-header-icon">👥</div>
-          <div><div class="section-title">QQ 管理</div><div class="section-subtitle">群列表 / 白名单标注 / 发测试消息</div></div>
+        <div class="sub-tabs">
+          <button class="sub-tab active" data-sub="state" onclick="showSub('persona','state')">🧠 状态</button>
+          <button class="sub-tab" data-sub="cards" onclick="showSub('persona','cards')">🎭 人格卡</button>
         </div>
-        <div class="cards">
-          <div class="order-card" style="grid-column:1/-1">
-            <div class="card-title">群列表（点击切换白名单）</div>
-            <div id="groupList"></div>
-          </div>
-          <div class="order-card" style="grid-column:1/-1">
-            <div class="card-title">发测试消息</div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-              <div class="glass-dd" data-onpick="setSendChannel">
-                <button class="glass-dd-trigger">私聊 <span class="glass-dd-arrow">▼</span></button>
-                <div class="glass-dd-menu">
-                  <div class="glass-dd-item active" data-v="private">私聊</div>
-                  <div class="glass-dd-item" data-v="group">群聊</div>
-                </div>
+        <div id="sub-state" class="sub-panel">
+          <div id="personaStates"></div>
+        </div>
+        <div id="sub-cards" class="sub-panel hidden-view">
+          <div class="cards">
+            <div class="order-card" style="grid-column:1/-1">
+              <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+                <span>人格卡（roles/*.yaml）</span>
+                <button class="btn-accept" onclick="newRoleCard('yaml')">＋ 新建人格卡</button>
               </div>
-              <input id="sendId" class="glass-input" placeholder="QQ 号 / 群号" style="width:170px">
-              <input id="sendText" class="glass-input" placeholder="消息内容" style="flex:1;min-width:200px">
-              <button class="btn-accept" onclick="sendTestMsg()">发送</button>
+              <div id="roleCardList"></div>
             </div>
           </div>
+          <div id="roleEditor" style="display:none"></div>
         </div>
-      </div>
-      <!-- 记忆 -->
-      <div id="view-memory" class="hidden-view">
-        <div class="section-header">
-          <div class="section-header-icon">📚</div>
-          <div><div class="section-title">记忆管理</div><div class="section-subtitle">各会话长期记忆 / 群话题 / 手动唤醒 / 会话历史</div></div>
-        </div>
-        <div id="memoryList"></div>
-      </div>
-      <!-- 人格卡 -->
-      <div id="view-roles" class="hidden-view">
-        <div class="section-header">
-          <div class="section-header-icon">🎭</div>
-          <div><div class="section-title">人格卡</div><div class="section-subtitle">一个 .yaml 文件 = 完整人格（人设 prompt + 性格/心情/精力参数），保存即生效</div></div>
-        </div>
-        <div class="cards">
-          <div class="order-card" style="grid-column:1/-1">
-            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
-              <span>人格卡（roles/*.yaml）</span>
-              <button class="btn-accept" onclick="newRoleCard('yaml')">＋ 新建人格卡</button>
-            </div>
-            <div id="roleCardList"></div>
-          </div>
-        </div>
-        <div id="roleEditor" style="display:none"></div>
       </div>
       <!-- 远程指令 -->
       <div id="view-remote" class="hidden-view">
@@ -307,15 +287,25 @@
             <div id="socialForm"></div>
             <button class="btn-accept" style="margin-top:10px" onclick="saveSocial()">保存参数</button>
           </div>
+          <div class="order-card" style="grid-column:1/-1">
+            <div class="card-title">QQ 管理</div>
+            <div class="card-title" style="margin-top:4px">群列表（点击切换白名单）</div>
+            <div id="groupList"></div>
+            <div class="card-title" style="margin-top:14px">发测试消息</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <div class="glass-dd" data-onpick="setSendChannel">
+                <button class="glass-dd-trigger">私聊 <span class="glass-dd-arrow">▼</span></button>
+                <div class="glass-dd-menu">
+                  <div class="glass-dd-item active" data-v="private">私聊</div>
+                  <div class="glass-dd-item" data-v="group">群聊</div>
+                </div>
+              </div>
+              <input id="sendId" class="glass-input" placeholder="QQ 号 / 群号" style="width:170px">
+              <input id="sendText" class="glass-input" placeholder="消息内容" style="flex:1;min-width:200px">
+              <button class="btn-accept" onclick="sendTestMsg()">发送</button>
+            </div>
+          </div>
         </div>
-      </div>
-      <!-- 日志 -->
-      <div id="view-logs" class="hidden-view">
-        <div class="section-header">
-          <div class="section-header-icon">📜</div>
-          <div><div class="section-title">活动日志</div><div class="section-subtitle">QQ 消息收发实时记录</div></div>
-        </div>
-        <pre class="log-area" id="log"></pre>
       </div>
     </main>
   </div>
@@ -362,14 +352,25 @@ function showView(name) {
   document.querySelectorAll('.main-content > div').forEach((el) => el.classList.add('hidden-view'));
   document.getElementById('view-' + name).classList.remove('hidden-view');
   document.querySelectorAll('.game-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
-  if (name === 'sessions') refreshSessions();
-  if (name === 'persona') refreshPersona();
-  if (name === 'qq') refreshGroups();
-  if (name === 'memory') refreshMemory();
-  if (name === 'roles') refreshRoleCards();
+  if (name === 'overview') refreshLog();
+  if (name === 'sessions') showSub('sessions', 'sessions');
+  if (name === 'persona') showSub('persona', 'state');
   if (name === 'remote') refreshRemoteHistory();
-  if (name === 'config') { refreshAllowlist(); refreshSocialForm(); refreshModelConfig(); }
-  if (name === 'logs') refreshLog();
+  if (name === 'config') { refreshAllowlist(); refreshSocialForm(); refreshModelConfig(); refreshGroups(); }
+}
+
+/** 合并视图内的子 tab 切换（会话/记忆、人格状态/人格卡）。 */
+function showSub(parent, sub) {
+  document.querySelectorAll('#view-' + parent + ' .sub-tab').forEach((b) => b.classList.toggle('active', b.dataset.sub === sub));
+  document.querySelectorAll('#view-' + parent + ' .sub-panel').forEach((el) => el.classList.toggle('hidden-view', el.id !== 'sub-' + sub));
+  if (parent === 'sessions') {
+    if (sub === 'sessions') refreshSessions();
+    else refreshMemory();
+  }
+  if (parent === 'persona') {
+    if (sub === 'state') refreshPersona();
+    else refreshRoleCards();
+  }
 }
 
 // ── 人格卡管理（统一 .yaml） ──
@@ -843,7 +844,7 @@ async function refreshAll() { await Promise.allSettled([refreshStatus(), refresh
 // ── 初始化 ──
 if (TOKEN) { document.getElementById('login').style.display = 'none'; document.getElementById('app').style.display = 'flex'; refreshAll(); }
 else { showLogin(); }
-setInterval(() => { if (TOKEN) { refreshStatus(); if (!document.getElementById('view-logs').classList.contains('hidden-view')) refreshLog(); } }, 5000);
+setInterval(() => { if (TOKEN) { refreshStatus(); if (!document.getElementById('view-overview').classList.contains('hidden-view')) refreshLog(); } }, 5000);
 </script>
 </body>
 </html>
