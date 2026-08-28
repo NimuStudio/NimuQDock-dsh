@@ -229,6 +229,25 @@
         </div>
         <div class="cards">
           <div class="order-card" style="grid-column:1/-1">
+            <div class="card-title">工作区 / 会话</div>
+            <div class="muted" style="margin-bottom:8px">选择远程指令运行的工作区与会话；可新建工作区或会话（切换会话会归档旧会话）。</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <label class="muted" style="white-space:nowrap">工作区</label>
+              <div class="glass-dd" data-onpick="pickRemoteWs" id="remoteWsDD" style="min-width:200px">
+                <button class="glass-dd-trigger">加载中… <span class="glass-dd-arrow">▼</span></button>
+                <div class="glass-dd-menu" id="remoteWsMenu"></div>
+              </div>
+              <button class="btn-accept" onclick="newRemoteWs()">＋ 新建工作区</button>
+              <label class="muted" style="white-space:nowrap">会话</label>
+              <div class="glass-dd" data-onpick="pickRemoteSess" id="remoteSessDD" style="min-width:200px">
+                <button class="glass-dd-trigger">加载中… <span class="glass-dd-arrow">▼</span></button>
+                <div class="glass-dd-menu" id="remoteSessMenu"></div>
+              </div>
+              <button class="btn-accept" onclick="newRemoteSession()">＋ 新建会话</button>
+            </div>
+            <div class="muted" id="remoteEnvStatus" style="margin-top:8px"></div>
+          </div>
+          <div class="order-card" style="grid-column:1/-1">
             <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
               <span>指令</span>
               <span><button class="btn-cancel" onclick="resetRemote()">清空会话上下文</button></span>
@@ -363,7 +382,7 @@ function showView(name) {
   if (name === 'overview') refreshLog();
   if (name === 'sessions') showSub('sessions', 'sessions');
   if (name === 'persona') showSub('persona', 'state');
-  if (name === 'remote') refreshRemoteHistory();
+  if (name === 'remote') { refreshRemoteEnv(); refreshRemoteHistory(); }
   if (name === 'config') { refreshAllowlist(); refreshSocialForm(); refreshModelConfig(); refreshGroups(); }
 }
 
@@ -701,6 +720,93 @@ document.addEventListener('click', (e) => {
 });
 
 // ── 远程指令 ──
+let remoteWsList = [];      // 工作区列表
+let remoteSessList = [];    // 当前工作区会话列表
+let curRemoteWs = '';       // 当前选择的工作区 id
+let curRemoteSess = '';     // 当前选择的会话 id
+
+function renderRemoteWsDD() {
+  const menu = document.getElementById('remoteWsMenu');
+  menu.innerHTML = remoteWsList.map((w) =>
+    '<div class="glass-dd-item' + (w.id === curRemoteWs ? ' active' : '') + '" data-v="' + esc(w.id) + '">' +
+    esc((w.title || '(未命名)') + (w.sessionCount ? '（' + w.sessionCount + ' 会话）' : '')) + '</div>').join('');
+  const cur = remoteWsList.find((w) => w.id === curRemoteWs);
+  document.querySelector('#remoteWsDD .glass-dd-trigger').innerHTML =
+    esc(cur ? cur.title : '（未选择工作区）') + ' <span class="glass-dd-arrow">▼</span>';
+}
+
+function renderRemoteSessDD() {
+  const menu = document.getElementById('remoteSessMenu');
+  const items = remoteSessList.map((s) => {
+    const t = new Date(s.updatedAt * 1000);
+    const ts = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+    return '<div class="glass-dd-item' + (s.sessionId === curRemoteSess ? ' active' : '') + '" data-v="' + esc(s.sessionId) + '">' +
+      esc((s.blank ? '新会话' : '会话') + ' ' + s.sessionId.slice(0, 8) + (s.running ? ' ⏳' : '') + ' ' + ts) + '</div>';
+  }).join('');
+  menu.innerHTML = items || '<div class="glass-dd-item" data-v="">（该工作区无会话）</div>';
+  document.querySelector('#remoteSessDD .glass-dd-trigger').innerHTML =
+    esc(curRemoteSess ? '会话 ' + curRemoteSess.slice(0, 8) : '（未选择会话）') + ' <span class="glass-dd-arrow">▼</span>';
+}
+
+async function refreshRemoteEnv() {
+  try {
+    const r = await api('/api/remote/workspaces');
+    remoteWsList = Array.isArray(r.workspaces) ? r.workspaces : [];
+    curRemoteWs = r.current?.workspaceId ?? '';
+    curRemoteSess = r.current?.sessionId ?? '';
+    renderRemoteWsDD();
+    if (curRemoteWs) {
+      const s = await api('/api/remote/sessions?workspaceId=' + encodeURIComponent(curRemoteWs));
+      remoteSessList = Array.isArray(s.sessions) ? s.sessions : [];
+    } else {
+      remoteSessList = [];
+    }
+    renderRemoteSessDD();
+    document.getElementById('remoteEnvStatus').textContent =
+      (curRemoteWs ? '工作区已选' : '未选工作区（执行时会自动创建）') +
+      (curRemoteSess ? ' · 会话已选（切换会话会归档旧会话）' : ' · 未选会话（执行时新建）');
+  } catch (e) {}
+}
+
+/** 玻璃下拉回调：切换工作区（切换后清空会话选择）。 */
+async function pickRemoteWs(id) {
+  curRemoteWs = String(id ?? '');
+  curRemoteSess = '';
+  await api('/api/remote/select', 'POST', { workspaceId: curRemoteWs, sessionId: '' });
+  renderRemoteWsDD();
+  remoteSessList = [];
+  renderRemoteSessDD();
+  try {
+    const s = await api('/api/remote/sessions?workspaceId=' + encodeURIComponent(curRemoteWs));
+    remoteSessList = Array.isArray(s.sessions) ? s.sessions : [];
+    renderRemoteSessDD();
+  } catch (e) {}
+}
+
+/** 玻璃下拉回调：切换会话（归档旧会话）。 */
+async function pickRemoteSess(id) {
+  curRemoteSess = String(id ?? '');
+  await api('/api/remote/select', 'POST', { sessionId: curRemoteSess });
+  renderRemoteSessDD();
+}
+
+/** 新建工作区（输入标题，创建后自动设为当前）。 */
+async function newRemoteWs() {
+  const title = prompt('新工作区名称：');
+  if (!title || !title.trim()) return;
+  const r = await api('/api/remote/workspace', 'POST', { title: title.trim() });
+  if (r.ok) { toast('已新建工作区'); refreshRemoteEnv(); }
+  else toast('新建失败：' + (r.error || ''));
+}
+
+/** 在当前工作区新建会话（归档旧会话）。 */
+async function newRemoteSession() {
+  if (!curRemoteWs) { toast('请先选择工作区'); return; }
+  const r = await api('/api/remote/session', 'POST', { workspaceId: curRemoteWs });
+  if (r.ok) { toast('已新建会话'); refreshRemoteEnv(); }
+  else toast('新建失败：' + (r.error || ''));
+}
+
 async function remoteExec() {
   const command = document.getElementById('remoteCmd').value.trim();
   if (!command) { toast('请输入指令'); return; }
