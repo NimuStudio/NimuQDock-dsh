@@ -575,13 +575,18 @@ export class Router {
     // 私聊 = 直接找 AI 说话，一定是强指向（仿真群友的潜水语义只适用于群聊）
     if (msg.kind === 'private') return true;
     if (quoteTargetIsSelf) return true;
+    const s = String(textContent ?? '');
+    // @ 段指向机器人（NapCat 某些客户端 @ 自己会上报为 0；标准为 selfId）
     const atSelf = (msg.segments ?? []).some(
-      (seg) => seg?.type === 'at' && String(seg.data?.qq) === String(msg.selfId),
+      (seg) => seg?.type === 'at' && ['0', String(msg.selfId)].includes(String(seg.data?.qq ?? '')),
     );
     if (atSelf) return true;
+    // 文本里显式 @机器人（昵称或 QQ 号）——有些客户端/手动输入是纯文本 @，没有 at 段
+    const nick = this.bot?.nickname;
+    if (nick && s.includes('@' + nick)) return true;
+    if (s.includes('@' + msg.selfId)) return true;
     const personaDef = this.persona?.state?.safePersona(convKey(msg.kind, msg.convId));
     const aliases = personaDef?.aliases ?? [];
-    const s = String(textContent ?? '');
     return aliases.some((a) => a && s.includes(a));
   }
 
