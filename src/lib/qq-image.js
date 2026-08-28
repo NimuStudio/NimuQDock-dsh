@@ -15,6 +15,18 @@ import { fileURLToPath } from 'node:url';
 
 const QQ_IMG_CDN_RE = /(^|\.)(qpic\.cn|nt\.qq\.com\.cn)$/;
 
+/** 图片魔数嗅探 → mediaType；未知返回 null。 */
+export function sniffImageMime(buf) {
+  if (!buf || buf.length < 12) return null;
+  const b = buf;
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'image/gif';
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+      b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  return null;
+}
+
 /** 是否放行该主机（回环/私有 + QQ 图片 CDN）。 */
 function safeImageHost(host) {
   const h = String(host ?? '').toLowerCase();
@@ -32,6 +44,7 @@ function safeImageHost(host) {
 export async function imageBufferFromGetImage(res, { maxBytes = 8 * 1024 * 1024 } = {}) {
   if (!res) return null;
   const limit = Number(maxBytes) || 8 * 1024 * 1024;
+  let result = null;
 
   // 1) 优先：本地缓存文件（get_image 返回 NapCat 解析后的绝对路径）
   const resFile = String(res.file ?? '');
@@ -46,14 +59,14 @@ export async function imageBufferFromGetImage(res, { maxBytes = 8 * 1024 * 1024 
       try {
         const st = fs.statSync(localPath);
         if (st.isFile() && st.size > 0 && st.size <= limit) {
-          return fs.readFileSync(localPath);
+          result = fs.readFileSync(localPath);
         }
       } catch {}
     }
   }
 
   // 2) URL 下载：仅放行本地/私有地址与 QQ 图片 CDN；重定向逐跳重新校验（防 redirect 绕过白名单）
-  if (res.url && /^https?:\/\//.test(String(res.url))) {
+  if (!result && res.url && /^https?:\/\//.test(String(res.url))) {
     try {
       let current = String(res.url);
       for (let hop = 0; hop < 5; hop++) {
@@ -66,7 +79,7 @@ export async function imageBufferFromGetImage(res, { maxBytes = 8 * 1024 * 1024 
         }
         if (r.ok) {
           const buf = Buffer.from(await r.arrayBuffer());
-          if (buf.length > 0 && buf.length <= limit) return buf;
+          if (buf.length > 0 && buf.length <= limit) result = buf;
         }
         break;
       }
@@ -74,19 +87,21 @@ export async function imageBufferFromGetImage(res, { maxBytes = 8 * 1024 * 1024 
   }
 
   // 3) base64:// 前缀
-  if (resFile.startsWith('base64://')) {
+  if (!result && resFile.startsWith('base64://')) {
     try {
       const buf = Buffer.from(resFile.slice(9), 'base64');
-      if (buf.length > 0 && buf.length <= limit) return buf;
+      if (buf.length > 0 && buf.length <= limit) result = buf;
     } catch {}
   }
 
   // 4) 纯 base64 文本（无路径特征：只有字母数字+/=，且足够长）
-  if (resFile.length > 200 && /^[A-Za-z0-9+/]+=*$/.test(resFile) && !resFile.includes('.')) {
+  if (!result && resFile.length > 200 && /^[A-Za-z0-9+/]+=*$/.test(resFile) && !resFile.includes('.')) {
     try {
       const buf = Buffer.from(resFile, 'base64');
-      if (buf.length > 0 && buf.length <= limit) return buf;
+      if (buf.length > 0 && buf.length <= limit) result = buf;
     } catch {}
   }
-  return null;
+
+  // 纵深防御：无论字节来自本地文件/URL/base64，返回前统一做图片魔数嗅探，非图片一律 null
+  return result && sniffImageMime(result) ? result : null;
 }
