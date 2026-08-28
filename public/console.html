@@ -252,10 +252,14 @@
           </div>
           <div class="order-card" style="grid-column:1/-1">
             <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
-              <span>指令</span>
+              <span>💬 对话记录（当前会话）</span>
               <span><button class="btn-cancel" onclick="resetRemote()">清空会话上下文</button></span>
             </div>
-            <textarea id="remoteCmd" class="glass-input" placeholder="例如：列出当前目录文件 / 写一段代码并运行 / 查看 DSH 版本" style="width:100%;height:90px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6;resize:vertical"></textarea>
+            <div id="remoteChat" style="max-height:400px;min-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;padding:6px 4px;background:rgba(255,255,255,.25);border-radius:10px"></div>
+          </div>
+          <div class="order-card" style="grid-column:1/-1">
+            <div class="card-title">指令</div>
+            <textarea id="remoteCmd" class="glass-input" placeholder="输入指令，回车执行（Shift+Enter 换行）：例如「列出当前目录文件」「写一段代码并运行」" style="width:100%;height:72px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6;resize:vertical"></textarea>
             <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
               <button class="btn-accept" onclick="remoteExec()">▶ 执行</button>
               <span class="muted">超时 <select id="remoteTimeout" class="glass-select"><option value="60000">1 分钟</option><option value="180000" selected>3 分钟</option><option value="300000">5 分钟</option><option value="600000">10 分钟</option></select></span>
@@ -263,11 +267,7 @@
           </div>
           <div class="order-card" style="grid-column:1/-1">
             <div class="card-title">执行结果</div>
-            <div id="remoteResult" style="font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-all;max-height:420px;overflow-y:auto"></div>
-          </div>
-          <div class="order-card" style="grid-column:1/-1">
-            <div class="card-title">对话记录（当前会话）</div>
-            <div id="remoteChat" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;padding:4px 2px"></div>
+            <div id="remoteResult" style="font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-all;max-height:360px;overflow-y:auto"></div>
           </div>
           <div class="order-card" style="grid-column:1/-1">
             <div class="card-title">历史记录</div>
@@ -998,6 +998,10 @@ async function refreshAll() { await Promise.allSettled([refreshStatus(), refresh
 // ── 初始化 ──
 if (TOKEN) { document.getElementById('login').style.display = 'none'; document.getElementById('app').style.display = 'flex'; refreshAll(); }
 else { showLogin(); }
+// 远程指令框：Enter 执行（Shift+Enter 换行）
+document.getElementById('remoteCmd')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); remoteExec(); }
+});
 setInterval(() => { if (TOKEN) { refreshStatus(); if (!document.getElementById('view-overview').classList.contains('hidden-view')) refreshLog(); } }, 5000);
 </script>
 </body>
