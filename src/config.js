@@ -25,7 +25,7 @@ export const DEFAULTS = {
   sendDelayMs: 300,
   maxReplyChars: 1000,
   questionTimeoutMs: 300000,
-  console: { port: 3100, token: '' },
+  console: { port: 3100, token: '', autoOpen: true },
   security: { interceptNotify: true },
   vision: { enabled: true, maxImageBytes: 8 * 1024 * 1024 },
   queue: { maxPerSession: 50 },

@@ -316,6 +316,14 @@
 let TOKEN = localStorage.getItem('napcat_token') || '';
 const MODES = ['chat', 'agent'];
 
+// URL 带 ?token= 时（启动自动打开控制台的场景）：直接采用并记住，随后清掉地址栏里的 token
+const urlToken = new URLSearchParams(location.search).get('token');
+if (urlToken) {
+  TOKEN = urlToken;
+  localStorage.setItem('napcat_token', TOKEN);
+  try { history.replaceState(null, '', location.pathname); } catch {}
+}
+
 // ── 输出安全：任何动态内容进 HTML/属性前必须过这两个函数（防 QQ 内容存储型 XSS） ──
 /** HTML 转义（用于 innerHTML 文本节点与双引号属性）。 */
 function esc(s) {
