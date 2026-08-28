@@ -25,11 +25,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** 记录安装位置（卸载程序 uninstall.exe 据此定位项目目录）。 */
 function recordInstallPath() {
   try {
+    let version = '0.0.0';
+    try { version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version ?? version; } catch {}
     fs.mkdirSync(INSTALL_RECORD_DIR, { recursive: true });
     fs.writeFileSync(INSTALL_RECORD, JSON.stringify({
       installPath: ROOT,
       installedAt: new Date().toISOString(),
-      version: '0.1.3',
+      version,
     }, null, 2) + '\n', 'utf8');
   } catch {}
 }
@@ -99,7 +101,9 @@ async function ensureDsh() {
   // 用 PowerShell Start-Process（参数数组形式），避免 cmd start 的标题引号坑
   // （start 的第一个参数必须带引号才是标题，否则会被当成命令：'Windows 找不到文件 xxx'）
   try {
-    const psCmd = `Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', 'npx -y @deepseek-ai/dsh@${DSH_VERSION} web') -WorkingDirectory '${ROOT}'`;
+    // 路径可能含单引号（合法路径字符）：PowerShell 单引号字符串内用 '' 转义
+    const esc = (s) => String(s).replace(/'/g, "''");
+    const psCmd = `Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', 'npx -y @deepseek-ai/dsh@${DSH_VERSION} web') -WorkingDirectory '${esc(ROOT)}'`;
     const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
     // 异步启动失败（powershell 不存在等）必须捕获，否则静默进入长时间等待
     child.on('error', (error) => {
@@ -226,7 +230,8 @@ async function ensureNapCat() {
       await downloadWithMirrors(NAPCAT_URL, tmpZip);
       console.log('✅ 下载完成，正在解压…');
       fs.mkdirSync(napcatDir, { recursive: true });
-      const r = spawnSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${tmpZip}' -DestinationPath '${napcatDir}' -Force`], { encoding: 'utf8' });
+      const esc = (s) => String(s).replace(/'/g, "''");
+      const r = spawnSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${esc(tmpZip)}' -DestinationPath '${esc(napcatDir)}' -Force`], { encoding: 'utf8' });
       if (r.status !== 0) throw new Error((r.stderr || '').slice(0, 200));
       // 解压后可能多套一层 NapCatShell/ 子目录：上移
       const nested = path.join(napcatDir, 'NapCatShell');

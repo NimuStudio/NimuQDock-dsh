@@ -28,11 +28,13 @@ function locateProject() {
   return null;
 }
 
-/** 停止桥接进程（node <项目>/src/main.js）。 */
-function stopBridge(projectDir) {
+/** 停止桥接进程。
+ * 注意：start.bat 启动的 node 是相对路径（node src/main.js），CommandLine 不含绝对 projectDir；
+ * 因此匹配 src/main.js（相对/绝对都命中），避免漏掉 start.bat 启动的桥接。 */
+function stopBridge() {
   try {
-    const r = spawnSync('powershell', ['-NoProfile', '-Command',
-      `Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'main\\.js' -and $_.CommandLine -like '*${projectDir.replace(/'/g, "''")}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`],
+    spawnSync('powershell', ['-NoProfile', '-Command',
+      `Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'src[\\\\/]main\\\\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`],
       { encoding: 'utf8' });
     console.log('✅ 已停止运行中的桥接进程');
   } catch {}
@@ -78,17 +80,17 @@ async function main() {
     if (c === '2') picked.add('dsh');
     if (c === '3') picked.add('napcat');
   }
-  if (!picked.size) { console.log('未选择任何内容，退出。'); return; }
+  if (!picked.size) { console.log('未选择任何内容，退出。'); rl.close(); process.exit(0); }
 
   console.log('\n即将卸载：');
   if (picked.has('project')) console.log('  - NimuQDock-dsh 项目');
   if (picked.has('dsh')) console.log('  - DeepSeek Harness');
   if (picked.has('napcat')) console.log('  - NapCat');
   const confirm = await ask('确认卸载以上内容？此操作不可恢复（y/N）：');
-  if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') { console.log('已取消。'); return; }
+  if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') { console.log('已取消。'); rl.close(); process.exit(0); }
 
   // 1) 停止桥接（卸载项目/DSH 前）
-  if (picked.has('project') || picked.has('dsh')) stopBridge(projectDir);
+  if (picked.has('project') || picked.has('dsh')) stopBridge();
 
   // 2) 卸载 DSH
   if (picked.has('dsh')) {
@@ -112,10 +114,16 @@ async function main() {
   // 3) 卸载 NapCat
   if (picked.has('napcat')) {
     console.log('\n[卸载 NapCat]');
+    // 先停掉 NapCat / QQ 相关进程，否则目录被占用删不掉
+    try {
+      spawnSync('taskkill', ['/f', '/im', 'NapCatWinBootMain.exe'], { stdio: 'ignore' });
+      spawnSync('taskkill', ['/f', '/im', 'NapCatWinBootHook.dll'], { stdio: 'ignore' });
+    } catch {}
+    await new Promise((r) => setTimeout(r, 1000));
     const napcatDir = path.join(projectDir, 'NapCatShell');
     if (fs.existsSync(napcatDir)) {
       try { fs.rmSync(napcatDir, { recursive: true, force: true }); console.log('✅ 已删除 NapCatShell（含 QQ 登录配置）'); }
-      catch (e) { console.log('⚠️ 删除 NapCatShell 失败：' + e.message); }
+      catch (e) { console.log('⚠️ 删除 NapCatShell 失败（请手动删除）：' + e.message); }
     } else {
       console.log('ℹ️ 未在项目目录发现 NapCatShell');
     }
@@ -124,7 +132,7 @@ async function main() {
   // 4) 清理安装记录
   try { fs.rmSync(path.dirname(INSTALL_RECORD), { recursive: true, force: true }); } catch {}
 
-  // 5) 卸载项目（延迟删除，脚本退出后执行）
+  // 5) 卸载项目（延迟删除：卸载器自身进程先退出释放 cwd，detached cmd 稍后 rd）
   if (picked.has('project')) {
     console.log('\n[卸载项目]');
     deleteLater(projectDir);
@@ -133,6 +141,10 @@ async function main() {
 
   console.log('\n✅ 卸载完成！' + (picked.has('project') ? '项目目录将在本窗口关闭后自动删除。' : ''));
   divider();
+  // 关键：先关闭 readline 并退出，释放本进程对 projectDir 的 cwd 占用，
+  // 否则延迟删除的 rd 会因目录被本进程持有而失败
+  rl.close();
+  process.exit(0);
 }
 
 main().catch((e) => { console.error('卸载出错:', e?.message ?? e); process.exit(1); });
