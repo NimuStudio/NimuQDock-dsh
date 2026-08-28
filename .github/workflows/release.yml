@@ -6,6 +6,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -53,12 +54,17 @@ jobs:
             dist/*.zip
             dist/*.exe
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         run: |
-          gh release create "${{ github.ref_name }}" \
-            "dist/NimuQDock-dsh-${{ github.ref_name }}-win-x64.zip" \
-            "dist/NimuQDock-dsh-${{ github.ref_name }}-setup.exe" \
-            --title "NimuQDock-dsh ${{ github.ref_name }}" \
-            --notes "自动构建发布（GitHub Actions）。安装说明见 README。"
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            echo "Release ${{ github.ref_name }} 已存在，补传 assets…"
+            gh release upload "${{ github.ref_name }}" dist/*.zip dist/*.exe --clobber
+          else
+            gh release create "${{ github.ref_name }}" \
+              "dist/NimuQDock-dsh-${{ github.ref_name }}-win-x64.zip" \
+              "dist/NimuQDock-dsh-${{ github.ref_name }}-setup.exe" \
+              --title "NimuQDock-dsh ${{ github.ref_name }}" \
+              --notes "自动构建发布（GitHub Actions）。安装说明见 README。"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
