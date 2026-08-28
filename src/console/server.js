@@ -159,21 +159,68 @@ export function startConsoleServer({ port, token, deps }) {
   const waitingKeys = new Set(); // /agent/v1/wait 在途 key（每会话互斥）
 
   // ── 远程指令面板：独立完整工具会话（不映射 QQ），轮询 history 收集结果 ──
-  let remoteSessionId = null;
+  let remoteWorkspaceId = null; // 用户选择的工作区（可切换/新建）
+  let remoteSessionId = null;   // 用户选择的会话（可切换/新建）
   const remoteExecLog = []; // 最近 20 条执行记录
   const MAX_REMOTE_EXEC_MS = 600000;
   let remoteExecRunning = false; // 并发互斥：同一时间只跑一条远程指令（轮询共用会话，并发会串输出）
 
+  /** 工作区目录（按名称建子目录，path 必须存在才能 workspace.create）。 */
+  function remoteWorkspaceDir(title) {
+    return path.join(ROOT, 'state', 'remote-workspaces', String(title ?? 'default').replace(/[\\/:*?"<>|]/g, '_'));
+  }
+
   async function ensureRemoteSession() {
     if (remoteSessionId) return remoteSessionId;
-    // 指定独立 cwd（state/remote-agent，避开 DSH 沙箱 temp 根与工作区冲突）
-    const remoteDir = path.join(ROOT, 'state', 'remote-agent');
-    fs.mkdirSync(remoteDir, { recursive: true });
-    const params = cfg.remotePreset ? { cwd: remoteDir, agentPreset: cfg.remotePreset } : { cwd: remoteDir };
+    // 注意：session.create 的 workspaceId 与 cwd 互斥（at most one of）
+    const params = {};
+    if (remoteWorkspaceId) {
+      params.workspaceId = remoteWorkspaceId;
+    } else {
+      // 无工作区时用独立 cwd（state/remote-agent，避开 DSH 沙箱 temp 根与工作区冲突）
+      const remoteDir = path.join(ROOT, 'state', 'remote-agent');
+      fs.mkdirSync(remoteDir, { recursive: true });
+      params.cwd = remoteDir;
+    }
+    if (cfg.remotePreset) params.agentPreset = cfg.remotePreset;
     const created = await api.sessions.create(params);
     if (!created?.result?.ok) throw new Error(`远程会话创建失败: ${created?.result?.error?.message ?? '未知'}`);
     remoteSessionId = created.result.value.sessionId;
     return remoteSessionId;
+  }
+
+  /** 列出 DSH 工作区（含每个工作区的会话数）。 */
+  async function listWorkspaces() {
+    const r = await api.workspace.list({});
+    const v = r?.result?.ok ? r.result.value : null;
+    if (!v) throw new Error(`工作区列表不可用: ${r?.result?.error?.message ?? '未知'}`);
+    return (v.items ?? []).map((w) => ({
+      id: w.workspaceId,
+      title: w.title ?? '',
+      path: w.path ?? '',
+      sessionCount: (w.sessionIds ?? []).length,
+    }));
+  }
+
+  /** 列出某工作区下的会话。 */
+  async function listWorkspaceSessions(workspaceId) {
+    const wr = await api.workspace.list({});
+    const wv = wr?.result?.ok ? wr.result.value : null;
+    if (!wv?.items) return [];
+    const target = wv.items.find((w) => w.workspaceId === workspaceId);
+    if (!target) return [];
+    const idSet = new Set(target.sessionIds ?? []);
+    const r = await api.sessions.list({});
+    const v = r?.result?.ok ? r.result.value : null;
+    if (!v?.items) return [];
+    return v.items
+      .filter((s) => idSet.has(s.sessionId))
+      .map((s) => ({
+        sessionId: s.sessionId,
+        running: s.running ?? false,
+        blank: s.blank ?? false,
+        updatedAt: s.updatedAt ?? 0,
+      }));
   }
 
   async function remoteExec(command, timeoutMs = 300000) {
@@ -377,6 +424,70 @@ export function startConsoleServer({ port, token, deps }) {
       }
       if (req.method === 'GET' && pathname === '/api/remote/log') {
         return sendJson(res, { entries: remoteExecLog });
+      }
+      // 远程工作区 / 会话管理（可切换、可新建）
+      if (req.method === 'GET' && pathname === '/api/remote/workspaces') {
+        try {
+          const workspaces = await listWorkspaces();
+          return sendJson(res, { workspaces, current: { workspaceId: remoteWorkspaceId, sessionId: remoteSessionId } });
+        } catch (error) {
+          return sendJson(res, { error: `工作区列表失败: ${error?.message ?? error}` }, 400);
+        }
+      }
+      if (req.method === 'POST' && pathname === '/api/remote/workspace') {
+        // {title} 新建工作区（目录自动创建，标题作目录名）
+        const body = await readBody(req);
+        const title = String(body?.title ?? '').trim();
+        if (!title || title.length > 40) return sendJson(res, { error: '标题必填且不超过 40 字符' }, 400);
+        try {
+          const dir = remoteWorkspaceDir(title);
+          fs.mkdirSync(dir, { recursive: true });
+          const created = await api.workspace.create({ path: dir });
+          const w = created?.result?.ok ? created.result.value.workspace : null;
+          if (!w) throw new Error(created?.result?.error?.message ?? '创建失败');
+          // 新工作区直接设为当前选择
+          remoteWorkspaceId = w.workspaceId;
+          remoteSessionId = null;
+          return sendJson(res, { ok: true, workspace: { id: w.workspaceId, title: w.title ?? title, path: w.path } });
+        } catch (error) {
+          return sendJson(res, { error: `新建工作区失败: ${error?.message ?? error}` }, 400);
+        }
+      }
+      if (req.method === 'GET' && pathname === '/api/remote/sessions') {
+        const workspaceId = String(url.searchParams.get('workspaceId') ?? '');
+        try {
+          const sessionsList = await listWorkspaceSessions(workspaceId);
+          return sendJson(res, { sessions: sessionsList });
+        } catch (error) {
+          return sendJson(res, { error: `会话列表失败: ${error?.message ?? error}` }, 400);
+        }
+      }
+      if (req.method === 'POST' && pathname === '/api/remote/session') {
+        // {workspaceId} 在当前工作区新建会话（归档旧会话，避免堆叠）
+        const body = await readBody(req);
+        const workspaceId = String(body?.workspaceId ?? remoteWorkspaceId ?? '');
+        if (!workspaceId) return sendJson(res, { error: '请先选择工作区' }, 400);
+        try {
+          if (remoteSessionId) {
+            try { await api.workspace.archiveSession({ sessionId: remoteSessionId }); } catch {}
+          }
+          const params = { workspaceId };
+          if (cfg.remotePreset) params.agentPreset = cfg.remotePreset;
+          const created = await api.sessions.create(params);
+          if (!created?.result?.ok) throw new Error(created?.result?.error?.message ?? '创建失败');
+          remoteWorkspaceId = workspaceId;
+          remoteSessionId = created.result.value.sessionId;
+          return sendJson(res, { ok: true, sessionId: remoteSessionId });
+        } catch (error) {
+          return sendJson(res, { error: `新建会话失败: ${error?.message ?? error}` }, 400);
+        }
+      }
+      if (req.method === 'POST' && pathname === '/api/remote/select') {
+        // {workspaceId?, sessionId?} 切换选择；sessionId 为空则下次执行新建
+        const body = await readBody(req);
+        if (body.workspaceId !== undefined) remoteWorkspaceId = body.workspaceId === '' ? null : String(body.workspaceId);
+        if (body.sessionId !== undefined) remoteSessionId = body.sessionId === '' ? null : String(body.sessionId);
+        return sendJson(res, { ok: true, workspaceId: remoteWorkspaceId, sessionId: remoteSessionId });
       }
       if (req.method === 'GET' && pathname === '/api/groups') {
         const groups = await bot.getGroupList();
