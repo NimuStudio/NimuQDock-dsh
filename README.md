@@ -93,8 +93,8 @@ flowchart TB
 
 | 方式 | 操作 |
 |---|---|
-| **exe 安装器（推荐）** | 下载 `NimuQDock-dsh-v0.1.0-setup.exe` → 双击 → 选目录 → 自动解压并运行安装向导 |
-| zip 免安装 | 下载 `NimuQDock-dsh-v0.1.0-win-x64.zip` → 解压 → 双击 `install.bat` |
+| **exe 安装器（推荐）** | 下载 `NimuQDock-dsh-v0.1.2-setup.exe` → 双击 → 选目录 → 自动解压并运行安装向导 |
+| zip 免安装 | 下载 `NimuQDock-dsh-v0.1.2-win-x64.zip` → 解压 → 双击 `install.bat` |
 
 安装向导会自动：检查 Node / 生成 config.json / **自动安装并启动 DeepSeek Harness**（锁版本）/ **自动下载解压 NapCat**（国内镜像加速）。你只需要两件手动事：**① 安装 QQ 客户端 ② 扫码登录并配置 OneBot11**（向导会一步步提示），最后双击 `start.bat` 启动，浏览器自动打开 Web 控制台。
 
