@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { convKey, sanitizeRoleName } from '../lib/utils.js';
-import { imageBufferFromGetImage } from '../lib/qq-image.js';
+import { imageBufferFromGetImage, sniffImageMime } from '../lib/qq-image.js';
 import { isAllowed } from '../policy/allowlist.js';
 import { segmentsToPlain } from '../transport/onebot11.js';
 import { ROOT } from '../config.js';
@@ -20,18 +20,6 @@ import { classifyMood } from '../persona/lexicon.js';
 import { computeAttention, computeInterest, computeScore } from '../persona/engagement.js';
 import { buildWakePrompt } from '../persona/inject.js';
 import { loadPersona } from '../persona/definition.js';
-
-/** 图片魔数嗅探 → DSH 图片 mediaType（未知返回 null）。 */
-function sniffImageMime(buf) {
-  if (buf.length < 12) return null;
-  const b = buf;
-  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
-  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
-  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'image/gif';
-  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
-      b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
-  return null;
-}
 
 export class Router {
   /**
