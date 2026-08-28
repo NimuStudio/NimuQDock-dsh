@@ -31,6 +31,9 @@ jobs:
       - name: Install 7-Zip CLI
         run: sudo apt-get update && sudo apt-get install -y p7zip-full
 
+      - name: Prepare dist dir
+        run: mkdir -p dist
+
       - name: Build zip (UTF-8 filenames)
         run: node scripts/make-release-zip.mjs "${{ github.ref_name }}" "dist/NimuQDock-dsh-${{ github.ref_name }}-win-x64.zip"
 
@@ -39,7 +42,6 @@ jobs:
 
       - name: Build exe (7-Zip SFX)
         run: |
-          mkdir -p dist
           cat scripts/sfx/7z.sfx scripts/sfx/sfx-config.txt "dist/app.7z" \
             > "dist/NimuQDock-dsh-${{ github.ref_name }}-setup.exe"
           ls -la dist/
