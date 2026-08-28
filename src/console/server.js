@@ -202,25 +202,32 @@ export function startConsoleServer({ port, token, deps }) {
     }));
   }
 
-  /** 列出某工作区下的会话。 */
-  async function listWorkspaceSessions(workspaceId) {
+  /**
+   * 列出会话：workspaceId 为空 = 全部会话（带所属工作区标注）；否则只列该工作区下的。
+   * 过滤 blank（从未对话的空白会话），避免列表被新会话占满。
+   */
+  async function listRemoteSessions(workspaceId = '') {
     const wr = await api.workspace.list({});
     const wv = wr?.result?.ok ? wr.result.value : null;
-    if (!wv?.items) return [];
-    const target = wv.items.find((w) => w.workspaceId === workspaceId);
-    if (!target) return [];
-    const idSet = new Set(target.sessionIds ?? []);
+    const workspaces = wv?.items ?? [];
+    const wsTitle = new Map(workspaces.map((w) => [w.workspaceId, w.title ?? '(未命名)']));
+    const wsOf = new Map(); // sessionId -> workspaceId
+    for (const w of workspaces) for (const sid of w.sessionIds ?? []) wsOf.set(sid, w.workspaceId);
     const r = await api.sessions.list({});
     const v = r?.result?.ok ? r.result.value : null;
     if (!v?.items) return [];
+    const inTarget = workspaceId ? new Set(workspaces.find((w) => w.workspaceId === workspaceId)?.sessionIds ?? []) : null;
     return v.items
-      .filter((s) => idSet.has(s.sessionId))
+      .filter((s) => !s.blank && (inTarget ? inTarget.has(s.sessionId) : true))
       .map((s) => ({
         sessionId: s.sessionId,
         running: s.running ?? false,
         blank: s.blank ?? false,
         updatedAt: s.updatedAt ?? 0,
-      }));
+        workspaceId: wsOf.get(s.sessionId) ?? null,
+        workspaceTitle: wsOf.has(s.sessionId) ? wsTitle.get(wsOf.get(s.sessionId)) : '(未分组)',
+      }))
+      .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   }
 
   async function remoteExec(command, timeoutMs = 300000) {
@@ -456,7 +463,7 @@ export function startConsoleServer({ port, token, deps }) {
       if (req.method === 'GET' && pathname === '/api/remote/sessions') {
         const workspaceId = String(url.searchParams.get('workspaceId') ?? '');
         try {
-          const sessionsList = await listWorkspaceSessions(workspaceId);
+          const sessionsList = await listRemoteSessions(workspaceId);
           return sendJson(res, { sessions: sessionsList });
         } catch (error) {
           return sendJson(res, { error: `会话列表失败: ${error?.message ?? error}` }, 400);
