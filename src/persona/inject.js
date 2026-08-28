@@ -101,6 +101,8 @@ export function buildWakePrompt({ persona, state, memories = [], unread = [], re
   if (mem) blocks.push(mem);
   const unreadBlock = renderUnread(unread);
   if (unreadBlock) blocks.push(unreadBlock);
+  // 指向判断铁律（每次唤醒必读）：@ 的是别人 ≠ 找你；提到名字 ≠ 被点名
+  blocks.push('【指向判断】消息里 @ 的是别人（如「@小明 xxx」）＝他们在和别人说话，不是你被叫，别当成找你的；提到你的名字/别名也不等于在叫你。只有 @ 你、直接叫你、或引用你的消息才是找你。想接话可以主动参与，但不要用「我被 @ 了」的理由抢话。');
   blocks.push(`【唤醒原因】${REASON_TEXT[reason] ?? reason}`);
   if (token) blocks.push(`【会话令牌】${token}`);
   return blocks.join('\n\n');
