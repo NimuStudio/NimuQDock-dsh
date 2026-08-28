@@ -806,7 +806,7 @@ async function refreshRemoteChat() {
     return;
   }
   try {
-    const r = await api('/api/remote/messages?sessionId=' + encodeURIComponent(curRemoteSess));
+    const r = await api('/api/remote/messages'); // 后端只读当前选中的会话
     const msgs = Array.isArray(r.messages) ? r.messages : [];
     if (!msgs.length) {
       el.innerHTML = '<span class="muted" style="font-size:12px">（该会话暂无对话记录）</span>';
