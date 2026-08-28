@@ -87,6 +87,10 @@ async function ensureDsh() {
   try {
     const psCmd = `Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', 'npx -y @deepseek-ai/dsh@${DSH_VERSION} web') -WorkingDirectory '${ROOT}'`;
     const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
+    // 异步启动失败（powershell 不存在等）必须捕获，否则静默进入长时间等待
+    child.on('error', (error) => {
+      console.log(`❌ 启动 DSH 失败：${error?.message ?? error}（可手动运行 npx @deepseek-ai/dsh web）`);
+    });
     child.unref();
   } catch (error) {
     console.log(`❌ 启动 DSH 失败：${error?.message ?? error}（可手动运行 npx @deepseek-ai/dsh web）`);
@@ -116,37 +120,50 @@ function detectQQ() {
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
-  // 注册表 UninstallString（与 NapCat launcher 一致）
-  try {
-    const r = spawnSync('reg', ['query', 'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QQ', '/v', 'UninstallString'], { encoding: 'utf8' });
-    if (r.status === 0 && r.stdout) {
-      const m = r.stdout.match(/([A-Za-z]:\\[^"\\]*(?:\\[^"\\]*)*)\\[^\\]*\.exe/);
-      if (m) {
-        const qq = path.join(m[1], 'QQ.exe');
-        if (fs.existsSync(qq)) return qq;
+  // 注册表 UninstallString（补 64 位/HKCU 分支；已有 existsSync 复核防误判）
+  const regKeys = [
+    'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QQ',
+    'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QQ',
+    'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QQ',
+  ];
+  for (const key of regKeys) {
+    try {
+      const r = spawnSync('reg', ['query', key, '/v', 'UninstallString'], { encoding: 'utf8' });
+      if (r.status === 0 && r.stdout) {
+        const m = r.stdout.match(/([A-Za-z]:\\[^"\\]*(?:\\[^"\\]*)*)\\[^\\]*\.exe/);
+        if (m) {
+          const qq = path.join(m[1], 'QQ.exe');
+          if (fs.existsSync(qq)) return qq;
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  }
   return null;
 }
 
-/** 下载文件（流式写盘）。 */
+/** 下载文件（流式写盘，带背压与错误处理）。 */
 async function downloadFile(url, dest, timeoutMs = 600000) {
   const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
   const file = fs.createWriteStream(dest);
-  const reader = res.body.getReader();
   await new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (fn, val) => { if (!settled) { settled = true; fn(val); } };
+    file.on('error', (e) => done(reject, e));
+    file.on('finish', () => done(resolve));
     const pump = async () => {
       try {
+        const reader = res.body.getReader();
         while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          file.write(Buffer.from(value));
+          const { done: d, value } = await reader.read();
+          if (d) break;
+          if (!file.write(Buffer.from(value))) {
+            // 背压：等 drain 再继续
+            await new Promise((r) => file.once('drain', r));
+          }
         }
         file.end();
-        file.on('finish', resolve);
-      } catch (e) { reject(e); }
+      } catch (e) { done(reject, e); }
     };
     pump();
   });
@@ -175,7 +192,8 @@ async function downloadWithMirrors(url, dest) {
 
 /** 自动下载并解压 NapCat Shell（未就绪时）。 */
 async function ensureNapCat() {
-  if (await probePort(3001)) {
+  // WS(3001) 或 HTTP(3000) 任一就绪即视为 NapCat 已配置（防止只起了 HTTP 时误判并重复下载）
+  if ((await probePort(3001)) || (await probePort(3000))) {
     console.log('✅ NapCat 已就绪（OneBot WS 3001 / HTTP 3000）');
     return;
   }
@@ -204,12 +222,14 @@ async function ensureNapCat() {
         }
         try { fs.rmdirSync(nested); } catch {}
       }
-      try { fs.unlinkSync(tmpZip); } catch {}
     } catch (error) {
       console.log(`❌ 自动下载 NapCat 失败：${error?.message ?? error}`);
       console.log('   可手动下载后解压到 NapCatShell/ 目录：');
       console.log('   https://github.com/NapNeko/NapCatQQ/releases/latest');
       return;
+    } finally {
+      // 无论成败都清理临时 zip，避免 %TEMP% 残留大文件
+      try { fs.unlinkSync(tmpZip); } catch {}
     }
   }
   console.log(`✅ NapCat 已就绪（位于 ${napcatDir}）`);

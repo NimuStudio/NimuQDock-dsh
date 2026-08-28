@@ -52,16 +52,23 @@ export async function imageBufferFromGetImage(res, { maxBytes = 8 * 1024 * 1024 
     }
   }
 
-  // 2) URL 下载：仅放行本地/私有地址与 QQ 图片 CDN
+  // 2) URL 下载：仅放行本地/私有地址与 QQ 图片 CDN；重定向逐跳重新校验（防 redirect 绕过白名单）
   if (res.url && /^https?:\/\//.test(String(res.url))) {
     try {
-      const u = new URL(String(res.url));
-      if (safeImageHost(u.hostname)) {
-        const r = await fetch(res.url, { signal: AbortSignal.timeout(15000) });
+      let current = String(res.url);
+      for (let hop = 0; hop < 5; hop++) {
+        const u = new URL(current);
+        if (!safeImageHost(u.hostname)) break; // 当前跳目标不在白名单 → 拒绝
+        const r = await fetch(current, { redirect: 'manual', signal: AbortSignal.timeout(15000) });
+        if (r.status >= 300 && r.status < 400 && r.headers.get('location')) {
+          current = new URL(r.headers.get('location'), current).href; // 下一跳重新校验
+          continue;
+        }
         if (r.ok) {
           const buf = Buffer.from(await r.arrayBuffer());
           if (buf.length > 0 && buf.length <= limit) return buf;
         }
+        break;
       }
     } catch {}
   }

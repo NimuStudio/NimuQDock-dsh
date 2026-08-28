@@ -34,13 +34,22 @@ const files = [];
 walk(ROOT, '', files);
 console.log(`[make-release-zip] 打包 ${files.length} 个文件（tag=${tag}）`);
 
+// 输出目录必须存在，否则 createWriteStream 异步抛 ENOENT 崩溃
+fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
+
 const zip = new yazl.ZipFile();
 for (const { abs, rel } of files) zip.addFile(abs, rel.replace(/\\/g, '/'));
-zip.outputStream.pipe(fs.createWriteStream(out));
+const stream = zip.outputStream;
+const dest = fs.createWriteStream(out);
+let failed = false;
+stream.on('error', (e) => { failed = true; console.error('[make-release-zip] 失败:', e.message); process.exit(1); });
+dest.on('error', (e) => { failed = true; console.error('[make-release-zip] 写文件失败:', e.message); process.exit(1); });
+stream.pipe(dest);
 zip.end();
-zip.outputStream.on('end', () => {
+// 等 dest 写流真正完成（close/finish）再退出，避免尾部未刷盘导致截断 zip
+dest.on('close', () => {
+  if (failed) return;
   const size = fs.statSync(out).size;
   console.log(`[make-release-zip] ✅ ${out}（${(size / 1024 / 1024).toFixed(1)} MB）`);
   process.exit(0);
 });
-zip.outputStream.on('error', (e) => { console.error('[make-release-zip] 失败:', e.message); process.exit(1); });
