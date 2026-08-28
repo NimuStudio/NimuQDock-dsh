@@ -93,8 +93,8 @@ Skip the manual setup: grab an installer from the [Releases](https://github.com/
 
 | Way | Steps |
 |---|---|
-| **exe installer (recommended)** | download `NimuQDock-dsh-v0.1.0-setup.exe` → double-click → pick a folder → it auto-extracts and runs the setup wizard |
-| zip (no install) | download `NimuQDock-dsh-v0.1.0-win-x64.zip` → unzip → double-click `install.bat` |
+| **exe installer (recommended)** | download `NimuQDock-dsh-v0.1.2-setup.exe` → double-click → pick a folder → it auto-extracts and runs the setup wizard |
+| zip (no install) | download `NimuQDock-dsh-v0.1.2-win-x64.zip` → unzip → double-click `install.bat` |
 
 The wizard checks Node, generates `config.json`, **auto-installs and starts DeepSeek Harness** (version-pinned) and **auto-downloads & extracts NapCat** (CN mirror accelerated). You only have two manual steps: **① install the QQ client ② scan the QR code and configure OneBot11** (the wizard walks you through), then double-click `start.bat` — the web console opens automatically.
 
