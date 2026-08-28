@@ -82,19 +82,18 @@ async function ensureDsh() {
   console.log('⏳ DeepSeek Harness 未运行，正在自动安装并启动…');
   console.log(`   （npx -y @deepseek-ai/dsh@${DSH_VERSION} web，首次需下载依赖，请耐心等待）`);
   // 新窗口运行 DSH（分离，关闭本向导不影响它）
+  // 用 PowerShell Start-Process（参数数组形式），避免 cmd start 的标题引号坑
+  // （start 的第一个参数必须带引号才是标题，否则会被当成命令：'Windows 找不到文件 xxx'）
   try {
-    const child = spawn(
-      'cmd',
-      ['/c', 'start', 'DeepSeek Harness', 'cmd', '/k', `npx -y @deepseek-ai/dsh@${DSH_VERSION} web`],
-      { detached: true, stdio: 'ignore' },
-    );
+    const psCmd = `Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', 'npx -y @deepseek-ai/dsh@${DSH_VERSION} web') -WorkingDirectory '${ROOT}'`;
+    const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
     child.unref();
   } catch (error) {
     console.log(`❌ 启动 DSH 失败：${error?.message ?? error}（可手动运行 npx @deepseek-ai/dsh web）`);
     return false;
   }
-  console.log('⏳ 等待 DSH 启动（最多 5 分钟）…');
-  const deadline = Date.now() + 300000;
+  console.log('⏳ 等待 DSH 启动（最多 10 分钟，首次需下载依赖）…');
+  const deadline = Date.now() + 600000;
   while (Date.now() < deadline) {
     if (await probePort(3080)) {
       console.log('✅ DeepSeek Harness 已启动（http://127.0.0.1:3080）');
