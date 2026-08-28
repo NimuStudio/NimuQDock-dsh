@@ -7,6 +7,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（如 v0.2.0）；留空则自动用最近 tag'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -26,6 +31,20 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Resolve version
+        id: ver
+        run: |
+          VER="${{ inputs.version }}"
+          if [ -z "$VER" ]; then
+            if [ "${{ github.ref_type }}" = "tag" ]; then
+              VER="${{ github.ref_name }}"
+            else
+              VER="$(git describe --tags --abbrev=0 2>/dev/null || echo 'v0.1.1')"
+            fi
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "构建版本: $VER"
+
       - name: Install dependencies
         run: npm ci || npm install
 
@@ -36,15 +55,15 @@ jobs:
         run: mkdir -p dist
 
       - name: Build zip (UTF-8 filenames)
-        run: node scripts/make-release-zip.mjs "${{ github.ref_name }}" "dist/NimuQDock-dsh-${{ github.ref_name }}-win-x64.zip"
+        run: node scripts/make-release-zip.mjs "${{ steps.ver.outputs.version }}" "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-win-x64.zip"
 
       - name: Build 7z archive (UTF-8 filenames, for SFX exe)
-        run: node scripts/make-release-7z.mjs "${{ github.ref_name }}" "dist/app.7z"
+        run: node scripts/make-release-7z.mjs "${{ steps.ver.outputs.version }}" "dist/app.7z"
 
       - name: Build exe (7-Zip SFX)
         run: |
           cat scripts/sfx/7z.sfx scripts/sfx/sfx-config.txt "dist/app.7z" \
-            > "dist/NimuQDock-dsh-${{ github.ref_name }}-setup.exe"
+            > "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-setup.exe"
           ls -la dist/
 
       - name: Attest build provenance (来源证明)
@@ -56,14 +75,15 @@ jobs:
 
       - name: Create or update GitHub Release
         run: |
-          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
-            echo "Release ${{ github.ref_name }} 已存在，补传 assets…"
-            gh release upload "${{ github.ref_name }}" dist/*.zip dist/*.exe --clobber
+          VERSION="${{ steps.ver.outputs.version }}"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION 已存在，补传 assets…"
+            gh release upload "$VERSION" dist/*.zip dist/*.exe --clobber
           else
-            gh release create "${{ github.ref_name }}" \
-              "dist/NimuQDock-dsh-${{ github.ref_name }}-win-x64.zip" \
-              "dist/NimuQDock-dsh-${{ github.ref_name }}-setup.exe" \
-              --title "NimuQDock-dsh ${{ github.ref_name }}" \
+            gh release create "$VERSION" \
+              "dist/NimuQDock-dsh-$VERSION-win-x64.zip" \
+              "dist/NimuQDock-dsh-$VERSION-setup.exe" \
+              --title "NimuQDock-dsh $VERSION" \
               --notes "自动构建发布（GitHub Actions）。安装说明见 README。"
           fi
         env:
