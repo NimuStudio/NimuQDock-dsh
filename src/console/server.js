@@ -161,7 +161,6 @@ export function startConsoleServer({ port, token, deps }) {
   // ── 远程指令面板：独立完整工具会话（不映射 QQ），轮询 history 收集结果 ──
   let remoteWorkspaceId = null; // 用户选择的工作区（可切换/新建）
   let remoteSessionId = null;   // 用户选择的会话（可切换/新建）
-  const remoteExecLog = []; // 最近 20 条执行记录
   const MAX_REMOTE_EXEC_MS = 600000;
   let remoteExecRunning = false; // 并发互斥：同一时间只跑一条远程指令（轮询共用会话，并发会串输出）
 
@@ -285,8 +284,6 @@ export function startConsoleServer({ port, token, deps }) {
         durationMs: Date.now() - start,
         timedOut,
       };
-      remoteExecLog.unshift(record);
-      while (remoteExecLog.length > 20) remoteExecLog.pop();
       return record;
     } finally {
       remoteExecRunning = false;
@@ -428,9 +425,6 @@ export function startConsoleServer({ port, token, deps }) {
           remoteSessionId = null;
         }
         return sendJson(res, { ok: true });
-      }
-      if (req.method === 'GET' && pathname === '/api/remote/log') {
-        return sendJson(res, { entries: remoteExecLog });
       }
       // 当前远程会话的对话记录（聊天框展示）
       if (req.method === 'GET' && pathname === '/api/remote/messages') {
