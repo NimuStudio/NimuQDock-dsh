@@ -100,6 +100,12 @@ flowchart TB
 
 > 需要 Node.js ≥ 22.13 和已安装的 QQ 客户端。
 
+## 卸载
+
+- **exe 卸载程序**：下载 `NimuQDock-dsh-uninstall.exe`（Releases 页）→ 双击 → 勾选要卸载的内容（项目 / DeepSeek Harness / NapCat，可多选）。
+- **源码用户**：双击项目里的 `uninstall.bat`。
+- 卸载程序会先停止运行中的桥接，再按选择删除：项目目录、DSH（npm 全局包 + `~/.dsh`）、NapCat（`NapCatShell/` 及 QQ 登录配置）。
+
 ## 开始使用
 
 ### 需要准备
