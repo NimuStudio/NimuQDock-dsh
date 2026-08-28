@@ -432,6 +432,28 @@ export function startConsoleServer({ port, token, deps }) {
       if (req.method === 'GET' && pathname === '/api/remote/log') {
         return sendJson(res, { entries: remoteExecLog });
       }
+      // 当前远程会话的对话记录（聊天框展示）
+      if (req.method === 'GET' && pathname === '/api/remote/messages') {
+        const sessionId = String(url.searchParams.get('sessionId') ?? '');
+        if (!sessionId) return sendJson(res, { messages: [] });
+        try {
+          const h = await api.sessions.history({ sessionId, maxMessages: 150 });
+          const ev = h?.result?.ok ? h.result.value.events : [];
+          const messages = [];
+          for (const { event } of ev) {
+            if (event.type === 'user/message') {
+              const text = blocksToText(event.data?.content ?? []);
+              if (text) messages.push({ role: 'user', text: text.slice(0, 600) });
+            } else if (event.type === 'assistant/message') {
+              const text = blocksToText(event.data?.message?.content ?? []);
+              if (text) messages.push({ role: 'assistant', text: text.slice(0, 600) });
+            }
+          }
+          return sendJson(res, { messages: messages.slice(-100) });
+        } catch (error) {
+          return sendJson(res, { error: `对话记录读取失败: ${error?.message ?? error}`, messages: [] }, 400);
+        }
+      }
       // 远程工作区 / 会话管理（可切换、可新建）
       if (req.method === 'GET' && pathname === '/api/remote/workspaces') {
         try {
