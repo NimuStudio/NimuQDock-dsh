@@ -1,0 +1,54 @@
+# 更新日志（Changelog）
+
+本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
+
+## v0.1.5
+
+- 修复：卸载器停桥接匹配 `src/main.js`（此前按绝对路径匹配会漏掉 `start.bat` 启动的相对路径进程）
+- 修复：卸载器完成后未退出 → 进程持有目录 cwd 导致 `rd` 删不掉项目目录（现在取消/完成均 `rl.close()+exit`）
+- 修复：卸载 NapCat 前未停止 NapCat 进程（已加 `taskkill`）
+- 修复：远程指令输出用「计数差+滑动窗口」→ 长会话漏采回复（改为 turn 号跟踪）
+- 修复：工作区标题允许 `.`/`..` 路径逃逸（现拒绝非法字符）
+- 修复：`/api/remote/select`/`session` 缺存在性校验、`/api/remote/messages` 可读任意 sessionId（越权）——现只读当前会话
+- 修复：图片魔数嗅探内聚到 `qq-image.js`（所有字节来源返回前统一校验，非图片一律 null）
+- 修复：安装器下载改用 `stream.pipeline`（防错误路径流泄漏）；DSH 启动 PowerShell 单引号转义；版本号从 package.json 读取
+- 修复：`moodLabel`/`energyLabel` 的 NaN 漏洞；`@` 识别正则未锚定（`foo@dsh` 误判）
+
+## v0.1.4
+
+- 新增：卸载功能——`uninstall.exe`（SFX）可选择卸载项目 / DeepSeek Harness / NapCat
+- 新增：`install.mjs` 安装时记录安装路径（`%APPDATA%\NimuQDock-dsh\install-path.json`）供卸载程序定位
+- 新增：项目内 `uninstall.bat` + `uninstall.mjs`（源码用户可直接双击）
+
+## v0.1.3
+
+- 新增：远程指令面板「工作区 / 会话」选择与新建（`workspace.list`/`create` + session 切换/新建）
+- 新增：远程会话下拉跨工作区列出全部会话（带工作区标注、运行中标记）；后改为按所选工作区过滤
+- 新增：远程「对话记录」聊天框（聊天气泡展示当前会话历史，Enter 执行、Shift+Enter 换行）
+- 修复：玻璃下拉菜单超高溢出（加 `max-height` + 滚动）
+- 修复：玻璃下拉被卡片盖住（`backdrop-filter` 独立 stacking context → 含展开下拉的卡片提升 z-index）
+- 移除：远程「历史记录」卡片（与对话记录重复）
+
+## v0.1.2
+
+- 修复：@识别收紧——「@别人 / 提到名字」不再算被点名（别名降为参与信号 0.6），只有 @机器人/引用/私聊才必回
+- 新增：唤醒 prompt 注入【指向判断铁律】（@ 的是别人 ≠ 找你；提名字 ≠ 被点名）
+- 修复：`qq-agent`/`qq-chat` preset 内 MCP 从 `insert:` 包装改为直接插件行（`session.create` 挂载校验通过）
+- 修复：图片识别——`get_image` 优先读本地缓存文件 + QQ 图床域名白名单 + 魔数硬校验；agent 唤醒触发消息图片直通模型
+- 修复：agent 模式群聊不回复（preset 挂载失败 + @ 昵称文本识别）
+
+## v0.1.1
+
+- 修复：安装向导 DSH 启动改用 PowerShell `Start-Process`（修复 `start` 标题引号坑导致「找不到文件」）
+- 修复：安装向导自动安装并启动 DSH（锁版本 0.1.1-rc.2）+ 自动下载解压 NapCat（国内镜像加速）
+- 修复：GitHub Actions 打 tag 自动构建发布（zip/exe、UTF-8 文件名、来源证明 attestation）+ 版本号解析
+- 修复：exe 改 7z 格式（SFX 只支持 7z）+ UTF-8 listfile 打包；SFX 加 `InstallPath`（双击弹目录选择）
+
+## v0.1.0
+
+- 首次发布：QQ ↔ DeepSeek Harness 桥接
+- 核心：NapCat OneBot11 传输、DSH Web API 客户端、会话管理、消息路由、事件泵
+- 人格引擎：心情 / 精力 / 关系演化、参与意愿模型、分层记忆、主动心跳、人格卡（YAML）
+- Web 控制台（玻璃拟态 UI）：概览 / 会话 / 人格 / 配置 / 远程指令 / 日志等
+- 安全边界：QQ 会话无本地工具、发送白名单、敏感信息拦截、SSRF 防护搜索
+- 一键安装包（zip / exe）+ GitHub Actions 自动发布
