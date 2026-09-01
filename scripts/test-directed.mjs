@@ -4,7 +4,7 @@ import { Router } from '../src/core/router.js';
 // 最小化依赖构造
 const router = new Router({
   api: {},
-  bot: { nickname: 'dsh', selfId: '3533396073' },
+  bot: { nickname: 'dsh', selfId: '1234567890' },
   cfg: { social: {} },
   sessions: { state: { sessions: {} } },
   sender: {},
@@ -14,9 +14,9 @@ const router = new Router({
 
 const groupMsg = (segments, text) => ({
   kind: 'group',
-  convId: '757385335',
+  convId: '987654321',
   userId: '12345',
-  selfId: '3533396073',
+  selfId: '1234567890',
   messageId: -1,
   seq: 1,
   time: Math.floor(Date.now() / 1000),
@@ -26,7 +26,7 @@ const groupMsg = (segments, text) => ({
 
 const cases = [
   // [描述, 消息, 期望]
-  ['@机器人（at段）→ 被点名', groupMsg([{ type: 'at', data: { qq: '3533396073' } }, { type: 'text', data: { text: '在吗' } }], '@小dsh 在吗'), true],
+  ['@机器人（at段）→ 被点名', groupMsg([{ type: 'at', data: { qq: '1234567890' } }, { type: 'text', data: { text: '在吗' } }], '@小dsh 在吗'), true],
   ['@别人+提到别名 → 不被点名（关键修复）', groupMsg([{ type: 'at', data: { qq: '99999' } }, { type: 'text', data: { text: '小鲸鱼是啥鱼' } }], '@小明 小鲸鱼是啥鱼'), false],
   ['文本@dsh昵称 → 被点名', groupMsg([{ type: 'text', data: { text: '@dsh 在吗' } }], '@dsh 在吗'), true],
   ['文本提到别名无@ → 不被点名', groupMsg([{ type: 'text', data: { text: '小鲸鱼 好可爱' } }], '小鲸鱼 好可爱'), false],

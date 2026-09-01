@@ -58,10 +58,10 @@ NapCat 与 QQ 登录步骤同「方式 A」第 4~5 步。
 
 ```json
 {
-  "ownerQQ": 1284868565,
+  "ownerQQ": 1234567890,
   "allow": {
-    "private": ["1284868565"],
-    "groups": ["757385335", "867656015"]
+    "private": ["1234567890"],
+    "groups": ["你的群号1", "你的群号2"]
   },
   "dsh": {
     "baseUrl": "http://127.0.0.1:3080",
@@ -75,6 +75,8 @@ NapCat 与 QQ 登录步骤同「方式 A」第 4~5 步。
   "console": { "port": 3100, "token": "", "autoOpen": true }
 }
 ```
+
+> 把上面样例里的 `1234567890` 换成你的 QQ 号，`你的群号1` / `你的群号2` 换成你的群号；`ownerQQ` 与 `private` 填同一个号。
 
 其余字段用 `config.example.json` 的默认值即可。字段含义见 `README.md`。
 
