@@ -273,6 +273,8 @@ npm run test-onebot      # NapCat connection
 
 💬 Questions or want to chat? Head over to [GitHub Discussions](https://github.com/NimuStudio/NimuQDock-dsh/discussions).
 
+Join the **Nimu Studio user group**: QQ group `1097466590` (or add the author on QQ `2998827169`) to chat, give feedback and follow updates.
+
 ## Ecosystem
 
 - 🎨 The console's glassmorphism UI comes from [**Nimu Glass UI**](https://github.com/NimuStudio/Nimu-glass-ui) (a three-theme glassmorphism UI system)
