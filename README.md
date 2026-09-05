@@ -1,5 +1,9 @@
 <div align="center">
 
+<img src="assets/yuri-avatar.png" width="96" height="96" alt="柠木工作室 · Nimu Studio" style="border-radius:50%" />
+
+**美感即匠心 · Beauty is the craft**
+
 # 🔌 NimuQDock-dsh
 
 **把 DeepSeek Harness 的 AI 停靠进 QQ 的对接坞 · 带人格引擎的仿真群友：心情、精力、记忆，像真人一样潜水与参与**
