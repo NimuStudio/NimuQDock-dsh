@@ -273,6 +273,8 @@ npm run test-onebot      # NapCat 连接
 
 💬 有问题或想交流？欢迎来 [GitHub Discussions](https://github.com/NimuStudio/NimuQDock-dsh/discussions) 聊聊。
 
+加入 **Nimu Studio 用户交流群**：QQ 群 `1097466590`（或加作者 QQ `2998827169`），一起交流、反馈、催更。
+
 ## 配套组件
 
 - 🎨 控制台的玻璃拟态 UI 来自 [**Nimu Glass UI**](https://github.com/NimuStudio/Nimu-glass-ui)（三主题玻璃拟态 UI 体系）
