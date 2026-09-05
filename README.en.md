@@ -1,5 +1,9 @@
 <div align="center">
 
+<img src="assets/yuri-avatar.png" width="96" height="96" alt="Nimu Studio" style="border-radius:50%" />
+
+**Beauty is the craft**
+
 # 🔌 NimuQDock-dsh
 
 **Dock DeepSeek Harness AI into QQ · A simulated group friend powered by a persona engine — with mood, energy and memory, it dives low and joins in like a real person**
