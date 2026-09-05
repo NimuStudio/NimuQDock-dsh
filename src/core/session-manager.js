@@ -67,6 +67,8 @@ export class SessionManager {
       fs.mkdirSync(dir, { recursive: true });
       let sessionId;
       let lastError = null;
+      let presetAttachFailed = false;
+      const preset = this.presetFor(mode);
       // 归组：所有 QQ 会话挂到同一个 workspace（幂等创建）
       for (const withPreset of [true, false]) {
         try {
@@ -75,14 +77,22 @@ export class SessionManager {
             await this.api.workspace.rename({ workspaceId: wsValue.workspace.workspaceId, title: this.cfg.workspaceTitle });
           }
           const params = { workspaceId: wsValue.workspace.workspaceId };
-          const preset = this.presetFor(mode);
           if (withPreset && preset) params.agentPreset = preset;
           const value = unwrap(await this.api.sessions.create(params), 'session.create');
           sessionId = value.sessionId;
+          if (withPreset) presetAttachFailed = false;
           break;
         } catch (error) {
           lastError = error;
+          // 带 preset 的首选尝试失败 → 记录，回退无 preset 前必须明确告警，
+          // 否则「agent 发不出话/没有 QQ 工具」会被静默吞掉（纯文本永不自动发送）
+          if (withPreset) presetAttachFailed = true;
         }
+      }
+      if (presetAttachFailed && sessionId) {
+        this.log(`⚠️ preset「${preset ?? '(无)'}」挂载失败，已回退为无预设会话（${sessionId.slice(0, 12)}…）——QQ 工具不可用，agent 模式将无法发言。`);
+        this.log(`   原因: ${lastError?.message ?? lastError}`);
+        this.log('   常见原因：DSH 的 mcp serverName（napcat / web-search-safe）被其它存活会话占用——重启 DSH 即可清空注册表。');
       }
       if (!sessionId) {
         this.log(`归组创建失败（${lastError?.message ?? lastError}），回退无参创建`);

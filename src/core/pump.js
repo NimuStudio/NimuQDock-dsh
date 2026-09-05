@@ -23,12 +23,24 @@ import { appendActivity } from '../log.js';
 const SEND_TOOL_RE = /^mcp__napcat__qq_(send_group_message|send_private_message|reply|send_message|send_burst)$/;
 const isSendTool = (name) => SEND_TOOL_RE.test(String(name ?? ''));
 
+/** 从发送工具的调用参数里提取「要发出去的话」（messages 数组 / message 字符串 → 文本数组）。 */
+function extractSendTexts(raw) {
+  try {
+    const a = raw && typeof raw === 'object' ? raw : typeof raw === 'string' ? JSON.parse(raw) : {};
+    const msgs = Array.isArray(a.messages) ? a.messages : a.message != null ? [a.message] : [];
+    return msgs.filter((t) => typeof t === 'string').map((t) => t.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
   const collectors = new Map();          // sessionId -> turn collector（turn 结束即删）
   const sendToolSucceeded = new Set();   // sessionId：本回合发送工具已成功
   const pendingSendToolCalls = new Map(); // sessionId -> Set<callId>：在途发送类工具调用
   const toolCallNames = new Map();       // sessionId -> Map<callId, toolName>
   const turnStartMode = new Map();       // sessionId -> 本回合开始时的运行模式快照
+  const sendToolTexts = new Map();       // sessionId -> string[]：本回合发送工具要发的话（供活动日志）
 
   const clearTransient = () => {
     collectors.clear();
@@ -36,6 +48,7 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
     pendingSendToolCalls.clear();
     toolCallNames.clear();
     turnStartMode.clear();
+    sendToolTexts.clear();
   };
 
   /**
@@ -77,6 +90,7 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
               sendToolSucceeded.delete(frame.sessionId);
               pendingSendToolCalls.delete(frame.sessionId);
               toolCallNames.delete(frame.sessionId);
+              sendToolTexts.delete(frame.sessionId);
               // 捕获本回合开始时的运行模式快照：回合结束决策用快照，
               // 防「turn 在途时模式切换」导致该发的不发/不该发的发
               turnStartMode.set(frame.sessionId, router.getMode());
@@ -91,6 +105,13 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
                   pendingSendToolCalls.set(frame.sessionId, pending);
                 }
                 pending.add(String(callId));
+                // 记录要发的话（供活动日志展示真实已发送内容）
+                const texts = extractSendTexts(event.data?.input ?? event.data?.arguments ?? event.data?.params);
+                if (texts.length) {
+                  let list = sendToolTexts.get(frame.sessionId);
+                  if (!list) { list = []; sendToolTexts.set(frame.sessionId, list); }
+                  list.push(...texts);
+                }
               }
               if (callId != null) {
                 let nameMap = toolCallNames.get(frame.sessionId);
@@ -133,7 +154,14 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
 
             // 本回合已通过 MCP 发送工具成功发出消息：跳过自动转发（避免重复）
             if (sendToolSucceededNow) {
+              const sentTexts = sendToolTexts.get(frame.sessionId) ?? [];
+              sendToolTexts.delete(frame.sessionId);
               log(`工具已发送消息，跳过自动转发 (${key})`);
+              // agent 模式的真实发言：记入活动日志（此前只在自动转发路径记录，工具发送会漏）
+              if (sentTexts.length) {
+                const text = sentTexts.join(' ｜ ');
+                appendActivity(`${key} agent 回复：${text.slice(0, 80)}${text.length > 80 ? '…' : ''}`);
+              }
               router.onAgentTurnEnd?.(key, { replied: true });
               continue;
             }
@@ -145,7 +173,15 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
                 log(`agent 回复为空（仅格式/空白）(${key})`);
                 continue;
               }
+              // agent 模式：纯文本输出只是思考、不自动转发；真实发言走发送工具
+              // （turn/end 的 sendToolSucceededNow 分支已记活动日志）。私聊兜底除外。
+              if (turnMode === 'agent' && !key.startsWith('private:')) {
+                log(`[agent] AI 内部输出 (${key}): ${plain.slice(0, 80)}`);
+                router.onAgentTurnEnd?.(key, { replied: false });
+                continue;
+              }
               // 敏感审计（与 Sender 内部审计一致；此处区分拦截以便提示）
+              // 仅对「真的会发出去的文本」执行：chat 自动转发 / agent 私聊兜底
               const { blocked, reason } = sender.audit(plain);
               if (blocked) {
                 log(`⚠️ 回复被安全策略拦截 (${key})：${reason}`);
@@ -153,23 +189,16 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
                 if (cfg.security?.interceptNotify !== false) {
                   await safeSend('拦截通知', () => sender.notify(key, '⚠️ 本条回复因疑似包含敏感信息（路径/凭据/会话令牌）被安全策略拦截，已记录并通知管理员。'));
                 }
-                // 拦截也结算回合（agent 模式）：否则精力/统计永不更新
                 router.onAgentTurnEnd?.(key, { replied: false });
                 continue;
               }
               log(`agent 回复 (${key}) ${plain.length} 字`);
               appendActivity(`${key} agent 回复：${plain.slice(0, 80)}${plain.length > 80 ? '…' : ''}`);
-              // agent 模式：文本不自动转发（只是思考）
+              // agent 私聊兜底：一对一没有「潜水」语义——AI 输出纯文本（未调发送工具）视为直接回复
               if (turnMode === 'agent') {
-                // 私聊兜底：一对一场景没有「潜水」语义——AI 输出纯文本（未调发送工具）视为直接回复
-                if (key.startsWith('private:')) {
-                  log(`[agent] 私聊纯文本兜底发送 (${key}): ${plain.slice(0, 60)}`);
-                  await safeSend('agent 私聊兜底', () => sender.sendToQQ(key, plain));
-                  router.onAgentTurnEnd?.(key, { replied: true });
-                  continue;
-                }
-                log(`[agent] AI 内部输出 (${key}): ${plain.slice(0, 80)}`);
-                router.onAgentTurnEnd?.(key, { replied: false });
+                log(`[agent] 私聊纯文本兜底发送 (${key}): ${plain.slice(0, 60)}`);
+                await safeSend('agent 私聊兜底', () => sender.sendToQQ(key, plain));
+                router.onAgentTurnEnd?.(key, { replied: true });
                 continue;
               }
               await safeSend('chat 回复', () => sender.sendToQQ(key, plain));
