@@ -73,18 +73,34 @@ jobs:
             dist/*.zip
             dist/*.exe
 
+      - name: Extract changelog notes (from CHANGELOG.md)
+        id: notes
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          # 抽取 "## $VERSION" 标题到下一个小节前的正文作为 Release 备注；取不到则用通用文案兜底
+          awk -v hdr="## $VERSION" '
+            index($0, hdr) == 1 && $0 == hdr { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "本版本暂无独立更新日志条目（详见仓库 CHANGELOG.md）。" > /tmp/release-notes.md
+          fi
+          echo "notes 行数: $(wc -l < /tmp/release-notes.md)"
+
       - name: Create or update GitHub Release
         run: |
           VERSION="${{ steps.ver.outputs.version }}"
           if gh release view "$VERSION" >/dev/null 2>&1; then
-            echo "Release $VERSION 已存在，补传 assets…"
+            echo "Release $VERSION 已存在，补传 assets + 更新备注…"
             gh release upload "$VERSION" dist/*.zip dist/*.exe --clobber
+            gh release edit "$VERSION" --notes-file /tmp/release-notes.md
           else
             gh release create "$VERSION" \
               "dist/NimuQDock-dsh-$VERSION-win-x64.zip" \
               "dist/NimuQDock-dsh-$VERSION-setup.exe" \
               --title "NimuQDock-dsh $VERSION" \
-              --notes "自动构建发布（GitHub Actions）。安装说明见 README。"
+              --notes-file /tmp/release-notes.md
           fi
         env:
           GH_TOKEN: ${{ github.token }}
