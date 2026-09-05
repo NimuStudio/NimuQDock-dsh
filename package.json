@@ -1,6 +1,6 @@
 {
   "name": "nimuqdock-dsh",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "license": "MIT",
   "description": "NimuQDock-dsh · 把 DeepSeek Harness 的 AI 停靠进 QQ 的对接坞——带人格引擎的仿真群友：心情、精力、记忆，像真人一样潜水与参与。",
