@@ -162,7 +162,7 @@ Key fields:
 | Field | Description |
 |---|---|
 | `dsh.baseUrl` | DSH web service URL, default `http://127.0.0.1:3080` |
-| `dsh.provider` / `dsh.model` / `dsh.reasoningEffort` | model provider / model name / reasoning effort; if your DSH lacks the example model, pick one available in the DSH settings page |
+| `dsh.provider` / `dsh.model` / `dsh.reasoningEffort` | model provider / model name / reasoning effort (`off`/`low`/`high`/`max`); if your DSH lacks the example model, pick one available in the DSH settings page. **Slow replies? lower the reasoning effort** (`low` is 30–45% faster than `max`, fine for casual chat) |
 | `napcat.wsUrl` | NapCat WebSocket server URL, default `ws://127.0.0.1:3001` |
 | `napcat.httpUrl` | NapCat HTTP server URL, default `http://127.0.0.1:3000` (**do not use the WS port**) |
 | `napcat.accessToken` | must match the accessToken set in the WebUI; leave empty if unset |
