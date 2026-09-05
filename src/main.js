@@ -14,7 +14,7 @@ import {
 } from './state.js';
 import { log } from './log.js';
 import { OneBot11Client } from './transport/onebot11.js';
-import { NodeApiClient } from './transport/dsh-client.js';
+import { NodeApiClient, unwrap } from './transport/dsh-client.js';
 import { SessionManager } from './core/session-manager.js';
 import { Router } from './core/router.js';
 import { Sender } from './core/sender.js';
@@ -79,6 +79,20 @@ async function main() {
       if (!runtime.dshOnline) {
         log(`DSH 已连接：${cfg.dsh.baseUrl}`);
         router.setDshOnline(true);
+        // DSH 首次上线时校验配置模型是否在目录内：模型缺失是静默降级（会话退回默认模型、
+        // 图片识别失效）的头号来源，直接给出一条可操作警告（不阻塞）。
+        if (cfg.dsh?.model) {
+          api.llm.models({}).then((resp) => {
+            try {
+              const value = unwrap(resp, 'llm.models');
+              const ids = (value.groups ?? []).flatMap((g) => (g.models ?? []).map((m) => m.id));
+              if (!ids.includes(cfg.dsh.model)) {
+                log(`⚠️ 配置模型「${cfg.dsh.model}」不在 DSH 模型目录（可用: ${ids.join(', ') || '无'}）→ QQ 会话将用默认模型，图片识别可能失效。`);
+                log('   请改 config.json 的 dsh.model 为目录内模型；若目录里没有你需要的模型（如 vision 版），通常是 DSH 版本过旧，请升级到项目锁定的 @deepseek-ai/dsh 版本。');
+              }
+            } catch {}
+          }).catch(() => {});
+        }
       }
       runtime.dshOnline = true;
     } catch (error) {

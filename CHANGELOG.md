@@ -2,6 +2,13 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.1.6
+
+- 新增：启动时校验 `config.json` 的 `dsh.model` 是否在 DSH 模型目录，缺失直接打警告（并提示升级 DSH 版本）——图片识别静默失效（会话退回默认模型）的头号来源，现在一眼可见
+- 修复：模型选择遇永久性配置错误（模型/推理档位不在目录、`reasoningEffort` 为空串等）时**立即失败并给出可操作提示**，不再每个新会话空等 1s+2s 重试退避（实测该退避让首条消息慢约 3 秒）
+- 调优：`config.example.json` 默认 `dsh.reasoningEffort` 由 `max` 改为 `low`——QQ 闲聊实测 `low` 比 `max` 快 30%~45%（`off` 更快）；README/DEPLOY 补充「回复速度开关」说明
+- docs: DEPLOY 新增「常见问题（避坑）」——DSH 版本与锁定版本不一致导致缺视觉模型、`restart-napcat.bat` 写死旧 QQ 路径（改用 `launcher-user.bat`）、桥接须独立于 DSH 进程运行
+
 ## v0.1.5
 
 - 修复：卸载器停桥接匹配 `src/main.js`（此前按绝对路径匹配会漏掉 `start.bat` 启动的相对路径进程）

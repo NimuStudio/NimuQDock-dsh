@@ -136,6 +136,14 @@ export class SessionManager {
         return;
       } catch (error) {
         lastError = error;
+        const msg = String(error?.message ?? error);
+        // 永久性配置错误（模型/推理档位不在目录、请求体非法、会话不存在）——重试不会变好，
+        // 立即放弃并给出可操作提示，避免每个新会话白等 1s+2s 退避（实测这让首条消息慢 ~3s）。
+        if (/bad-request|invalid payload|no result payload|too_small|not found|不存在|unknown/.test(msg)) {
+          this.log(`模型选择失败（配置问题，不重试）: ${msg}`);
+          this.log(`   —— provider=${provider} model=${model} reasoningEffort=${reasoningEffort || '(未设置)'}；请确认该模型在 DSH 模型目录可用（启动日志会警告缺失模型），或改 config.json 的 dsh.*`);
+          return;
+        }
         if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
       }
     }
