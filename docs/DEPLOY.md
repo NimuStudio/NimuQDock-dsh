@@ -67,7 +67,7 @@ NapCat 与 QQ 登录步骤同「方式 A」第 4~5 步。
     "baseUrl": "http://127.0.0.1:3080",
     "provider": "deepseek-official",
     "model": "deepseek-v4-flash-vision-exp",
-    "reasoningEffort": "max"
+    "reasoningEffort": "low"
   },
   "social": {
     "defaultPersona": "小鲸鱼"
@@ -79,6 +79,8 @@ NapCat 与 QQ 登录步骤同「方式 A」第 4~5 步。
 > 把上面样例里的 `1234567890` 换成你的 QQ 号，`你的群号1` / `你的群号2` 换成你的群号；`ownerQQ` 与 `private` 填同一个号。
 
 其余字段用 `config.example.json` 的默认值即可。字段含义见 `README.md`。
+
+> 💡 `dsh.reasoningEffort` 是「回复速度」的主要开关：`off`/`low` 比 `max` 快 30%~45%（QQ 闲聊实测），`max` 想得更深但明显更慢。日常聊天用 `low` 即可，需要深度回答再临时调高。
 
 ## 四、卸载
 
@@ -93,3 +95,18 @@ NapCat 与 QQ 登录步骤同「方式 A」第 4~5 步。
 - **模式切换**：控制台「概览」页，chat（自动转发）/ agent（仿真群友）
 - **查看日志**：控制台「概览」页活动日志；文件在 `state/bridge.log`（桥接）/ `state/qq-activity.log`（QQ 活动）
 - **重置会话**：控制台「会话」页点「重置」，或 QQ 里发 `/reset`
+
+## 六、常见问题（避坑）
+
+### 图片识别不生效 / 启动日志警告「配置模型不在 DSH 模型目录」
+多半是 **DSH 版本与项目锁定的不一致**（老版本 DSH 的模型目录里没有 `*-vision-exp` 等视觉模型）。处理：把 DSH 升级到项目锁定版本（`install.mjs` 里的 `DSH_VERSION`，当前 `0.1.1-rc.2`，`npm i -g @deepseek-ai/dsh@0.1.1-rc.2` 后重启 DSH），或把 `config.json` 的 `dsh.model` 改成 DSH 模型目录里实际存在的模型。0.1.2 起桥接启动时会在日志里直接警告缺失模型。
+
+### NapCat 的 `restart-napcat.bat` 报「QQ not found」
+该脚本（NapCat 自带/旧机自定义）可能写死了旧电脑的 QQ 安装路径。请改用 **`launcher-user.bat`**（读注册表自动定位 QQ），或把 `restart-napcat.bat` 里的 `QQ_PATH` 改成你的 QQ.exe 实际路径。
+
+### 桥接随 DSH 重启一起死掉 / 首条消息特别慢
+- 桥接要**独立于 DSH 进程运行**：用项目里的 `start.bat`（守护模式）启动，不要在 DSH 宿主进程的终端里手动 `node src/main.js`（DSH 重启会连带杀掉它）。
+- 新会话首条消息偏慢是正常的（建工作区+会话+挂模型）；但若每次新建会话都等 1~2 秒才报「模型选择失败」，说明 `dsh.reasoningEffort` 或 `dsh.model` 配置有问题，按上面的模型警告排查。0.1.2 起配置错误会立即失败并提示，不再空等重试。
+
+### 回复太慢
+按「回复速度开关」说明调低 `dsh.reasoningEffort`（`off`/`low`）。桥接是回合结束时一次性发送（非流式），延迟主要来自模型生成时间，换更快的模型/更低的推理档位最有效。

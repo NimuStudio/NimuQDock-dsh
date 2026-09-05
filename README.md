@@ -162,7 +162,7 @@ copy config.example.json config.json
 | 字段 | 说明 |
 |---|---|
 | `dsh.baseUrl` | DSH Web 服务地址，默认 `http://127.0.0.1:3080` |
-| `dsh.provider` / `dsh.model` / `dsh.reasoningEffort` | 模型供应商 / 模型名 / 推理强度；若你的 DSH 没有示例中的模型，改成 DSH 设置页里可用的即可 |
+| `dsh.provider` / `dsh.model` / `dsh.reasoningEffort` | 模型供应商 / 模型名 / 推理强度（`off`/`low`/`high`/`max`）；若你的 DSH 没有示例中的模型，改成 DSH 设置页里可用的即可。**回复慢就调低推理强度**（`low` 比 `max` 快 30%~45%，闲聊足够） |
 | `napcat.wsUrl` | NapCat WebSocket 服务端地址，默认 `ws://127.0.0.1:3001` |
 | `napcat.httpUrl` | NapCat HTTP 服务端地址，默认 `http://127.0.0.1:3000`（**别填成 WS 端口**） |
 | `napcat.accessToken` | 与 WebUI 里设置的 accessToken 一致，未配置留空 |
