@@ -25,9 +25,12 @@ const DEFAULT_ENGAGEMENT = {
 /**
  * 被点名程度（0~1）。
  * @param {string} text 消息文本
- * @param {{directed: boolean, aliases: string[], wakeKeywords: string[]}} ctx
+ * @param {{directed: boolean, aliases: string[], wakeKeywords: string[],
+ *          toOthers?: boolean}} ctx
+ *          toOthers：本条消息明显在 @/引用「别人」（不是机器人）——里面的"你"
+ *          大概率指对方，第二人称提问不加权，避免 A 问 B 时机器人凑热闹
  */
-export function computeAttention(text, { directed = false, aliases = [], wakeKeywords = [] } = {}) {
+export function computeAttention(text, { directed = false, aliases = [], wakeKeywords = [], toOthers = false } = {}) {
   const s = String(text ?? '');
   // directed：真正被点名（@/引用/私聊）→ 必回
   if (directed) return 1.0;
@@ -37,8 +40,9 @@ export function computeAttention(text, { directed = false, aliases = [], wakeKey
   // 不触发 addressed 必回，仅提高参与评分
   if (containsAny(s, aliases ?? [])) return 0.6;
   // 第二人称直接提问（「你为什么…」「你是不是…」「你在干嘛」等，无 @ 但在直接问机器人）：
-  // 真人对话里对方刚被你回过话、接着不带 @ 追问很常见，不给够权重就会被迫句句 @
-  if (containsAny(s, QUESTION_MARKERS) && /你(?:为什么|为啥|怎么|是不是|凭什么|在|干嘛|觉得|认为|喜欢|讨厌|想|会|能|敢|知道|认识|看|听|说|有|要|玩)[^。！？!?\n]{0,20}/.test(s)) {
+  // 真人对话里对方刚被你回过话、接着不带 @ 追问很常见，不给够权重就会被迫句句 @。
+  // 但若消息在 @/引用别人，则"你"多半指对方 → 不加权（防止 A↔B 互聊时机器人凑热闹）。
+  if (!toOthers && containsAny(s, QUESTION_MARKERS) && /你(?:为什么|为啥|怎么|是不是|凭什么|在|干嘛|觉得|认为|喜欢|讨厌|想|会|能|敢|知道|认识|看|听|说|有|要|玩)[^。！？!?\n]{0,20}/.test(s)) {
     return 0.55;
   }
   if (containsAny(s, QUESTION_MARKERS)) return 0.35;

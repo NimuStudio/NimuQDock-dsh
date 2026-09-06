@@ -547,10 +547,16 @@ export class Router {
       return;
     }
     const st = state.get(key);
+    // 消息明显在 @ / 引用「别人」（不是机器人）→ 里面的"你"多半指对方，第二人称提问不加权
+    const toOthers = (msg.segments ?? []).some(
+      (seg) => (seg.type === 'at' && seg.data?.qq != null && String(seg.data.qq) !== '0' && String(seg.data.qq) !== String(msg.selfId))
+        || (seg.type === 'reply' && !quoteTargetIsSelf),
+    );
     const attention = computeAttention(textContent, {
       directed,
       aliases: personaDef.aliases,
       wakeKeywords: this.cfg.social?.wakeKeywords ?? [],
+      toOthers,
     });
     const interest = computeInterest(textContent, {
       topics: memory.topicKeywords(key),
