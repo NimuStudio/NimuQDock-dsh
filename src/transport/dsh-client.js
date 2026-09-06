@@ -27,6 +27,8 @@ class AsyncQueue {
     this.waiters = [];
     this.closed = false;
     this.maxSize = maxSize;
+    this.dropped = 0;      // 溢出丢弃计数（诊断用）
+    this.lastWarnAt = 0;
   }
 
   push(item) {
@@ -36,8 +38,16 @@ class AsyncQueue {
       waiter(item);
       return;
     }
-    // 有界缓冲：超限丢弃最旧（事件风暴时保底，避免内存膨胀）
-    if (this.maxSize > 0 && this.items.length >= this.maxSize) this.items.shift();
+    // 有界缓冲：超限丢弃最旧（事件风暴时保底，避免内存膨胀）——同时节流告警，别无声丢帧
+    if (this.maxSize > 0 && this.items.length >= this.maxSize) {
+      this.items.shift();
+      this.dropped += 1;
+      const now = Date.now();
+      if (now - this.lastWarnAt > 10000) {
+        this.lastWarnAt = now;
+        console.warn(`[dsh-client] 事件队列溢出：已丢弃 ${this.dropped} 帧（消费端处理慢于事件到达，可能影响回合跟踪）`);
+      }
+    }
     this.items.push(item);
   }
 

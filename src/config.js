@@ -100,7 +100,7 @@ export function loadConfig(file = CONFIG_FILE) {
     e[k] = toFinite(e[k], 0);
   }
   const hb = cfg.social.heartbeat;
-  for (const k of ['minIntervalMs', 'maxIntervalMs', 'idleThresholdMs']) hb[k] = toFinite(hb[k], 0);
-  hb.probability = toFinite(hb.probability, 0.3);
+  for (const k of ['minIntervalMs', 'maxIntervalMs', 'idleThresholdMs']) hb[k] = Math.max(1000, toFinite(hb[k], 0));
+  hb.probability = Math.min(1, Math.max(0, toFinite(hb.probability, 0.3)));
   return cfg;
 }
