@@ -8,6 +8,17 @@
 //   【会话令牌】<token>
 import { format } from 'node:util';
 
+/** 群友可控文本消毒：压平换行/控制符、剔除块标记【】，防记忆/未读内容伪造 prompt 块结构。 */
+function sanitizeLine(text, maxLen = 80) {
+  return String(text ?? '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/[【】]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+}
+
 /** mood 数值 → 文字（供状态注入）。 */
 export function moodLabel(mood) {
   const m = Number.isFinite(Number(mood)) ? Number(mood) : 0.5;
@@ -65,9 +76,12 @@ export function renderState(state, persona) {
 export function renderMemories(entries) {
   if (!entries?.length) return '';
   const lines = entries.map((e) => {
-    const target = e.target ? `（${e.target}）` : '';
-    return `${e.text}${target}`;
-  });
+    const text = sanitizeLine(e.text);
+    if (!text) return null;
+    const target = e.target ? `（${sanitizeLine(e.target, 24)}）` : '';
+    return `记忆条目：${text}${target}`;
+  }).filter(Boolean);
+  if (!lines.length) return '';
   return `【记忆】\n${lines.join('\n')}`;
 }
 
@@ -76,8 +90,8 @@ export function renderUnread(unread = []) {
   if (!unread.length) return '';
   const lines = unread.map((m) => {
     const t = m.time ? new Date(m.time * 1000) : null;
-    const hhmm = t ? `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '--:--';
-    return `[${hhmm}] ${m.senderName}：${String(m.text).slice(0, 200)}`;
+    const hhmm = t && !Number.isNaN(t.getTime()) ? `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '--:--';
+    return `[${hhmm}] ${sanitizeLine(m.senderName, 24)}：${sanitizeLine(m.text, 200)}`;
   });
   return `【未读消息】\n${lines.join('\n')}`;
 }

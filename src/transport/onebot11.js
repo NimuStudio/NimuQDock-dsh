@@ -151,6 +151,11 @@ export class OneBot11Client extends EventEmitter {
   /** 停止并关闭连接（进程退出时调用）。 */
   close() {
     this.closing = true;
+    // 中断退避等待：close 后重连循环不应再等满最长 30s 才退出
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
     try {
       this.ws?.close();
     } catch {}
@@ -169,7 +174,12 @@ export class OneBot11Client extends EventEmitter {
       if (this.closing) break;
       const delay = RECONNECT_BACKOFF_MS[Math.min(this._attempt, RECONNECT_BACKOFF_MS.length - 1)];
       this._attempt += 1;
-      await new Promise((r) => setTimeout(r, delay));
+      await new Promise((r) => {
+        this._reconnectTimer = setTimeout(() => {
+          this._reconnectTimer = null;
+          r();
+        }, delay);
+      });
     }
     this._connectPromise = null;
   }
@@ -248,6 +258,7 @@ export class OneBot11Client extends EventEmitter {
       });
 
       socket.addEventListener('error', () => {
+        clearTimeout(handshakeTimer);
         this.connected = false;
         if (!opened) notifyFirstError(new Error(`NapCat WebSocket 连接失败：${url}`));
       });

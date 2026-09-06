@@ -69,6 +69,9 @@ export class SessionManager {
       let lastError = null;
       let presetAttachFailed = false;
       const preset = this.presetFor(mode);
+      // preset 挂载/挂载点相关的「永久性」错误码：只有这些才值得回退无 preset 会话；
+      // 网络/超时等瞬态错误原样抛出（外层有 3s 重连），否则会把「DSH 抖动」误判成「preset 坏了」。
+      const PRESET_FAIL_RE = /agent-preset-(invalid|not-found)|workspace-attach-failed/;
       // 归组：所有 QQ 会话挂到同一个 workspace（幂等创建）
       for (const withPreset of [true, false]) {
         try {
@@ -84,9 +87,12 @@ export class SessionManager {
           break;
         } catch (error) {
           lastError = error;
-          // 带 preset 的首选尝试失败 → 记录，回退无 preset 前必须明确告警，
-          // 否则「agent 发不出话/没有 QQ 工具」会被静默吞掉（纯文本永不自动发送）
-          if (withPreset) presetAttachFailed = true;
+          if (withPreset) {
+            const msg = String(error?.message ?? error);
+            // 瞬态错误（网络/DSH 抖动）：不降级、不吞，抛给外层重连/重试
+            if (!PRESET_FAIL_RE.test(msg)) throw error;
+            presetAttachFailed = true;
+          }
         }
       }
       if (presetAttachFailed && sessionId) {
@@ -95,7 +101,8 @@ export class SessionManager {
         this.log('   常见原因：DSH 的 mcp serverName（napcat / web-search-safe）被其它存活会话占用——重启 DSH 即可清空注册表。');
       }
       if (!sessionId) {
-        this.log(`归组创建失败（${lastError?.message ?? lastError}），回退无参创建`);
+        // 两次归组创建都失败：最后一次尝试裸创建并明确告警（这会是完全脱管的会话）
+        this.log(`⚠️ 归组创建均失败（${lastError?.message ?? lastError}），回退无参创建（无 workspace 兜底会话）`);
         const value = unwrap(await this.api.sessions.create({}), 'session.create');
         sessionId = value.sessionId;
       }
@@ -111,9 +118,10 @@ export class SessionManager {
       await this.applyModel(sessionId);
       // applyModel 是真实挂起点（最长数秒重试）：期间若发生 reset，刚创建的新会话会变成
       // 未归档僵尸且映射被删。完成后二次校验 epoch，不一致则归档新会话并抛错。
+      // 守卫：只删「仍指向本会话」的映射——reset 后新消息可能已映射到新会话 B，不能误删 B。
       if (epoch !== this.epoch) {
         this.log(`applyModel 期间发生 reset，归档 ${key} 的新会话（${sessionId}）`);
-        delete this.state.sessions[key];
+        if (this.state.sessions[key] === sessionId) delete this.state.sessions[key];
         if (this.reverse.get(sessionId) === key) this.reverse.delete(sessionId);
         saveSessions(this.state.sessions);
         try { await this.api.workspace.archiveSession({ sessionId }); } catch {}
@@ -130,7 +138,7 @@ export class SessionManager {
     }
   }
 
-  /** 应用 config.json 里的模型选择（视觉模型）；失败只打日志，不阻塞。带 2 次短重试（会话刚创建时模型目录可能未就绪）。 */
+  /** 应用 config.json 里的模型选择（视觉模型）；失败只打日志，不阻塞。带短重试（会话刚创建时模型目录可能未就绪）。 */
   async applyModel(sessionId) {
     const { provider, model, reasoningEffort } = this.cfg.dsh ?? {};
     if (!provider || !model) return;
@@ -147,9 +155,10 @@ export class SessionManager {
       } catch (error) {
         lastError = error;
         const msg = String(error?.message ?? error);
-        // 永久性配置错误（模型/推理档位不在目录、请求体非法、会话不存在）——重试不会变好，
-        // 立即放弃并给出可操作提示，避免每个新会话白等 1s+2s 退避（实测这让首条消息慢 ~3s）。
-        if (/bad-request|invalid payload|no result payload|too_small|not found|不存在|unknown/.test(msg)) {
+        // 只有「明确的永久性配置错误」才立即放弃（重试不会变好），避免每个新会话白等退避。
+        // 注意：'no result payload'/'unknown'/宽泛的 'not found' 可能是会话刚创建未就绪的瞬态表现，
+        // 必须重试，否则新会话永远静默退回默认模型（图片识别/视觉能力悄悄失效）。
+        if (/bad-request|invalid payload|too_small|unknown model|no such model/.test(msg)) {
           this.log(`模型选择失败（配置问题，不重试）: ${msg}`);
           this.log(`   —— provider=${provider} model=${model} reasoningEffort=${reasoningEffort || '(未设置)'}；请确认该模型在 DSH 模型目录可用（启动日志会警告缺失模型），或改 config.json 的 dsh.*`);
           return;
@@ -157,7 +166,7 @@ export class SessionManager {
         if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
       }
     }
-    this.log(`模型选择失败（不阻塞，会话将用默认模型）: ${lastError?.message ?? lastError}`);
+    this.log(`模型选择失败（已重试 3 次，会话将用默认模型）: ${lastError?.message ?? lastError}`);
   }
 
   /**

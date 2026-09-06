@@ -11,7 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const [tag, out] = process.argv.slice(2);
 if (!tag || !out) { console.error('usage: node scripts/make-release-zip.mjs <tag> <out.zip>'); process.exit(1); }
 
-const EXCLUDE_DIRS = new Set(['.git', 'state', '.github', 'node_modules/.cache']);
+const EXCLUDE_DIRS = new Set(['.git', 'state', '.github', 'dist', 'node_modules/.cache']);
 const EXCLUDE_FILES = new Set(['config.json']);
 const EXCLUDE_EXT = new Set(['.log', '.tmp']);
 

@@ -20,7 +20,7 @@ import childProcess from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readActivityTail } from '../log.js';
 import { writeRoleState, readRoleState } from '../state.js';
-import { sanitizeRoleName, sleep } from '../lib/utils.js';
+import { sanitizeRoleName, sleep, normalizeIdList } from '../lib/utils.js';
 import { imageBufferFromGetImage as getImageBuffer, sniffImageMime } from '../lib/qq-image.js';
 import { SENSITIVE_RE } from '../lib/sensitive.js';
 import { isAllowed } from '../policy/allowlist.js';
@@ -41,9 +41,9 @@ function getConfigSafe() {
   }
 }
 
-/** 持久化完整配置（原子写，UTF-8）。 */
+/** 持久化完整配置（原子写，UTF-8；随机后缀临时名防同进程并发写互踩）。 */
 function persistConfig(cfgObj) {
-  const tmp = `${CONFIG_FILE}.${process.pid}.tmp`;
+  const tmp = `${CONFIG_FILE}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(cfgObj, null, 2) + '\n', 'utf8');
   fs.renameSync(tmp, CONFIG_FILE);
 }
@@ -552,6 +552,11 @@ export function startConsoleServer({ port, token, deps }) {
         const idx = list.indexOf(id);
         if (action === 'remove') { if (idx !== -1) list.splice(idx, 1); }
         else if (idx === -1) list.push(id);
+        // 落盘前统一归一化（与 loadConfig/MCP 侧一致）：去重、去 '0'/'undefined'、trim，防内存与磁盘/双进程白名单漂移
+        cfg.allow.private = normalizeIdList(cfg.allow.private);
+        cfg.allow.groups = normalizeIdList(cfg.allow.groups);
+        cfg.deny.private = normalizeIdList(cfg.deny.private);
+        cfg.deny.groups = normalizeIdList(cfg.deny.groups);
         persistConfig(cfg);
         return sendJson(res, { ok: true, allow: cfg.allow, deny: cfg.deny });
       }

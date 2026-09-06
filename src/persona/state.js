@@ -16,6 +16,7 @@ const TICK_MAX_HOURS = 1;                  // 单次折算上限 1 小时
 const RELATION_DECAY_DAYS = 14;            // 超过 14 天未互动开始衰减
 const RELATION_DECAY_PER_DAY = 0.95;
 const RELATION_REMOVE_BELOW = 0.05;
+const SAVE_THROTTLE_MS = 3000;             // 同会话状态写盘节流窗口（尾随合并）
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
@@ -54,6 +55,8 @@ export class PersonaStateStore {
     this.getPersona = getPersona;
     this.log = log;
     this.cache = new Map(); // key -> state（内存态，save 时落盘）
+    this.lastSaveAt = new Map();   // key -> 上次落盘时间（写盘节流）
+    this.saveTimers = new Map();   // key -> 尾随落盘定时器
   }
 
   stateFile(key) {
@@ -155,7 +158,7 @@ export class PersonaStateStore {
     return st;
   }
 
-  /** 记录与某群友的互动上下文（话题词 + 时间，供衰减与关系展示）。变更即落盘。 */
+  /** 记录与某群友的互动上下文（话题词 + 时间，供衰减与关系展示）。节流落盘（每消息热路径）。 */
   touchPeer(key, peerId, topics = [], now = Date.now()) {
     const st = this.tick(key, now);
     const rel = st.relationships[String(peerId)] ?? { score: 0, topics: [], lastTalkedAt: 0 };
@@ -166,7 +169,7 @@ export class PersonaStateStore {
     }
     st.relationships[String(peerId)] = rel;
     st.updatedAt = now;
-    this.save(key);
+    this.saveThrottled(key);
     return st;
   }
 
@@ -206,15 +209,42 @@ export class PersonaStateStore {
     return st;
   }
 
-  /** 落盘。 */
+  /** 落盘（同步，关键变更即时持久化）。 */
   save(key) {
     const st = this.cache.get(key);
     if (!st) return;
     atomicWriteJson(this.stateFile(key), st);
   }
 
+  /**
+   * 落盘（节流）：同会话 3s 内的连续保存合并为一次尾随写入，避免活跃群
+   * 每条消息都同步写盘阻塞事件循环；内存态始终即时更新，语义不变。
+   * 仅热路径（touchPeer 每条消息）使用；关键结算走 save() 同步写。
+   */
+  saveThrottled(key) {
+    const st = this.cache.get(key);
+    if (!st) return;
+    const now = Date.now();
+    const last = this.lastSaveAt.get(key) ?? 0;
+    const pending = this.saveTimers.get(key);
+    if (pending) clearTimeout(pending);
+    if (now - last >= SAVE_THROTTLE_MS) {
+      this.lastSaveAt.set(key, now);
+      atomicWriteJson(this.stateFile(key), st);
+      return;
+    }
+    this.saveTimers.set(key, setTimeout(() => {
+      this.saveTimers.delete(key);
+      this.lastSaveAt.set(key, Date.now());
+      if (this.cache.has(key)) atomicWriteJson(this.stateFile(key), this.cache.get(key));
+    }, SAVE_THROTTLE_MS - (now - last)));
+  }
+
   /** 从内存缓存移除（重置/卸载人格时调用）。 */
   drop(key) {
     this.cache.delete(key);
+    this.lastSaveAt.delete(key);
+    const t = this.saveTimers.get(key);
+    if (t) { clearTimeout(t); this.saveTimers.delete(key); }
   }
 }

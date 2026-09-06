@@ -215,8 +215,9 @@ server.tool(
   async ({ message_id, message }) => {
     const cfg = getConfig();
     const m = await bot.getMessage(message_id);
-    if (!m) throw new Error('原消息不存在');
-    // 判断通道：有 group_id 为群消息，否则私聊
+    if (!m) throw new Error('原消息不存在或无权访问');
+    // 归属校验：读取前先确认原消息所在会话命中白名单（与 qq_get_message 同强度，
+    // 防拿 message_id 当探测 oracle 摸非白名单会话的存在性/归属）
     if (m.group_id != null) {
       requireAllowed('group', m.group_id, cfg);
       const res = await bot.sendGroupMessage(m.group_id, message, { replyToMessageId: message_id });
@@ -258,6 +259,7 @@ server.tool(
     id: z.string().optional().describe('chat 用法：群号或 QQ 号'),
     key: z.string().optional().describe('agent 用法：会话标识'),
     token: z.string().optional().describe('agent 用法：会话令牌'),
+    upto_seq: z.union([z.string(), z.number()]).optional().describe('agent 用法：推进已读水位到指定 seq（缺省清到最新）'),
   },
   async (args) => {
     if (args.key && args.token) {

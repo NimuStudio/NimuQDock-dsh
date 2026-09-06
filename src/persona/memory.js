@@ -55,6 +55,7 @@ export class MemoryStore {
     this.bags = new Map(); // key -> string[]（L1 最近消息原文）
     this.topicCache = new Map(); // key -> { topics }（内存优先）
     this.topicWriteAt = new Map(); // key -> 最近落盘时间
+    this.entryCache = new Map(); // key -> entries[]（L2 内存缓存，避免每条消息同步读盘）
   }
 
   topicsFile(key) {
@@ -122,10 +123,15 @@ export class MemoryStore {
 
   // ── L2：人格长期记忆 ─────────────────────────────────────────────────────────
   loadEntries(key) {
-    return readJsonSafe(this.memoryFile(key), { entries: [] })?.entries ?? [];
+    const cached = this.entryCache.get(key);
+    if (cached) return cached;
+    const entries = readJsonSafe(this.memoryFile(key), { entries: [] })?.entries ?? [];
+    this.entryCache.set(key, entries);
+    return entries;
   }
 
   saveEntries(key, entries) {
+    this.entryCache.set(key, entries);
     atomicWriteJson(this.memoryFile(key), { entries, updatedAt: Date.now() });
   }
 
@@ -155,19 +161,24 @@ export class MemoryStore {
     return false;
   }
 
-  /** 追加一条记忆；顺带执行遗忘策略。 */
+  /** 追加一条记忆；顺带执行遗忘策略。相同 (text,target) 的条目去重（只刷新一次）。 */
   append(key, { type = 'topic', target = '', text, keywords = [] }, now = Date.now()) {
     if (!text || !String(text).trim()) throw new Error('记忆内容为空');
+    const tgt = String(target ?? '');
+    const txt = String(text).trim();
+    const entries = this.loadEntries(key);
+    // 去重：同文本同对象已存在则直接复用（不再写入，省盘 I/O）
+    const dup = entries.find((e) => e.text === txt && String(e.target ?? '') === tgt);
+    if (dup) return dup;
     const entry = {
       id: crypto.randomUUID(),
       type: ['member', 'joke', 'todo', 'topic'].includes(type) ? type : 'topic',
-      target: String(target ?? ''),
-      text: String(text).trim(),
+      target: tgt,
+      text: txt,
       keywords: (Array.isArray(keywords) ? keywords.map(String) : []).slice(0, 10),
       createdAt: now,
       lastUsedAt: 0,
     };
-    const entries = this.loadEntries(key);
     entries.push(entry);
     this.saveEntries(key, entries);
     this.evict(key, now);

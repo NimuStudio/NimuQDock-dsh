@@ -104,7 +104,7 @@ fail-fast（启动时报错并提示人格卡路径）。
     「@我 + 负面语气词表」近似，v1 简化：被 @ 且 AI 上一条发言后 2 分钟内对方回复 → 视为对话延续而非被怼；
     仅对明确命中怼人词表才扣心情）。
   - `be_praised`：被 @ 且命中夸赞词表；
-  - `be_ignored`：AI 发言后 `idleWindowMs`（默认 30 分钟）内无人回应；
+  - `be_ignored`：AI 发言后 `heartbeat.idleThresholdMs`（默认 5 分钟）内无人回应；
   - `poke`：拍一拍事件 target 为机器人；
   - 词表放 `src/persona/lexicon.js`（自研小词表，可扩展）。
 - **发言结算**（`settleReply`）：`energy -= cost_per_reply`；
@@ -319,9 +319,7 @@ score = wAttention × attention          # 被点名程度 0~1
   "memory": { "maxEntries": 200, "injectMax": 6, "decayDays": 30 },
   "topics": { "windowSize": 200, "minCount": 3, "maxTopics": 20 },
   "unread": { "maxPerSession": 100 },
-  "idleWindowMs": 1800000,
-  "wait": { "defaultMs": 30000, "maxMs": 600000, "quietAfterNewMs": 10000 },
-  "send": { "maxPerMinute": 8, "maxMessageChars": 500, "burstIntervalMinMs": 1000, "burstIntervalMaxMs": 3000 }
+  "noActionLimit": 3
 }
 ```
 

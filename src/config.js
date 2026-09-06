@@ -11,7 +11,7 @@ export const CONFIG_FILE = path.join(ROOT, 'config.json');
 
 /** 所有可配置项的默认值（config.json 只需覆盖想改的字段）。 */
 export const DEFAULTS = {
-  dsh: { baseUrl: 'http://127.0.0.1:3080', provider: '', model: '', reasoningEffort: 'max' },
+  dsh: { baseUrl: 'http://127.0.0.1:3080', provider: '', model: '', reasoningEffort: '' },
   napcat: { wsUrl: 'ws://127.0.0.1:3001', httpUrl: 'http://127.0.0.1:3000', accessToken: '' },
   ownerQQ: '',
   agentPreset: 'qq-chat',       // chat 模式使用的 DSH agent preset
@@ -33,8 +33,8 @@ export const DEFAULTS = {
     enabled: true,
     defaultPersona: '',
     wakeKeywords: [],
-    engagement: { wAttention: 2.5, wInterest: 1.5, wEnergy: 1.0, wMood: 0.8, wNoise: 0.6, threshold: 2.0, cooldownMs: 45000 },
-    heartbeat: { enabled: true, minIntervalMs: 600000, maxIntervalMs: 1800000, idleThresholdMs: 900000, probability: 0.3 },
+    engagement: { wAttention: 2.5, wInterest: 1.8, wEnergy: 1.0, wMood: 0.8, wNoise: 0.6, threshold: 1.7, cooldownMs: 25000 },
+    heartbeat: { enabled: true, minIntervalMs: 300000, maxIntervalMs: 900000, idleThresholdMs: 300000, probability: 0.5 },
     memory: { maxEntries: 200, injectMax: 6, decayDays: 30 },
     topics: { windowSize: 200, minCount: 3, maxTopics: 20 },
     unread: { maxPerSession: 100 },
