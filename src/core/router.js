@@ -21,6 +21,24 @@ import { computeAttention, computeInterest, computeScore } from '../persona/enga
 import { buildWakePrompt } from '../persona/inject.js';
 import { loadPersona } from '../persona/definition.js';
 
+/**
+ * 从群友消息里捕获「值得长期记住的个人事实」（自我介绍/喜好/近况等）。
+ * 只匹配明显的「我…」自述句并整句截断，降低把闲聊误存成记忆的噪音。
+ * @param {string} text 纯文本消息
+ * @returns {string|null} 截断后的事实句；不是事实句返回 null
+ */
+const MEM_FACT_START = /^(?:我|咱|本人|老娘|爷|老子|本宝宝)(?:叫|是|喜欢|最爱|最喜欢|讨厌|最讨厌|住|住在|在|养|玩|吃|喝|做|写|学|读|上班|工作|干|想|打算|今年|明年|刚|已经|生日|考|准备|约)/;
+function captureMemberFact(text) {
+  const s = String(text ?? '').trim().replace(/\s+/g, ' ');
+  if (!s) return null;
+  // 去掉 @ 段残留与过长消息（防止把带 @ 的群务消息当事实）
+  if (s.length < 3 || s.length > 90 || s.includes('@')) return null;
+  if (!MEM_FACT_START.test(s)) return null;
+  // 只取第一句，最多 60 字
+  const m = s.split(/[。！？!?\n]/)[0] ?? s;
+  return m.slice(0, 60) || null;
+}
+
 export class Router {
   /**
    * @param {{ api, bot, cfg, sessions, sender, log,
@@ -505,6 +523,22 @@ export class Router {
     // 3) L1 话题 + 关系触摸
     if (plainContent) memory.addTopic(key, plainContent);
     state.touchPeer(key, msg.userId);
+    // 3.1) 自动记忆：群友的自我介绍/喜好/个人事实 → L2 长期记忆
+    //（无需 AI 主动调 qq_memory_append——它几乎不会记得调，记忆区常年为空，
+    //  长期记忆是「记得群友」的根基；只记别人的话，且只匹配明显的事实句降低噪音）
+    try {
+      if (msg.kind === 'group' && msg.userId != null && String(msg.userId) !== String(msg.selfId)) {
+        const fact = captureMemberFact(plainContent);
+        if (fact) {
+          memory.append(key, {
+            type: 'member',
+            target: String(msg.userId),
+            text: `${msg.senderName || '群友'}：${fact}`,
+            keywords: [msg.senderName || ''].filter(Boolean),
+          });
+        }
+      }
+    } catch { /* 记忆写入失败不影响主流程 */ }
 
     // 4) 参与意愿评分
     const personaDef = state.safePersona(key);
