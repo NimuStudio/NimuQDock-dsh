@@ -61,7 +61,7 @@ traits:
   sharp: 0.6      # 毒舌
   warm: 0.3       # 温柔（藏着不表现）
 interests: [二次元, 编程, 游戏, AI]
-proactiveness: 0.35
+proactiveness: 0.5
 mood:
   initial: 0.5
   decay_per_hour: 0.02
