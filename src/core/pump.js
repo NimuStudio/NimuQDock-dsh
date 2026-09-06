@@ -26,6 +26,7 @@ const isSendTool = (name) => SEND_TOOL_RE.test(String(name ?? ''));
 /** 从发送工具的调用参数里提取「要发出去的话」（messages 数组 / message 字符串 → 文本数组）。 */
 function extractSendTexts(raw) {
   try {
+    // tool/call 帧的参数在 event.data.arguments（原始 JSON 字符串）
     const a = raw && typeof raw === 'object' ? raw : typeof raw === 'string' ? JSON.parse(raw) : {};
     const msgs = Array.isArray(a.messages) ? a.messages : a.message != null ? [a.message] : [];
     return msgs.filter((t) => typeof t === 'string').map((t) => t.trim()).filter(Boolean);
@@ -73,6 +74,15 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
     return s;
   };
 
+  /** agent 回合收尾：单会话收尾异常绝不能撕裂整条事件流（否则其它会话回合会丢/重复）。 */
+  const safeAgentTurnEnd = (key, opts) => {
+    try {
+      router.onAgentTurnEnd?.(key, opts);
+    } catch (error) {
+      log(`agent 回合收尾异常 (${key}): ${error?.message ?? error}`);
+    }
+  };
+
   const loop = async () => {
     while (!signal?.aborted) {
       try {
@@ -106,7 +116,7 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
                 }
                 pending.add(String(callId));
                 // 记录要发的话（供活动日志展示真实已发送内容）
-                const texts = extractSendTexts(event.data?.input ?? event.data?.arguments ?? event.data?.params);
+                const texts = extractSendTexts(event.data?.arguments ?? event.data?.input ?? event.data?.params);
                 if (texts.length) {
                   let list = sendToolTexts.get(frame.sessionId);
                   if (!list) { list = []; sendToolTexts.set(frame.sessionId, list); }
@@ -146,23 +156,23 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
 
             collectors.delete(frame.sessionId);
             const sendToolSucceededNow = sendToolSucceeded.has(frame.sessionId);
+            const sentTexts = sendToolTexts.get(frame.sessionId) ?? [];
             sendToolSucceeded.delete(frame.sessionId);
             pendingSendToolCalls.delete(frame.sessionId);
             toolCallNames.delete(frame.sessionId);
+            sendToolTexts.delete(frame.sessionId);
             const turnMode = turnStartMode.get(frame.sessionId) ?? router.getMode();
             turnStartMode.delete(frame.sessionId);
 
-            // 本回合已通过 MCP 发送工具成功发出消息：跳过自动转发（避免重复）
-            if (sendToolSucceededNow) {
-              const sentTexts = sendToolTexts.get(frame.sessionId) ?? [];
-              sendToolTexts.delete(frame.sessionId);
+            // agent 模式：本回合已通过 MCP 发送工具成功发出消息 → 跳过自动转发（避免重复），
+            // 并把真实发言记入活动日志。chat 模式不适用（发送工具不可达，文本照常自动转发）。
+            if (sendToolSucceededNow && turnMode === 'agent') {
               log(`工具已发送消息，跳过自动转发 (${key})`);
-              // agent 模式的真实发言：记入活动日志（此前只在自动转发路径记录，工具发送会漏）
               if (sentTexts.length) {
                 const text = sentTexts.join(' ｜ ');
                 appendActivity(`${key} agent 回复：${text.slice(0, 80)}${text.length > 80 ? '…' : ''}`);
               }
-              router.onAgentTurnEnd?.(key, { replied: true });
+              safeAgentTurnEnd(key, { replied: true });
               continue;
             }
 
@@ -177,7 +187,7 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
               // （turn/end 的 sendToolSucceededNow 分支已记活动日志）。私聊兜底除外。
               if (turnMode === 'agent' && !key.startsWith('private:')) {
                 log(`[agent] AI 内部输出 (${key}): ${plain.slice(0, 80)}`);
-                router.onAgentTurnEnd?.(key, { replied: false });
+                safeAgentTurnEnd(key, { replied: false });
                 continue;
               }
               // 敏感审计（与 Sender 内部审计一致；此处区分拦截以便提示）
@@ -189,7 +199,7 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
                 if (cfg.security?.interceptNotify !== false) {
                   await safeSend('拦截通知', () => sender.notify(key, '⚠️ 本条回复因疑似包含敏感信息（路径/凭据/会话令牌）被安全策略拦截，已记录并通知管理员。'));
                 }
-                router.onAgentTurnEnd?.(key, { replied: false });
+                safeAgentTurnEnd(key, { replied: false });
                 continue;
               }
               log(`agent 回复 (${key}) ${plain.length} 字`);
@@ -198,7 +208,7 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
               if (turnMode === 'agent') {
                 log(`[agent] 私聊纯文本兜底发送 (${key}): ${plain.slice(0, 60)}`);
                 await safeSend('agent 私聊兜底', () => sender.sendToQQ(key, plain));
-                router.onAgentTurnEnd?.(key, { replied: true });
+                safeAgentTurnEnd(key, { replied: true });
                 continue;
               }
               await safeSend('chat 回复', () => sender.sendToQQ(key, plain));
@@ -213,7 +223,7 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
               log(`回合结束（${ended.reason.kind}）无文本 (${key})`);
               // agent 模式：completed 但无输出视为「无行动」回合，参与防卡死计数
               if (ended.reason.kind === 'completed' && turnMode === 'agent') {
-                router.onAgentTurnEnd?.(key, { replied: false });
+                safeAgentTurnEnd(key, { replied: false });
               }
             }
             continue;

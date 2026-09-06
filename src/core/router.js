@@ -33,6 +33,8 @@ function captureMemberFact(text) {
   if (!s) return null;
   // 去掉 @ 段残留与过长消息（防止把带 @ 的群务消息当事实）
   if (s.length < 3 || s.length > 90 || s.includes('@')) return null;
+  // 防持久化提示词注入：含块标记/换行/控制符的文本不入记忆（renderMemories 另有转义兜底）
+  if (/[【】\r\n\t\u0000-\u001f\u007f]/.test(s)) return null;
   if (!MEM_FACT_START.test(s)) return null;
   // 只取第一句，最多 60 字
   const m = s.split(/[。！？!?\n]/)[0] ?? s;

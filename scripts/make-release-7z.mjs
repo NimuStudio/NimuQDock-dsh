@@ -27,7 +27,7 @@ function find7za() {
   return null;
 }
 
-const EXCLUDE_DIRS = new Set(['.git', 'state', '.github', 'node_modules/.cache']);
+const EXCLUDE_DIRS = new Set(['.git', 'state', '.github', 'dist', 'node_modules/.cache']);
 const EXCLUDE_FILES = new Set(['config.json', '.env', '.env.local', '.env.production']);
 const EXCLUDE_EXT = new Set(['.log', '.tmp']);
 

@@ -709,8 +709,9 @@ document.addEventListener('click', (e) => {
     const val = item.dataset.v;
     dd.querySelectorAll('.glass-dd-item').forEach((i) => i.classList.toggle('active', i === item));
     const t = dd.querySelector('.glass-dd-trigger');
-    const label = item.childNodes[0]?.textContent || item.textContent;
-    t.innerHTML = label + ' <span class="glass-dd-arrow">▼</span>';
+    const label = item.childNodes[0]?.textContent || item.textContent || '';
+    // 经 textContent 取出的已是"解码后原文"，必须再 esc 才能进 innerHTML（防下拉 XSS）
+    t.innerHTML = esc(label) + ' <span class="glass-dd-arrow">▼</span>';
     dd.classList.remove('open');
     const cb = dd.dataset.onpick;
     const key = dd.dataset.key;
