@@ -16,7 +16,7 @@ export const PERSONA_DEFAULTS = {
   base_prompt: '',   // 兼容旧格式：外部 .md 文件引用
   traits: {},
   interests: [],
-  proactiveness: 0.35,
+  proactiveness: 0.5,
   mood: {
     initial: 0.5,
     decay_per_hour: 0.02,

@@ -45,7 +45,7 @@ traits:                        # 性格参数（0~1，注入 prompt 供 AI 把�
   sharp: 0.6
   warm: 0.3
 interests: [二次元, 编程, 游戏]  # 话题兴趣关键词（参与意愿的 interest 项）
-proactiveness: 0.35            # 主动开话题倾向（心跳评估用）
+proactiveness: 0.5            # 主动开话题倾向（心跳评估用）
 mood:                          # 心情系统
   initial: 0.5
   decay_per_hour: 0.02         # 每整点向 0.5 回归
@@ -180,9 +180,9 @@ score = wAttention × attention          # 被点名程度 0~1
 
 | 项 | 计算 | 说明 |
 |---|---|---|
-| `attention` | @机器人/引用机器人消息=1.0；命中人格 aliases/唤醒关键词=0.9；问句（`？?` 结尾或含疑问词）且未点名=0.35；其余=0.05 | 唤醒关键词取人格卡 aliases + cfg.social.wakeKeywords |
+| `attention` | @机器人/引用机器人消息=1.0；命中 cfg.social.wakeKeywords=0.9；命中人格 aliases（含逆鳞外号如「大肥鱼」）=0.6（仅参与信号，非必回）；**第二人称提问**（"你为什么/你是不是/你干嘛…"等）且非 @ 别人=0.55（@/引用"别人"时降级 0.35，防 A↔B 互聊误触发）；问句（`？?` 或含疑问词）未点名=0.35；其余=0.05 | 只有 attention≥0.9（被点名）才是必回；0.45~0.9 只是"该看一眼"——有人明显在问/找你时可越过 `cooldownMs`，让人不用句句 @ |
 | `interest` | 消息文本与「L1 话题关键词 ∪ L2 记忆 keywords ∪ 人格卡 interests」的命中数归一化：`min(1, hits/2)` | |
-| `recencyPenalty` | `lastReplyAt` 距今 < `cooldownMs` → +∞（硬冷却）；否则 `exp(-elapsed/cooldownMs/3)` | 权重固定 1.0 |
+| `recencyPenalty` | `lastReplyAt` 距今 < `cooldownMs` 且 attention < 0.45 → skip（硬冷却）；否则继续评分 | 冷却不再卡"对方刚追问"的对话 |
 | 其余 | 直接来自 cfg.social.engagement | |
 
 ### 6.2 决策流
@@ -309,12 +309,12 @@ score = wAttention × attention          # 被点名程度 0~1
   "defaultPersona": "小鲸鱼",
   "wakeKeywords": ["在吗"],
   "engagement": {
-    "wAttention": 2.5, "wInterest": 1.5, "wEnergy": 1.0, "wMood": 0.8,
-    "wNoise": 0.6, "threshold": 2.0, "cooldownMs": 45000
+    "wAttention": 2.5, "wInterest": 1.8, "wEnergy": 1.0, "wMood": 0.8,
+    "wNoise": 0.6, "threshold": 1.7, "cooldownMs": 25000
   },
   "heartbeat": {
-    "enabled": true, "minIntervalMs": 600000, "maxIntervalMs": 1800000,
-    "idleThresholdMs": 900000, "probability": 0.3
+    "enabled": true, "minIntervalMs": 300000, "maxIntervalMs": 900000,
+    "idleThresholdMs": 300000, "probability": 0.5
   },
   "memory": { "maxEntries": 200, "injectMax": 6, "decayDays": 30 },
   "topics": { "windowSize": 200, "minCount": 3, "maxTopics": 20 },

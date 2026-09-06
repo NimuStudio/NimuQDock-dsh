@@ -48,19 +48,19 @@
     "wakeKeywords": [],
     "engagement": {
       "wAttention": 2.5,
-      "wInterest": 1.5,
+      "wInterest": 1.8,
       "wEnergy": 1.0,
       "wMood": 0.8,
       "wNoise": 0.6,
-      "threshold": 2.0,
-      "cooldownMs": 45000
+      "threshold": 1.7,
+      "cooldownMs": 25000
     },
     "heartbeat": {
       "enabled": true,
-      "minIntervalMs": 600000,
-      "maxIntervalMs": 1800000,
-      "idleThresholdMs": 900000,
-      "probability": 0.3
+      "minIntervalMs": 300000,
+      "maxIntervalMs": 900000,
+      "idleThresholdMs": 300000,
+      "probability": 0.5
     },
     "memory": {
       "maxEntries": 200,
