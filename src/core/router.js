@@ -727,8 +727,8 @@ export class Router {
     this.stopHeartbeat(key);
     const hb = this.cfg.social?.heartbeat ?? {};
     if (hb.enabled === false) return;
-    const min = hb.minIntervalMs ?? 600000;
-    const max = hb.maxIntervalMs ?? 1800000;
+    const min = hb.minIntervalMs ?? 300000;
+    const max = hb.maxIntervalMs ?? 900000;
     const delay = min + Math.floor(Math.random() * Math.max(1, max - min + 1));
     const timer = setTimeout(() => {
       this.heartbeatTick(key).catch((e) => this.log(`心跳出错 (${key}): ${e?.message ?? e}`));
@@ -762,11 +762,11 @@ export class Router {
       state.setPresence(key, { mode: 'active' });
     }
     const hb = this.cfg.social?.heartbeat ?? {};
-    const idleMs = hb.idleThresholdMs ?? 900000;
+    const idleMs = hb.idleThresholdMs ?? 300000;
     const lastReply = st.stats?.lastReplyAt ?? 0;
     if (lastReply > 0 && Date.now() - lastReply < idleMs) return;
     if (st.energy <= (personaDef.energy?.active_floor ?? 0.4)) return;
-    const p = (hb.probability ?? 0.3) * (personaDef.proactiveness ?? 0.35);
+    const p = (hb.probability ?? 0.5) * (personaDef.proactiveness ?? 0.5);
     if (Math.random() >= p) return;
     this.log(`[agent] 心跳：${key} 主动机会触发`);
     await this.wakeUp(key, { reason: 'heartbeat' });

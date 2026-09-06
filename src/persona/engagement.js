@@ -14,12 +14,12 @@ import { containsAny, QUESTION_MARKERS } from './lexicon.js';
 
 const DEFAULT_ENGAGEMENT = {
   wAttention: 2.5,
-  wInterest: 1.5,
+  wInterest: 1.8,
   wEnergy: 1.0,
   wMood: 0.8,
   wNoise: 0.6,
-  threshold: 2.0,
-  cooldownMs: 45000,
+  threshold: 1.7,
+  cooldownMs: 25000,
 };
 
 /**
