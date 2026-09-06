@@ -471,7 +471,7 @@ async function toggleGroupAllow(id) {
   const r = await api('/api/allowlist', 'GET');
   const inAllow = (r.allow?.groups ?? []).includes(id);
   const res = await api('/api/allowlist', 'POST', { scope: 'allow', channel: 'group', id, action: inAllow ? 'remove' : 'add' });
-  if (res.ok) { toast(inAllow ? '已移出白名单' : '已加入白名单'); refreshGroups(); }
+  if (res.ok) { toast(inAllow ? '已移出白名单' : '已加入白名单'); refreshGroups(); refreshAllowlist(); }
 }
 async function sendTestMsg() {
   const channel = sendChannel;
