@@ -627,6 +627,7 @@ export class Router {
       memories,
       unread,
       reason: reason === 'heartbeat' ? 'heartbeat' : (reason === 'addressed' ? 'addressed' : 'score'),
+      key,
       token,
     });
     this.log(`[agent] 唤醒投递 (${key})：${reason}`);
