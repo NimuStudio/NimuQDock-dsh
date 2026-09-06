@@ -36,6 +36,11 @@ export function computeAttention(text, { directed = false, aliases = [], wakeKey
   // aliases：提到名字只是参与信号（如「@小明 小鲸鱼是啥」——@的是别人，提名字≠被点名），
   // 不触发 addressed 必回，仅提高参与评分
   if (containsAny(s, aliases ?? [])) return 0.6;
+  // 第二人称直接提问（「你为什么…」「你是不是…」「你在干嘛」等，无 @ 但在直接问机器人）：
+  // 真人对话里对方刚被你回过话、接着不带 @ 追问很常见，不给够权重就会被迫句句 @
+  if (containsAny(s, QUESTION_MARKERS) && /你(?:为什么|为啥|怎么|是不是|凭什么|在|干嘛|觉得|认为|喜欢|讨厌|想|会|能|敢|知道|认识|看|听|说|有|要|玩)[^。！？!?\n]{0,20}/.test(s)) {
+    return 0.55;
+  }
   if (containsAny(s, QUESTION_MARKERS)) return 0.35;
   return 0.05;
 }
@@ -89,8 +94,9 @@ export function computeScore(input, cfg) {
     return { score: 1, verdict: 'wake', reason: 'addressed' };
   }
 
-  // 硬冷却：刚说过话不立即再插嘴
-  if (lastReplyAt > 0 && now - lastReplyAt < e.cooldownMs) {
+  // 硬冷却：刚说过话不立即再插嘴——但有人明显在问/找你时（attention≥0.45：别名、第二人称提问、
+  // 唤醒词等）解除冷却，否则「你回他一句→他立刻追问(没@)」会被 45s 冷却卡死，逼得人句句 @。
+  if (attention < 0.45 && lastReplyAt > 0 && now - lastReplyAt < e.cooldownMs) {
     return { score: 0, verdict: 'skip', reason: 'cooldown' };
   }
 
