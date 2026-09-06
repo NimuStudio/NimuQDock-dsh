@@ -41,9 +41,13 @@ export class Sender {
     return { blocked: false };
   }
 
-  /** 发一条已审计通过的纯文本（Markdown 转换 + 超长分段 + 间隔）。 */
-  async _sendTextOne(kind, id, text, replyToMessageId = null) {
-    const plain = mdToPlain(text);
+  /** 文本预处理（Markdown → QQ 纯文本）。整个发送链只转换这一次，审计落在转换后的最终文本上。 */
+  plainOf(text) {
+    return mdToPlain(text);
+  }
+
+  /** 发一条已转换的纯文本（超长分段 + 间隔）。 */
+  async _sendTextOne(kind, id, plain, replyToMessageId = null) {
     if (!plain.trim()) return 0;
     const parts = splitForQQ(plain, this.cfg.maxReplyChars);
     for (let i = 0; i < parts.length; i++) {
@@ -58,23 +62,26 @@ export class Sender {
   }
 
   /**
-   * 完整发送链：审计 → 转换 → 分段 → 发送。
+   * 完整发送链：转换（若未预先转换）→ 审计最终文本 → 分段 → 发送。
    * @param {string} key 'group:123' / 'private:456'
+   * @param {{ replyToMessageId?: string|null, alreadyPlain?: boolean }} opts
+   *   alreadyPlain=true：调用方已用 plainOf() 转换（如 pump 预审计路径），跳过重复转换
    * @returns {Promise<{ sent: number, blocked: boolean, reason?: string }>}
    */
-  async sendToQQ(key, text, { replyToMessageId = null } = {}) {
-    const { blocked, reason } = this.audit(text);
+  async sendToQQ(key, text, { replyToMessageId = null, alreadyPlain = false } = {}) {
+    const plain = alreadyPlain ? String(text ?? '') : this.plainOf(text);
+    const { blocked, reason } = this.audit(plain);
     if (blocked) {
       this.log(`⚠️ 回复被安全策略拦截（${key}）：${reason}`);
       return { sent: 0, blocked: true, reason };
     }
     const { kind, id } = this._parseKey(key);
-    const sent = await this._sendTextOne(kind, id, text, replyToMessageId);
+    const sent = await this._sendTextOne(kind, id, plain, replyToMessageId);
     return { sent, blocked: false };
   }
 
   /**
-   * 多条消息按随机间隔连发（agent 模式分条用）。
+   * 多条消息按随机间隔连发（agent 模式分条用）。与单条同口径：先转换，再对最终文本审计。
    * @param {string[]} messages 每条为独立消息文本
    * @param {{minMs?: number, maxMs?: number}} opts 间隔范围（默认 800~2000ms）
    * @returns {{sent: number, blocked: number}}
@@ -84,13 +91,14 @@ export class Sender {
     let sent = 0;
     let blocked = 0;
     for (let i = 0; i < messages.length; i++) {
-      const { blocked: isBlocked, reason } = this.audit(messages[i]);
+      const plain = this.plainOf(messages[i]);
+      const { blocked: isBlocked, reason } = this.audit(plain);
       if (isBlocked) {
         blocked += 1;
         this.log(`⚠️ 分条消息被安全策略拦截（${key}）：${reason}`);
         continue;
       }
-      const parts = splitForQQ(mdToPlain(messages[i]), this.cfg.maxReplyChars);
+      const parts = splitForQQ(plain, this.cfg.maxReplyChars);
       for (const part of parts) {
         if (kind === 'group') await this.bot.sendGroupMessage(id, part);
         else await this.bot.sendPrivateMessage(id, part);

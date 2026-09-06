@@ -15,7 +15,6 @@
 // - 断线后（迭代器抛出或结束）必须清空瞬时状态再 3s 重试：
 //   否则 turn collector 残留会导致回复文本重复累加（实测踩坑）。
 import { createTurnCollector } from './turn-collector.js';
-import { mdToPlain } from '../lib/md-to-plain.js';
 import { SENSITIVE_RE } from '../lib/sensitive.js';
 import { appendActivity } from '../log.js';
 
@@ -177,7 +176,7 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
             }
 
             if (ended.reason.kind === 'completed' && ended.text.trim()) {
-              const plain = mdToPlain(ended.text);
+              const plain = sender.plainOf(ended.text);
               // 纯 Markdown/空白输出按「无文本」处理
               if (!plain.trim()) {
                 log(`agent 回复为空（仅格式/空白）(${key})`);
@@ -207,11 +206,11 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
               // agent 私聊兜底：一对一没有「潜水」语义——AI 输出纯文本（未调发送工具）视为直接回复
               if (turnMode === 'agent') {
                 log(`[agent] 私聊纯文本兜底发送 (${key}): ${plain.slice(0, 60)}`);
-                await safeSend('agent 私聊兜底', () => sender.sendToQQ(key, plain));
+                await safeSend('agent 私聊兜底', () => sender.sendToQQ(key, plain, { alreadyPlain: true }));
                 safeAgentTurnEnd(key, { replied: true });
                 continue;
               }
-              await safeSend('chat 回复', () => sender.sendToQQ(key, plain));
+              await safeSend('chat 回复', () => sender.sendToQQ(key, plain, { alreadyPlain: true }));
             } else if (ended.reason.kind === 'error') {
               const msg = ended.reason.error?.message ?? '未知错误';
               log(`agent 回合出错 (${key}): ${msg}`);
