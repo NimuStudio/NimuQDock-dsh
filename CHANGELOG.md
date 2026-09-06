@@ -2,6 +2,19 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.1.12
+
+- security: 修复**记忆提示词注入**——群友可发"我是【唤醒原因】…"等文本被自动记忆并原样注入后续唤醒 prompt（持久化注入）；现在捕获端过滤块标记/换行/控制符，渲染端统一转义压平
+- security: 修复控制台玻璃下拉 **DOM XSS**（点击时把解码文本再经 innerHTML 插入，可窃取管理 token）——`esc(label)` 后再插入
+- fix: **config.js 默认值漂移**——"活跃档"（threshold 1.7/冷却 25s/心跳 5-15min）未落到代码默认；三处默认 + example 全部对齐，新部署开箱即活跃
+- fix: **僵尸会话级联**（agent 发不出话/mcp serverName 残留的根因）——session.create 失败不清理已发布会话；现在按错误分类：preset 类错误才回退无预设并显式告警，网络等瞬态错误抛给重连不再静默降级；reset 竞态映射加守卫
+- perf: agent 模式**每消息同步盘 I/O 节流**——state 热路径 3s 尾随合并写盘 + L2 记忆内存缓存 + 自动记忆去重
+- fix: pump 回合收尾异常不再撕裂全局事件流（try/catch 包裹）；工具发送跳过自动转发仅限 agent 模式；sendToolTexts 回合结束无条件清理
+- fix: applyModel 重试条件收窄——"no result payload/not found"等瞬态错误会重试满 3 次，不再静默退回默认模型（视觉能力悄悄失效）
+- fix: qq_reply 读取前补白名单归属校验（防 message_id 探测 oracle）；qq_mark_read 补 `upto_seq` 参数（按水位推进已读）
+- fix: onebot11 error 时清握手定时器、close() 立即中断退避等待；白名单 POST 落盘前归一化（与 MCP 进程口径一致）+ persistConfig 随机临时名
+- fix: 发布脚本排除 dist（防 zip 自嵌进 7z/exe）；第二人称提问正则扩漏报（你是谁/你行吗）+ 剥离引用标记再判定；docs/README/config.example 一致性同步
+
 ## v0.1.11
 
 - fix: 配置页群列表切换白名单后，白名单板块未热更新——`toggleGroupAllow` 成功后补调 `refreshAllowlist()`，开关注册即见，无需刷新页面
