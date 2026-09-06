@@ -91,9 +91,9 @@ const REASON_TEXT = {
 /**
  * 组装一条完整的唤醒 prompt。
  * @param {{ persona: object, state: object, memories: object[],
- *           unread: object[], reason: string, token: string }} input
+ *           unread: object[], reason: string, key: string, token: string }} input
  */
-export function buildWakePrompt({ persona, state, memories = [], unread = [], reason = 'addressed', token = '' }) {
+export function buildWakePrompt({ persona, state, memories = [], unread = [], reason = 'addressed', key = '', token = '' }) {
   const blocks = [];
   blocks.push(`【角色扮演】\n${renderPersona(persona)}`);
   blocks.push(`【人格状态】\n${renderState(state, persona)}`);
@@ -104,7 +104,10 @@ export function buildWakePrompt({ persona, state, memories = [], unread = [], re
   // 指向判断铁律（每次唤醒必读）：@ 的是别人 ≠ 找你；提到名字 ≠ 被点名
   blocks.push('【指向判断】消息里 @ 的是别人（如「@小明 xxx」）＝他们在和别人说话，不是你被叫，别当成找你的；提到你的名字/别名也不等于在叫你。只有 @ 你、直接叫你、或引用你的消息才是找你。想接话可以主动参与，但不要用「我被 @ 了」的理由抢话。');
   blocks.push(`【唤醒原因】${REASON_TEXT[reason] ?? reason}`);
+  // key+token 必须成对传给发送/状态类工具（qq_send_message / qq_mark_read / qq_set_presence 等）
+  if (key) blocks.push(`【会话标识】${key}`);
   if (token) blocks.push(`【会话令牌】${token}`);
+  blocks.push('【工具调用须知】调用任何需要 key/token 的工具时，一律以本唤醒提示里最新一组的【会话标识】【会话令牌】为准；若收到"令牌无效/已失效"类报错，先检查传的是不是这组最新值，不要沿用对话历史里的旧令牌。');
   return blocks.join('\n\n');
 }
 
