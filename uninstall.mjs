@@ -28,21 +28,26 @@ function locateProject() {
   return null;
 }
 
-/** 停止桥接进程。
- * 注意：start.bat 启动的 node 是相对路径（node src/main.js），CommandLine 不含绝对 projectDir；
- * 因此匹配 src/main.js（相对/绝对都命中），避免漏掉 start.bat 启动的桥接。 */
-function stopBridge() {
+/** 停止所有占用项目目录的进程。
+ * 只停「真的占着项目目录/需要停才能删」的：桥接（node src/main.js）、
+ * DSH（npx @deepseek-ai/dsh 的 node/cmd）、NapCat（项目内 NapCatShell 的 exe/node/cmd）。
+ * 关键：**绝不匹配 QQ / QQ音乐**——QQ.exe 在 QQ 安装目录，不占项目目录，无需杀；
+ * 之前按 `Name -match 'QQ'` 会把用户的 QQ.exe 与 QQMusic.exe 一起杀掉，属误杀。 */
+function stopProjectProcesses(projectDir) {
   try {
-    spawnSync('powershell', ['-NoProfile', '-Command',
-      `Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'src[\\\\/]main\\\\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`],
-      { encoding: 'utf8' });
-    console.log('✅ 已停止运行中的桥接进程');
+    const esc = String(projectDir).replace(/'/g, "''");
+    const cmd = `Get-CimInstance Win32_Process | Where-Object {
+      $_.CommandLine -match 'src[\\\\/]main\\\\.js' -or
+      $_.CommandLine -match '@deepseek-ai[\\\\/]dsh|bin[\\\\/]dsh|\\.dsh[\\\\/]' -or
+      $_.CommandLine -match 'napcat|launcher-user|restart-napcat|start-napcat' -or
+      $_.ExecutablePath -like '${esc}*'
+    } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
+    spawnSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' });
+    console.log('✅ 已停止占用项目目录的进程（桥接/DSH/NapCat，不动 QQ）');
   } catch {}
 }
 
-/** 停止 DeepSeek Harness 进程。
- * 关键：DSH 是 npx 在项目目录（projectDir）下启动的，其 cwd 就是项目目录；
- * 若不停掉它，项目目录会一直被占用而删不掉。匹配 @deepseek-ai/dsh 的 node/cmd 进程。 */
+/** 停止 DeepSeek Harness 进程（仅当不删项目、只卸 DSH 时使用）。 */
 function stopDsh() {
   try {
     spawnSync('powershell', ['-NoProfile', '-Command',
@@ -52,20 +57,14 @@ function stopDsh() {
   } catch {}
 }
 
-/** 停止 NapCat / QQ 有关进程及它们的 cmd 包装（它们位于 projectDir\\NapCatShell，占着目录）。 */
-function stopNapCat() {
+/** 停止 NapCat 相关进程（仅当只卸 NapCat，不动桥接/DSH 时使用）。不匹配 QQ / QQ音乐。 */
+function stopNapCat(projectDir) {
   try {
-    const cmd = `Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'NapCat|QQ' -or $_.CommandLine -match 'napcat|launcher-user|restart-napcat|start-napcat' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
+    const esc = String(projectDir).replace(/'/g, "''");
+    const cmd = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'napcat|launcher-user|restart-napcat|start-napcat' -or $_.ExecutablePath -like '${esc}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
     spawnSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' });
-    console.log('✅ 已停止 NapCat / QQ 进程');
+    console.log('✅ 已停止 NapCat 进程');
   } catch {}
-}
-
-/** 停止所有占用项目目录的进程（DSH / 桥接 / NapCat）。 */
-function stopProjectProcesses() {
-  stopBridge();
-  stopDsh();
-  stopNapCat();
 }
 
 /** 延迟删除目录（detached PowerShell）。
@@ -125,9 +124,8 @@ async function main() {
   // 1) 停止占用项目目录的进程（桥接/DSH/NapCat）。卸载项目前必须 Stop，否则目录被占用删不掉。
   if (picked.has('project')) {
     console.log('\n[停止相关进程]');
-    stopProjectProcesses();
+    stopProjectProcesses(projectDir);
   } else if (picked.has('dsh')) {
-    stopBridge();
     stopDsh();
   }
 
@@ -153,11 +151,9 @@ async function main() {
   // 3) 卸载 NapCat
   if (picked.has('napcat')) {
     console.log('\n[卸载 NapCat]');
-    // 先停掉 NapCat / QQ 相关进程，否则目录被占用删不掉
-    try {
-      spawnSync('taskkill', ['/f', '/im', 'NapCatWinBootMain.exe'], { stdio: 'ignore' });
-      spawnSync('taskkill', ['/f', '/im', 'NapCatWinBootHook.dll'], { stdio: 'ignore' });
-    } catch {}
+    // 先停掉 NapCat 进程（node napcat.mjs / NapCatWinBootMain.exe / cmd 包装），否则目录被占删不掉。
+    // 不杀用户 QQ / QQ音乐：它们在 QQ 安装目录，不占项目目录。
+    stopNapCat(projectDir);
     await new Promise((r) => setTimeout(r, 1000));
     const napcatDir = path.join(projectDir, 'NapCatShell');
     if (fs.existsSync(napcatDir)) {
@@ -171,17 +167,29 @@ async function main() {
   // 4) 清理安装记录
   try { fs.rmSync(path.dirname(INSTALL_RECORD), { recursive: true, force: true }); } catch {}
 
-  // 5) 卸载项目（延迟删除：卸载器自身进程先退出释放 cwd，detached cmd 稍后 rd）
+  // 5) 卸载项目
   if (picked.has('project')) {
     console.log('\n[卸载项目]');
-    deleteLater(projectDir);
-    console.log(`⏳ 正在删除安装目录（${projectDir}）…`);
+    // 先切走本进程 cwd：node 的 cwd 也被 uninstall.bat 的 cd /d "%~dp0" 设成项目目录，
+    // 不切走它自己就删不掉（进程 cwd 被占）。切到 C:\ 后 node 不再握着项目目录。
+    try { process.chdir('C:\\'); } catch {}
+    // 优先同步删除：切完 cwd 且没其它进程占着就能直接删掉
+    let removed = false;
+    try {
+      fs.rmSync(projectDir, { recursive: true, force: true });
+      removed = !fs.existsSync(projectDir);
+    } catch {}
+    if (removed) {
+      console.log('✅ 安装目录已删除');
+    } else {
+      // 兜底：仍有进程（如 uninstall.bat 的 cmd 还握着 cwd）占着 → 交给 detached 等它关门后删
+      deleteLater(projectDir);
+      console.log(`⏳ 正在删除安装目录（${projectDir}）…（窗口关闭后自动完成）`);
+    }
   }
 
-  console.log('\n✅ 卸载完成！' + (picked.has('project') ? '项目目录将在本窗口关闭后自动删除。' : ''));
+  console.log('\n✅ 卸载完成！' + (picked.has('project') ? '项目目录已删除，或将在本窗口关闭后自动删除。' : ''));
   divider();
-  // 关键：先关闭 readline 并退出，释放本进程对 projectDir 的 cwd 占用，
-  // 否则延迟删除的 rd 会因目录被本进程持有而失败
   rl.close();
   process.exit(0);
 }
