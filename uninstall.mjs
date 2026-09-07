@@ -40,12 +40,45 @@ function stopBridge() {
   } catch {}
 }
 
-/** 延迟删除目录（先切到 C:\ 再 rd，避免删除自身 cwd 失败）。 */
+/** 停止 DeepSeek Harness 进程。
+ * 关键：DSH 是 npx 在项目目录（projectDir）下启动的，其 cwd 就是项目目录；
+ * 若不停掉它，项目目录会一直被占用而删不掉。匹配 @deepseek-ai/dsh 的 node/cmd 进程。 */
+function stopDsh() {
+  try {
+    spawnSync('powershell', ['-NoProfile', '-Command',
+      `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '@deepseek-ai[\\\\/]dsh|bin[\\\\/]dsh|\\.dsh[\\\\/]' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`],
+      { encoding: 'utf8' });
+    console.log('✅ 已停止 DeepSeek Harness 进程');
+  } catch {}
+}
+
+/** 停止 NapCat / QQ 有关进程及它们的 cmd 包装（它们位于 projectDir\\NapCatShell，占着目录）。 */
+function stopNapCat() {
+  try {
+    const cmd = `Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'NapCat|QQ' -or $_.CommandLine -match 'napcat|launcher-user|restart-napcat|start-napcat' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
+    spawnSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' });
+    console.log('✅ 已停止 NapCat / QQ 进程');
+  } catch {}
+}
+
+/** 停止所有占用项目目录的进程（DSH / 桥接 / NapCat）。 */
+function stopProjectProcesses() {
+  stopBridge();
+  stopDsh();
+  stopNapCat();
+}
+
+/** 延迟删除目录（detached PowerShell）。
+ * 用 Remove-Item -Recurse -Force（能删只读文件，rd 不行）；cwd 切到 C:\\ 避免删除自身；
+ * 等待 2s 让 uninstall.bat/SFX 释放对 projectDir 的 cwd 占用，然后重试最多 30s。
+ * 关键：父进程（node）退出后 detached 进程仍存活，等外层 bat 关门后再删。 */
 function deleteLater(dir) {
   try {
-    const clean = String(dir).replace(/"/g, '');
-    const cmd = `timeout /t 2 >nul & cd /d C:\\ & rd /s /q "${clean}"`;
-    const child = spawn('cmd', ['/c', cmd], { detached: true, stdio: 'ignore' });
+    const clean = String(dir).replace(/"/g, '').replace(/'/g, "''");
+    const ps = `Start-Sleep -Seconds 2; $d='${clean}'; for($i=0;$i -lt 30;$i++){ try{ Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction Stop; break }catch{ Start-Sleep -Milliseconds 1000 } }; if(Test-Path $d){ Write-Host '⚠️ 部分文件仍存在:' $d }`;
+    const child = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], {
+      detached: true, stdio: 'ignore', cwd: 'C:\\',
+    });
     child.unref();
   } catch {}
 }
@@ -89,8 +122,14 @@ async function main() {
   const confirm = await ask('确认卸载以上内容？此操作不可恢复（y/N）：');
   if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') { console.log('已取消。'); rl.close(); process.exit(0); }
 
-  // 1) 停止桥接（卸载项目/DSH 前）
-  if (picked.has('project') || picked.has('dsh')) stopBridge();
+  // 1) 停止占用项目目录的进程（桥接/DSH/NapCat）。卸载项目前必须 Stop，否则目录被占用删不掉。
+  if (picked.has('project')) {
+    console.log('\n[停止相关进程]');
+    stopProjectProcesses();
+  } else if (picked.has('dsh')) {
+    stopBridge();
+    stopDsh();
+  }
 
   // 2) 卸载 DSH
   if (picked.has('dsh')) {
