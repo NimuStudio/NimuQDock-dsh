@@ -2,6 +2,11 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.1.17
+
+- fix(uninstall): **不再误杀用户 QQ / QQ音乐**——stopProjectProcesses 只停真正占用项目目录的进程（桥接 src/main.js、DSH @deepseek-ai/dsh、NapCat 的 node/cmd/exe），删掉按 `Name -match 'QQ'` 的宽泛匹配；QQ.exe/QQMusic.exe 在 QQ 安装目录，本就不占项目目录，之前会连用户的 QQ 和 QQ音乐一起结束进程
+- fix(uninstall): **项目目录删除更可靠**——先把 node 自身 cwd 切到 `C:\` 再同步 `fs.rmSync` 删除，失败才交给 detached PowerShell 兜底（等 uninstall.bat 关窗释放 cwd 后重试删 30s），不再只靠单一的延迟 rd
+
 ## v0.1.16
 
 - fix(install): **发布包瘦身**——打包脚本改为运行时白名单（根目录白名单 + 排除 docs/.github/state/dist/tests + 整个 scripts/ 仅放行 setup-dsh.mjs），不再把整个仓库/开发脚本/构建产物装进去，安装包只含跑起来的必要内容
