@@ -105,6 +105,25 @@
   .empty-state{padding:32px;text-align:center;color:var(--text-dim)}
   .login-overlay{background:rgba(245,243,238,.92)!important;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
   .login-panel{background:#fff!important;border:1px solid rgba(0,0,0,.06)!important;box-shadow:0 2px 20px rgba(0,0,0,.06)!important}
+  /* ── persona-card 下拉穿模修复：backdrop-filter 建独立层叠上下文，展开下拉时整体抬升 ── */
+  .persona-card{position:relative;transition:transform .3s var(--spring),box-shadow .3s ease,border-color .3s ease}
+  .persona-card:has(.glass-dd.open){z-index:30}
+  /* ── hover 泛光（参考 Nimu Glass UI：hover 时边框提亮 + 环境光晕）── */
+  .order-card:hover,.persona-card:hover{border-color:rgba(200,164,92,.5);box-shadow:0 10px 30px rgba(200,164,92,.16),0 0 0 1px rgba(200,164,92,.10)}
+  .persona-card:hover{transform:translateY(-2px)}
+  .game-btn:hover{box-shadow:0 6px 18px rgba(200,164,92,.18),inset 0 1px 0 rgba(255,255,255,.35)}
+  .game-btn.active{box-shadow:0 6px 20px rgba(232,184,48,.22)}
+  .sub-tab:hover{border-color:rgba(200,164,92,.5);box-shadow:0 4px 14px rgba(200,164,92,.2)}
+  .btn-accept:hover{box-shadow:0 6px 18px rgba(107,149,137,.35),0 0 10px rgba(107,149,137,.22)}
+  .btn-cancel:hover{border-color:rgba(0,0,0,.16);box-shadow:0 4px 12px rgba(0,0,0,.10)}
+  .btn-cancel.danger:hover{border-color:rgba(196,85,77,.45);box-shadow:0 4px 12px rgba(196,85,77,.2)}
+  .chip:hover{transform:translateY(-1px);box-shadow:0 2px 10px rgba(200,164,92,.25)}
+  .glass-dd-trigger:hover{box-shadow:0 4px 14px rgba(200,164,92,.2)}
+  .status-pill:hover{border-color:rgba(255,255,255,.6);box-shadow:0 2px 10px rgba(200,164,92,.16)}
+  .row-item:hover{border-color:rgba(200,164,92,.35);box-shadow:0 2px 10px rgba(200,164,92,.10)}
+  .glass-select:hover,.glass-input:hover{box-shadow:0 4px 14px rgba(200,164,92,.16)}
+  .section-header-icon{transition:transform .25s var(--spring),box-shadow .3s ease}
+  .section-header-icon:hover{transform:scale(1.06);box-shadow:0 4px 14px rgba(200,164,92,.18)}
   .toast{top:80px}
 </style>
 </head>
