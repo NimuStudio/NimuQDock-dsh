@@ -2,6 +2,12 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.1.16
+
+- fix(install): **发布包瘦身**——打包脚本改为运行时白名单（根目录白名单 + 排除 docs/.github/state/dist/tests + 整个 scripts/ 仅放行 setup-dsh.mjs），不再把整个仓库/开发脚本/构建产物装进去，安装包只含跑起来的必要内容
+- feat(install): **一键傻瓜安装**——双击 install.bat 只需输入「管理员QQ + 机器人QQ」并扫码登录；自动写 config.json、装/启 DSH、跑 setup-dsh 装 QQ 预设/插件、下载解压 NapCat 并写 onebot11_<机器人>.json(HTTP 3000/WS 3001)、launcher-user.bat 拉起机器人、等在线后自动启桥接并开控制台。重装时机器人已在线则跳过机器人QQ提问
+- fix(uninstall): **真正删干净**——卸载前停掉占用项目目录的 DSH/桥接/NapCat 及其 cmd 包装进程；改用 PowerShell Remove-Item -Recurse -Force（能删只读文件，rd 不行）+ 2s 延迟 + 重试 30s；uninstall.bat 结尾由 pause 改 timeout 自动关闭，释放对目录的 cwd 占用
+
 ## v0.1.15
 
 - ui: 玻璃面板/按钮/下拉/标签等加 **hover 泛光**（参考 Nimu Glass UI：hover 边框提亮 + 金色环境光晕 + 轻浮起）
