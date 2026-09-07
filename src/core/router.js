@@ -70,6 +70,8 @@ export class Router {
     this.flushTimer = null;           // 队列补投兜底定时器（enqueuePrompt 安排）
     this.newMsgEmitter = new EventEmitter(); // 'new' 事件（/agent/v1/wait 长轮询用）
     this.autoSeqs = new Map(); // key -> 自增序号（message_seq 缺失时的未读水位兜底）
+    this.lastReplyUser = new Map();   // key -> { userId, at }：机器人最后一次真正发言的对象（对话延续判定）
+    this.wakePendingUser = new Map(); // key -> { userId, at }：本轮唤醒由谁触发（回话成功后转正）
   }
 
   getMode() {
@@ -565,6 +567,10 @@ export class Router {
       interests: personaDef.interests,
       memories: memory.query(key, textContent, msg.userId),
     });
+    // 对话延续：机器人刚回过这个人，且对方在 4 分钟内又开口 → 视为对话中（哪怕没有 @/问句）
+    const nowMs = Date.now();
+    const lastTo = this.lastReplyUser.get(key);
+    const continuing = !!(lastTo && String(lastTo.userId) === String(msg.userId) && nowMs - lastTo.at < 240000 && msg.kind !== 'private');
     const { verdict, reason } = computeScore({
       attention,
       interest,
@@ -572,8 +578,10 @@ export class Router {
       mood: st.mood,
       lastReplyAt: st.stats?.lastReplyAt ?? 0,
       presence: st.presence,
+      continuing,
+      now: nowMs,
     }, this.cfg);
-    this.log(`[agent] ${key} 评分 attention=${attention.toFixed(2)} interest=${interest.toFixed(2)} → ${verdict}（${reason}）`);
+    this.log(`[agent] ${key} 评分 attention=${attention.toFixed(2)} interest=${interest.toFixed(2)}${continuing ? ' [延续]' : ''} → ${verdict}（${reason}）`);
 
     if (verdict !== 'wake') return;
     // 5) 唤醒投递（触发消息的图片直通进 prompt，AI 打开上下文即可看到，不依赖工具调用）
@@ -633,6 +641,10 @@ export class Router {
       token,
     });
     this.log(`[agent] 唤醒投递 (${key})：${reason}`);
+    // 记录本轮唤醒由谁触发：若回话成功，用于「对话延续」判定（对方不用再 @ 也能接话）
+    if (triggerMsg?.userId != null) {
+      this.wakePendingUser.set(key, { userId: String(triggerMsg.userId), at: Date.now() });
+    }
     // 触发消息的图片直通：文本 prompt + 图片 parts（vision 模型直接看，不依赖工具）
     const parts = [{ type: 'text', text: promptText }];
     for (const p of imageParts ?? []) {
@@ -698,6 +710,12 @@ export class Router {
   onAgentTurnEnd(key, { replied = false } = {}) {
     if (!this.persona) return;
     const { state } = this.persona;
+    // 唤醒触发者 → 「最近回过谁」：回话成功才记入（供对话延续判定），否则清掉
+    const pending = this.wakePendingUser.get(key);
+    if (pending) {
+      if (replied) this.lastReplyUser.set(key, { userId: pending.userId, at: Date.now() });
+      this.wakePendingUser.delete(key);
+    }
     if (replied) {
       state.settleReply(key, []); // 发送目标→群友的精确结算后续细化
       this.noActionCounts.delete(key);
@@ -781,6 +799,8 @@ export class Router {
     this.readSeqs.delete(key);
     this.autoSeqs.delete(key);
     this.noActionCounts.delete(key);
+    this.lastReplyUser.delete(key);
+    this.wakePendingUser.delete(key);
     this.stopHeartbeat(key);
     this.cancelPending(key); // 挂起提问/审批一并取消，防对已归档会话二次回执
     const token = this.persona?.tokens?.getToken(key);
