@@ -2,6 +2,12 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.1.18
+
+- fix(uninstall): **项目目录彻底删得掉**——根因是 uninstall.bat 的 `cd /d "%~dp0"` 让 cmd 把项目目录当成 cwd 一直占用，node 退出后 bat 仍在 timeout，cmd 一直握着项目目录，同步/延迟删除都被占住。现在 bat 先 `set PROJ=%~dp0` 记下项目路径、再 `cd /d C:\` 切断对项目目录的占用，最后用绝对路径 `node "%PROJ%uninstall.mjs"` 跑；项目目录由 uninstall.mjs 的 HERE(=脚本所在目录) 定位，不再依赖 cwd
+- fix(uninstall): **中文/特殊字符路径删除兜底**——deleteLater 把目标路径先写入临时 ASCII 文件，PowerShell 从文件读取，规避中文路径（如桌面"新建文件夹"）经命令行传参被编码破坏
+- fix(uninstall): **bat 注释改纯 ASCII**——uninstall.bat 里的中文 rem 注释会在 chcp 65001 之前被 cmd 按 GBK 读取，个别字节被拆成 `'wd'` 当成命令执行（"不是内部或外部命令"杂音）；注释改回纯英文 ASCII（同 install.bat 约定，中文输出交给 Node）
+
 ## v0.1.17
 
 - fix(uninstall): **不再误杀用户 QQ / QQ音乐**——stopProjectProcesses 只停真正占用项目目录的进程（桥接 src/main.js、DSH @deepseek-ai/dsh、NapCat 的 node/cmd/exe），删掉按 `Name -match 'QQ'` 的宽泛匹配；QQ.exe/QQMusic.exe 在 QQ 安装目录，本就不占项目目录，之前会连用户的 QQ 和 QQ音乐一起结束进程
