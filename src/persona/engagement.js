@@ -71,7 +71,9 @@ export function computeInterest(text, { topics = [], interests = [], memories = 
  * 参与意愿评分与决策。
  * @param {{attention: number, interest: number, energy: number, mood: number,
  *          lastReplyAt: number, presence?: {mode: string, until?: number},
- *          now?: number, noise?: number}} input
+ *          continuing?: boolean, now?: number, noise?: number}} input
+ *          continuing：同一个人刚被机器人回过话、马上又开口（对话延续）——
+ *          即使没有 @/问句/外号，也该"看一眼"决定接不接，而不是直接不理。
  * @param {object} cfg 完整 config（取 cfg.social.engagement 与 cfg.social）
  * @returns {{score: number, verdict: 'wake'|'skip', reason: string}}
  */
@@ -83,6 +85,7 @@ export function computeScore(input, cfg) {
     mood = 0.5,
     lastReplyAt = 0,
     presence = { mode: 'active' },
+    continuing = false,
     now = Date.now(),
     noise = Math.random(),
   } = input;
@@ -99,13 +102,17 @@ export function computeScore(input, cfg) {
     return { score: 1, verdict: 'wake', reason: 'addressed' };
   }
 
-  // 硬冷却：刚说过话不立即再插嘴——但有人明显在问/找你时（attention≥0.45：别名、第二人称提问、
-  // 唤醒词等）解除冷却，否则「你回他一句→他立刻追问(没@)」会被 45s 冷却卡死，逼得人句句 @。
-  if (attention < 0.45 && lastReplyAt > 0 && now - lastReplyAt < e.cooldownMs) {
+  // 对话延续：机器人刚回过这个人，他马上又开口（哪怕只是"现在明明是下午"这种接话），
+  // 视为在对话中 → 最低按 0.5 参与分唤醒看一眼（是否真回由模型决定），并越过冷却。
+  const effAttention = continuing ? Math.max(attention, 0.5) : attention;
+
+  // 硬冷却：刚说过话不立即再插嘴——但有人明显在问/找你/延续对话时（effAttention≥0.45）
+  // 解除冷却，否则「你回他一句→他立刻接话(没@)」会被冷却卡死，逼得人句句 @。
+  if (effAttention < 0.45 && lastReplyAt > 0 && now - lastReplyAt < e.cooldownMs) {
     return { score: 0, verdict: 'skip', reason: 'cooldown' };
   }
 
-  const score = e.wAttention * attention
+  const score = e.wAttention * effAttention
     + e.wInterest * interest
     + e.wEnergy * Math.max(0, Math.min(1, energy))
     + e.wMood * (mood - 0.5)
@@ -116,7 +123,7 @@ export function computeScore(input, cfg) {
     : e.threshold;
 
   if (score >= threshold) {
-    return { score, verdict: 'wake', reason: 'score' };
+    return { score, verdict: 'wake', reason: continuing && effAttention === 0.5 ? 'continuing' : 'score' };
   }
   return { score, verdict: 'skip', reason: 'below-threshold' };
 }
