@@ -2,6 +2,12 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.1.19
+
+- feat(uninstall): **卸哪个杀哪个，没开进程直接卸**——卸项目(1)只停桥接(src/main.js)+项目内 NapCat，不再杀 DSH；DSH 只在卸 DSH(2)时停；NapCat(3)只停 NapCat，不碰桥接/DSH；各停止动作均改为「真停到进程才提示，没开进程则跳过」
+- feat(uninstall): 删除项目目录前检测 DSH 是否正从项目目录运行——若被占用则明确提示「选 2 停 DSH 或自行停止后再删」，不再默默失败
+- feat(install): **DSH 改为从中性目录启动**（`~/.dsh/workspace`），不再用项目目录当 cwd——这样 DSH 不会占着项目目录，卸项目时无需杀 DSH 也能把项目目录删干净；DSH 用绝对路径+`~/.dsh` 配置，不依赖启动目录
+
 ## v0.1.18
 
 - fix(uninstall): **项目目录彻底删得掉**——根因是 uninstall.bat 的 `cd /d "%~dp0"` 让 cmd 把项目目录当成 cwd 一直占用，node 退出后 bat 仍在 timeout，cmd 一直握着项目目录，同步/延迟删除都被占住。现在 bat 先 `set PROJ=%~dp0` 记下项目路径、再 `cd /d C:\` 切断对项目目录的占用，最后用绝对路径 `node "%PROJ%uninstall.mjs"` 跑；项目目录由 uninstall.mjs 的 HERE(=脚本所在目录) 定位，不再依赖 cwd

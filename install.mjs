@@ -19,6 +19,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url)); // install.mjs 位于项目根目录
 const DSH_VERSION = '0.1.1-rc.2'; // 与 dsh-host-apiproxy 依赖版本一致，保证 API/preset 兼容
+// DSH 从「中性目录」启动，不用项目目录当 cwd：否则 DSH 会一直占着项目目录，
+// 卸载项目时即便不杀 DSH 也删不掉项目目录（某进程把目录当 cwd 时 Windows 不允许删除）。
+const DSH_WORKDIR = path.join(os.homedir(), '.dsh', 'workspace');
 const NAPCAT_URL = 'https://github.com/NapNeko/NapCatQQ/releases/latest/download/NapCat.Shell.zip';
 const INSTALL_RECORD_DIR = path.join(os.homedir(), 'AppData', 'Roaming', 'NimuQDock-dsh');
 const INSTALL_RECORD = path.join(INSTALL_RECORD_DIR, 'install-path.json');
@@ -155,8 +158,10 @@ async function ensureDsh() {
   console.log('⏳ DeepSeek Harness 未运行，正在自动安装并启动…');
   console.log(`   （npx -y @deepseek-ai/dsh@${DSH_VERSION} web，首次需下载依赖，请耐心等待）`);
   try {
+    // 确保 DSH 中性工作目录存在（DSH 从这启动，不占项目目录）
+    try { fs.mkdirSync(DSH_WORKDIR, { recursive: true }); } catch {}
     const esc = (s) => String(s).replace(/'/g, "''");
-    const psCmd = `Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', 'npx -y @deepseek-ai/dsh@${DSH_VERSION} web') -WorkingDirectory '${esc(ROOT)}'`;
+    const psCmd = `Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', 'npx -y @deepseek-ai/dsh@${DSH_VERSION} web') -WorkingDirectory '${esc(DSH_WORKDIR)}'`;
     const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
     child.on('error', (error) => {
       console.log(`❌ 启动 DSH 失败：${error?.message ?? error}（可手动运行 npx @deepseek-ai/dsh web）`);
