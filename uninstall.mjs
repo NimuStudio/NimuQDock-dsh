@@ -68,13 +68,16 @@ function stopNapCat(projectDir) {
 }
 
 /** 延迟删除目录（detached PowerShell）。
- * 用 Remove-Item -Recurse -Force（能删只读文件，rd 不行）；cwd 切到 C:\\ 避免删除自身；
- * 等待 2s 让 uninstall.bat/SFX 释放对 projectDir 的 cwd 占用，然后重试最多 30s。
- * 关键：父进程（node）退出后 detached 进程仍存活，等外层 bat 关门后再删。 */
+ * 用 Remove-Item -Recurse -Force（能删只读文件，rd 不行）；等 2s 让外层 bat 释放 cwd，重试最多 30s。
+ * 关键：目标路径（可能含中文/特殊字符）**先写入临时文件**，PowerShell 从文件读取，
+ * 避免中文路径经命令行参数传参时被编码破坏（Windows 控制台 codepage 与 UTF-8 冲突）。
+ * 临时文件路径本身是 ASCII（%TEMP%\\nimu-uninstall-<pid>.txt），命令行传它安全。 */
 function deleteLater(dir) {
   try {
-    const clean = String(dir).replace(/"/g, '').replace(/'/g, "''");
-    const ps = `Start-Sleep -Seconds 2; $d='${clean}'; for($i=0;$i -lt 30;$i++){ try{ Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction Stop; break }catch{ Start-Sleep -Milliseconds 1000 } }; if(Test-Path $d){ Write-Host '⚠️ 部分文件仍存在:' $d }`;
+    const tmpList = path.join(os.tmpdir(), `nimu-uninstall-${process.pid}.txt`);
+    fs.writeFileSync(tmpList, String(dir), 'utf8');
+    const tmpEsc = tmpList.replace(/'/g, "''");
+    const ps = `Start-Sleep -Seconds 2; $d=(Get-Content -LiteralPath '${tmpEsc}' -Raw -Encoding UTF8).Trim(); if($d){ for($i=0;$i -lt 30;$i++){ try{ Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction Stop; break }catch{ Start-Sleep -Milliseconds 1000 } } }; Remove-Item -LiteralPath '${tmpEsc}' -Force -ErrorAction SilentlyContinue; if($d -and (Test-Path $d)){ Write-Host '⚠️ 部分文件仍存在:' $d }`;
     const child = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], {
       detached: true, stdio: 'ignore', cwd: 'C:\\',
     });
