@@ -27,11 +27,25 @@ function find7za() {
   return null;
 }
 
-const EXCLUDE_DIRS = new Set(['.git', 'state', '.github', 'dist', 'node_modules/.cache']);
+// ── 运行时最小包：只装「跑起来」需要的，开发/文档/发布脚本一律不进安装包 ──
+const EXCLUDE_DIRS = new Set([
+  '.git', '.github', 'state', 'dist', 'node_modules/.cache',
+  'docs',            // 说明文档（README 保留一份即可）
+  'assets', 'tests',
+  'scripts',         // 构建脚本整个排除；scripts/setup-dsh.mjs 走下方白名单放行
+]);
 const EXCLUDE_FILES = new Set(['config.json', '.env', '.env.local', '.env.production']);
 const EXCLUDE_EXT = new Set(['.log', '.tmp']);
+// 根目录可用文件白名单：只保留运行/安装/维护必需
+const ROOT_ALLOW = new Set([
+  'package.json', 'package-lock.json', 'config.example.json',
+  'README.md', 'README.en.md', 'LICENSE',
+  'install.bat', 'install.mjs', 'uninstall.bat', 'uninstall.mjs',
+  'start.bat', 'restart.bat',
+]);
 
 function walk(dir, base, list) {
+  const relDir = base || '';
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const abs = path.join(dir, entry.name);
     const rel = base ? path.join(base, entry.name) : entry.name;
@@ -41,6 +55,10 @@ function walk(dir, base, list) {
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
       if (EXCLUDE_FILES.has(entry.name) || EXCLUDE_EXT.has(ext)) continue;
+      if (!relDir) {
+        // 根目录文件只放行白名单
+        if (!ROOT_ALLOW.has(entry.name)) continue;
+      }
       // 统一用正斜杠（7z 跨平台规范路径）
       list.push(rel.split(path.sep).join('/'));
     }
@@ -55,6 +73,9 @@ if (!sevenZa) {
 
 const files = [];
 walk(ROOT, '', files);
+// scripts 目录整体被排除了，这里单独把 DSH 端预设安装脚本放行（运行时拉取 preset 到 ~/.dsh 用）
+const setupDsh = path.join(ROOT, 'scripts', 'setup-dsh.mjs');
+if (fs.existsSync(setupDsh)) files.push('scripts/setup-dsh.mjs');
 console.log(`[make-release-7z] ${files.length} 个文件（tag=${tag}，7za=${sevenZa}）`);
 fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
 

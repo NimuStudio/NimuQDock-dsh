@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 // NimuQDock-dsh 一键安装引导（Windows 双击 install.bat 或直接 node install.mjs）。
-// 做的事：
+// 全程只需要：输入「管理员QQ」+「机器人QQ」→ 扫码登录机器人 QQ。其余自动化：
 //   1. 检查 Node.js 版本（≥ 22.13）
-//   2. 若缺 config.json，从 config.example.json 生成并提示填写
-//   3. 检查依赖（node_modules 缺失时 npm install）
-//   4. DeepSeek Harness：未运行则自动 npx 安装并启动（锁版本 0.1.1-rc.2）
-//   5. NapCat：未就绪则检测 QQ 客户端 → 自动下载解压 NapCat Shell → 引导扫码登录
-//   6. 汇总并提示 start.bat
+//   2. 自动生成 config.json（ownerQQ=管理员，allow.private=[管理员]）
+//   3. 安装依赖（node_modules 缺失时 npm install）
+//   4. 自动安装并启动 DeepSeek Harness（锁版本 0.1.1-rc.2）
+//   5. 自动下载解压 NapCat → 写入 onebot11_<机器人>.json（HTTP 3000 / WS 3001）→ 自动启动 + 扫码
+//   6. 自动启动桥接 → 浏览器自动打开 Web 控制台
 import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
 import os from 'node:os';
+import readline from 'node:readline';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { spawn, spawnSync } from 'node:child_process';
@@ -23,6 +24,7 @@ const INSTALL_RECORD_DIR = path.join(os.homedir(), 'AppData', 'Roaming', 'NimuQD
 const INSTALL_RECORD = path.join(INSTALL_RECORD_DIR, 'install-path.json');
 const divider = () => console.log('─'.repeat(52));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
 /** 记录安装位置（卸载程序 uninstall.exe 据此定位项目目录）。 */
 function recordInstallPath() {
@@ -36,6 +38,22 @@ function recordInstallPath() {
       version,
     }, null, 2) + '\n', 'utf8');
   } catch {}
+}
+
+/** 交互式提问（返回去除首尾空白的字符串；QQ 号校验位数）。 */
+function ask(label, { digits = true, def = '' } = {}) {
+  return new Promise((resolve) => {
+    const suffix = def ? `（直接回车=${def}）` : '';
+    rl.question(`  ${label}${suffix}：`, (ans) => {
+      let v = String(ans ?? '').trim();
+      if (!v && def) v = def;
+      if (digits && v && !/^\d{5,12}$/.test(v)) {
+        console.log('  ⚠️ QQ 号应为 5~12 位数字，请重试。');
+        return resolve(ask(label, { digits, def }));
+      }
+      resolve(v);
+    });
+  });
 }
 
 function probePort(port, host = '127.0.0.1', timeoutMs = 1500) {
@@ -60,19 +78,56 @@ function checkNode() {
   return true;
 }
 
-function ensureConfig() {
+/**
+ * 生成/更新 config.json：以 config.example.json 为基底，写入管理员 QQ 与白名单。
+ * 返回 { admin, bot } 供后续 NapCat 与 DSH 使用。
+ */
+async function ensureConfig(adminDef = '', needBot = true) {
   const cfg = path.join(ROOT, 'config.json');
+  let existing = null;
   if (fs.existsSync(cfg)) {
-    console.log('✅ config.json 已存在（跳过生成）');
-    return;
+    try { existing = JSON.parse(fs.readFileSync(cfg, 'utf8')); } catch {}
   }
+  console.log(needBot ? '\n  需要两个 QQ 号：' : '\n  需要一个 QQ 号（机器人已在跑，无需再填）：');
+  const admin = await ask('① 你的QQ号（管理员/你自己）', { def: existing?.ownerQQ || adminDef });
+  let bot = '';
+  if (needBot) bot = await ask('② 机器人的QQ号（NapCat 启动用）', { def: '' });
+
+  if (!admin) {
+    console.log('❌ 未填写管理员QQ号。可稍后编辑 config.json 的 ownerQQ 字段。');
+  }
+  if (!bot) {
+    console.log('❌ 未填写机器人QQ号。可稍后手动启动 NapCat 并配置 OneBot。');
+  }
+
+  let base;
   try {
-    fs.copyFileSync(path.join(ROOT, 'config.example.json'), cfg);
-    console.log('✅ 已生成 config.json');
-    console.log('   ⚠️ 请用编辑器打开它，至少填写：ownerQQ（你的 QQ）、allow.private / allow.groups（白名单）');
-  } catch (error) {
-    console.log(`❌ 生成 config.json 失败：${error?.message ?? error}`);
+    base = existing ?? JSON.parse(fs.readFileSync(path.join(ROOT, 'config.example.json'), 'utf8'));
+  } catch {
+    base = {};
   }
+  // 覆盖关键字段（其余保持默认）
+  if (admin) {
+    base.ownerQQ = admin;
+    base.allow = base.allow ?? {};
+    base.allow.private = [admin];
+    base.allow.groups = base.allow.groups ?? [];
+    base.allowAllWhenEmpty = false;
+  }
+  // 确保 OneBot 与 DSH 地址与自动写入的 NapCat 配置一致
+  base.napcat = base.napcat ?? {};
+  base.napcat.wsUrl = base.napcat.wsUrl || 'ws://127.0.0.1:3001';
+  base.napcat.httpUrl = base.napcat.httpUrl || 'http://127.0.0.1:3000';
+  base.napcat.accessToken = base.napcat.accessToken ?? '';
+  base.console = base.console ?? {};
+  base.console.autoOpen = true;
+  try {
+    fs.writeFileSync(cfg, JSON.stringify(base, null, 2) + '\n', 'utf8');
+    console.log(admin ? `✅ 已写入 config.json（ownerQQ=${admin}，允许私聊=仅管理员）` : '✅ config.json 已就绪');
+  } catch (error) {
+    console.log(`❌ 写入 config.json 失败：${error?.message ?? error}`);
+  }
+  return { admin, bot };
 }
 
 function ensureDeps() {
@@ -99,15 +154,10 @@ async function ensureDsh() {
   }
   console.log('⏳ DeepSeek Harness 未运行，正在自动安装并启动…');
   console.log(`   （npx -y @deepseek-ai/dsh@${DSH_VERSION} web，首次需下载依赖，请耐心等待）`);
-  // 新窗口运行 DSH（分离，关闭本向导不影响它）
-  // 用 PowerShell Start-Process（参数数组形式），避免 cmd start 的标题引号坑
-  // （start 的第一个参数必须带引号才是标题，否则会被当成命令：'Windows 找不到文件 xxx'）
   try {
-    // 路径可能含单引号（合法路径字符）：PowerShell 单引号字符串内用 '' 转义
     const esc = (s) => String(s).replace(/'/g, "''");
     const psCmd = `Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', 'npx -y @deepseek-ai/dsh@${DSH_VERSION} web') -WorkingDirectory '${esc(ROOT)}'`;
     const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
-    // 异步启动失败（powershell 不存在等）必须捕获，否则静默进入长时间等待
     child.on('error', (error) => {
       console.log(`❌ 启动 DSH 失败：${error?.message ?? error}（可手动运行 npx @deepseek-ai/dsh web）`);
     });
@@ -140,7 +190,6 @@ function detectQQ() {
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
-  // 注册表 UninstallString（补 64 位/HKCU 分支；已有 existsSync 复核防误判）
   const regKeys = [
     'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QQ',
     'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QQ',
@@ -189,20 +238,55 @@ async function downloadWithMirrors(url, dest) {
   throw lastError ?? new Error('所有下载源均失败');
 }
 
-/** 自动下载并解压 NapCat Shell（未就绪时）。 */
-async function ensureNapCat() {
-  // WS(3001) 或 HTTP(3000) 任一就绪即视为 NapCat 已配置（防止只起了 HTTP 时误判并重复下载）
+/** NapCat 的 onebot11_<QQ>.json（HTTP 3000 + WebSocket 3001，array 格式）。 */
+function oneBot11Config() {
+  return {
+    network: {
+      httpServers: [
+        { enable: true, name: 'HTTP', host: '127.0.0.1', port: 3000, enableCors: true, enableWebsocket: false, messagePostFormat: 'array', token: '', debug: false },
+      ],
+      httpSseServers: [], httpClients: [],
+      websocketServers: [
+        { enable: true, name: 'WebSocket', host: '127.0.0.1', port: 3001, reportSelfMessage: false, enableForcePushEvent: true, messagePostFormat: 'array', token: '', debug: false, heartInterval: 30000 },
+      ],
+      websocketClients: [], plugins: [],
+    },
+    musicSignUrl: '',
+    enableLocalFile2Url: false,
+    parseMultMsg: false,
+    imageDownloadProxy: '',
+    timeout: { baseTimeout: 10000, uploadSpeedKBps: 256, downloadSpeedKBps: 256, maxTimeout: 1800000 },
+  };
+}
+
+/** 等待 OneBot 端口就绪，返回是否在期限内起来。 */
+async function waitOneBot(winSeconds = 180) {
+  const deadline = Date.now() + winSeconds * 1000;
+  while (Date.now() < deadline) {
+    if (await probePort(3001) || await probePort(3000)) return true;
+    await sleep(2000);
+  }
+  return false;
+}
+
+/**
+ * 自动准备并启动 NapCat：
+ * 下载解压 → 写入 onebot11_<bot>.json → 通过 launcher-user.bat <bot> 启动 QQ（扫码）→ 等端口。
+ */
+async function ensureNapCat(bot) {
+  // 已就绪则跳过（防止重复下载 / 重复登录）
   if ((await probePort(3001)) || (await probePort(3000))) {
     console.log('✅ NapCat 已就绪（OneBot WS 3001 / HTTP 3000）');
-    return;
+    return true;
   }
   const qq = detectQQ();
   if (!qq) {
     console.log('❌ 未检测到 QQ 客户端。请先安装 QQ（QQNT）后重新运行本向导，或手动配置 NapCat。');
     console.log('   下载：https://im.qq.com/');
-    return;
+    return false;
   }
   console.log(`✅ 检测到 QQ：${qq}`);
+
   const napcatDir = path.join(ROOT, 'NapCatShell');
   if (!fs.existsSync(path.join(napcatDir, 'napcat.mjs'))) {
     console.log('⏳ 正在下载 NapCat Shell（约 28MB，自动走国内镜像加速）…');
@@ -226,53 +310,132 @@ async function ensureNapCat() {
       console.log(`❌ 自动下载 NapCat 失败：${error?.message ?? error}`);
       console.log('   可手动下载后解压到 NapCatShell/ 目录：');
       console.log('   https://github.com/NapNeko/NapCatQQ/releases/latest');
-      return;
+      return false;
     } finally {
-      // 无论成败都清理临时 zip，避免 %TEMP% 残留大文件
       try { fs.unlinkSync(tmpZip); } catch {}
     }
   }
   console.log(`✅ NapCat 已就绪（位于 ${napcatDir}）`);
-  console.log('   ⚠️ 下一步（人工）：');
-  console.log('   1) 双击 NapCatShell\\restart-napcat.bat <机器人QQ号> 启动并扫码登录 QQ');
-  console.log('      （或双击 start-napcat.bat 后扫码）');
-  console.log('   2) 打开 WebUI http://127.0.0.1:6099/webui（默认口令 napcat）→ 网络配置');
-  console.log('      新建 HTTP 服务端 127.0.0.1:3000 + WebSocket 服务端 127.0.0.1:3001，消息格式 array');
+
+  // 写入 onebot11_<bot>.json（只写一次，避免覆盖用户已有自定义配置）
+  if (bot) {
+    const cfgDir = path.join(napcatDir, 'config');
+    const cfgFile = path.join(cfgDir, `onebot11_${bot}.json`);
+    if (!fs.existsSync(cfgFile)) {
+      try {
+        fs.mkdirSync(cfgDir, { recursive: true });
+        fs.writeFileSync(cfgFile, JSON.stringify(oneBot11Config(), null, 2) + '\n', 'utf8');
+        console.log(`✅ 已写入 OneBot 配置 onebot11_${bot}.json（HTTP 3000 / WS 3001）`);
+      } catch (error) {
+        console.log(`⚠️ 写入 OneBot 配置失败：${error?.message ?? error}`);
+      }
+    } else {
+      console.log(`✅ OneBot 配置已存在（onebot11_${bot}.json，跳过）`);
+    }
+  }
+
+  // 启动 NapCat + QQ（launcher-user.bat <bot>，注册表定位 QQ）。detached：独立窗口，关闭向导不影响它。
+  const launchers = ['launcher-user.bat', 'start-napcat.bat', 'restart-napcat.bat'];
+  const launcher = launchers.find((n) => fs.existsSync(path.join(napcatDir, n)));
+  if (!launcher) {
+    console.log('❌ 未在 NapCatShell 找到启动脚本。请手动双击 NapCatShell\\restart-napcat.bat <机器人QQ>。');
+    return false;
+  }
+  console.log(`⏳ 正在启动 NapCat + QQ（${launcher}）…`);
+  try {
+    const args = launcher === 'launcher-user.bat' || launcher === 'restart-napcat.bat' ? [launcher, bot ? String(bot) : ''] : [launcher];
+    const child = spawn('cmd.exe', ['/c', ...args], { cwd: napcatDir, detached: true, stdio: 'ignore' });
+    child.on('error', (err) => console.log(`⚠️ 启动 NapCat 失败：${err?.message ?? err}`));
+    child.unref();
+  } catch (error) {
+    console.log(`❌ 启动 NapCat 失败：${error?.message ?? error}`);
+    return false;
+  }
+
+  console.log('⏳ 等待 OneBot 端口就绪（若弹出 QQ 窗口请扫码登录机器人账号；最多 3 分钟）…');
+  if (!bot) return true; // 无 bot 号时只能交给用户手动扫码
+  const up = await waitOneBot(180);
+  if (up) {
+    console.log('✅ 机器人已上线（WS 3001 / HTTP 3000）');
+    return true;
+  }
+  console.log('⚠️ 等待机器人上线超时。请在弹出的 QQ 窗口里扫码登录机器人账号，登录后桥接会自动重连。');
+  return false;
+}
+
+/** 启动桥接（detached，交给 start.bat 相同的守护逻辑；console.autoOpen 会自动打开浏览器）。 */
+async function startBridge() {
+  // 判断是否已通过 main.js 进程占用端口（避免重复拉起）
+  const mainJs = path.join(ROOT, 'src', 'main.js');
+  const r = spawnSync('powershell', ['-NoProfile', '-Command',
+    `Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'src[\\\\/]main\\.js' } | Select-Object -First 1 -ExpandProperty ProcessId`], { encoding: 'utf8' });
+  if (r.status === 0 && r.stdout && String(r.stdout).trim()) {
+    console.log('✅ 桥接已在运行（跳过启动）');
+    return true;
+  }
+  console.log('⏳ 正在启动桥接（浏览器将自动打开 Web 控制台）…');
+  try {
+    const esc = (s) => String(s).replace(/'/g, "''");
+    const psCmd = `Start-Process -FilePath 'node.exe' -ArgumentList @('${esc(mainJs)}') -WorkingDirectory '${esc(ROOT)}'`;
+    const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
+    child.on('error', (err) => console.log(`❌ 启动桥接失败：${err?.message ?? err}`));
+    child.unref();
+  } catch (error) {
+    console.log(`❌ 启动桥接失败：${error?.message ?? error}`);
+    return false;
+  }
+  console.log('✅ 已启动桥接');
+  return true;
+}
+
+/** 运行 setup-dsh.mjs：把 qq-chat/qq-agent 预设与 qq-mode-console 插件装到 ~/.dsh。
+ * 幂等，可在 DSH 就绪后随时重跑；装完需重启 DSH 让 preset/MCP 生效。 */
+function runSetupDsh() {
+  const setupDsh = path.join(ROOT, 'scripts', 'setup-dsh.mjs');
+  if (!fs.existsSync(setupDsh)) {
+    console.log('⚠️ 未找到 scripts/setup-dsh.mjs（预设/插件安装跳过）');
+    return;
+  }
+  console.log('⏳ 正在安装 DSH 预设/插件（scripts/setup-dsh.mjs）…');
+  const r = spawnSync(process.execPath, [setupDsh], { cwd: ROOT, encoding: 'utf8', shell: true, timeout: 180000 });
+  if (r.status === 0) console.log('✅ 预设/插件已安装');
+  else console.log(`⚠️ setup-dsh 退出码 ${r.status}（可稍后手动运行 node scripts/setup-dsh.mjs）`);
 }
 
 async function main() {
   divider();
   console.log('  🔌 NimuQDock-dsh · 一键安装引导');
   divider();
+  console.log('  只需要做两件事：输入两个 QQ 号，然后扫码登录机器人 QQ。');
 
   console.log('\n[1/6] 检查 Node.js …');
   if (!checkNode()) { console.log('\n安装中断。'); return; }
 
-  console.log('\n[2/6] 准备 config.json …');
-  ensureConfig();
+  // OneBot 已在跑则无需再问/再启机器人QQ
+  const botNeed = !((await probePort(3001)) || (await probePort(3000)));
+  console.log('\n[2/6] 配置（管理员QQ' + (botNeed ? ' + 机器人QQ' : '') + '）…');
+  const { admin, bot } = await ensureConfig(undefined, botNeed);
 
   console.log('\n[3/6] 检查依赖 …');
   if (!ensureDeps()) { console.log('\n安装中断。'); return; }
 
   console.log('\n[4/6] DeepSeek Harness …');
   await ensureDsh();
+  runSetupDsh(); // 装 qq 预设/MCP/插件到 ~/.dsh（DSH 需要的话稍后重启生效）
 
-  console.log('\n[5/6] NapCat …');
-  await ensureNapCat();
+  console.log('\n[5/6] NapCat + 机器人上线 …');
+  await ensureNapCat(bot);
 
-  console.log('\n[6/6] 完成！');
-  recordInstallPath(); // 记录安装位置，供卸载程序使用
-  const dshOk = await probePort(3080);
-  const napcatOk = await probePort(3001);
-  if (dshOk && napcatOk) {
-    console.log('   环境已就绪，最后两步：');
-    console.log('   1) 编辑 config.json 填好 ownerQQ 与白名单（若还没填）');
-    console.log('   2) 双击 start.bat（守护模式）启动，浏览器自动打开 Web 控制台');
-  } else {
-    console.log('   上面有 ❌/⚠️ 的项目先处理好（装 QQ、扫码、配 OneBot11），');
-    console.log('   填好 config.json 后再双击 start.bat 启动。');
-  }
-  console.log('\n更多说明见 README.md，配置字段见 config.json。');
+  console.log('\n[6/6] 启动桥接 …');
+  await startBridge();
+
+  console.log('\n完成！');
+  recordInstallPath();
+  rl.close();
+  console.log('  · DeepSeek Harness: http://127.0.0.1:3080');
+  console.log('  · Web 控制台:       http://127.0.0.1:3100');
+  console.log('  · README.md 有更详细说明。');
+  console.log('  若之前有 ❌/⚠️，处理完后双击 start.bat 即可。');
 }
 
 main().catch((error) => {
