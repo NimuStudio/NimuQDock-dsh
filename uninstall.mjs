@@ -28,43 +28,68 @@ function locateProject() {
   return null;
 }
 
-/** 停止所有占用项目目录的进程。
- * 只停「真的占着项目目录/需要停才能删」的：桥接（node src/main.js）、
- * DSH（npx @deepseek-ai/dsh 的 node/cmd）、NapCat（项目内 NapCatShell 的 exe/node/cmd）。
- * 关键：**绝不匹配 QQ / QQ音乐**——QQ.exe 在 QQ 安装目录，不占项目目录，无需杀；
- * 之前按 `Name -match 'QQ'` 会把用户的 QQ.exe 与 QQMusic.exe 一起杀掉，属误杀。 */
+/** 停止「项目」自身的进程：桥接（node src/main.js）+ 项目内 NapCat。
+ * 遵循「卸哪个杀哪个」：**不杀 DSH**（DSH 只在选 2 时停）；也绝不匹配 QQ / QQ音乐。
+ * 返回是否停到了进程（没开进程时跳过提示，直接卸）。 */
 function stopProjectProcesses(projectDir) {
   try {
     const esc = String(projectDir).replace(/'/g, "''");
-    const cmd = `Get-CimInstance Win32_Process | Where-Object {
+    const cmd = `$procs = Get-CimInstance Win32_Process | Where-Object {
       $_.CommandLine -match 'src[\\\\/]main\\\\.js' -or
-      $_.CommandLine -match '@deepseek-ai[\\\\/]dsh|bin[\\\\/]dsh|\\.dsh[\\\\/]' -or
       $_.CommandLine -match 'napcat|launcher-user|restart-napcat|start-napcat' -or
       $_.ExecutablePath -like '${esc}*'
-    } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
-    spawnSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' });
-    console.log('✅ 已停止占用项目目录的进程（桥接/DSH/NapCat，不动 QQ）');
+    }; if($procs){ $n=0; $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $n++ }; "STOPPED:$n" } else { 'NONE' }`;
+    const out = spawnSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' });
+    if ((out.stdout || '').match(/STOPPED:(\d+)/)) {
+      const n = RegExp.$1;
+      console.log(`✅ 已停止项目进程（桥接/NapCat ×${n}，不动 DSH/QQ）`);
+      return n > 0;
+    }
+    console.log('ℹ️ 桥接/NapCat 未运行，跳过停止');
+    return false;
   } catch {}
+  return false;
 }
 
-/** 停止 DeepSeek Harness 进程（仅当不删项目、只卸 DSH 时使用）。 */
+/** 停止 DeepSeek Harness 进程（仅选 2「卸载 DSH」时使用）。返回是否停到了。 */
 function stopDsh() {
   try {
-    spawnSync('powershell', ['-NoProfile', '-Command',
-      `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '@deepseek-ai[\\\\/]dsh|bin[\\\\/]dsh|\\.dsh[\\\\/]' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`],
-      { encoding: 'utf8' });
-    console.log('✅ 已停止 DeepSeek Harness 进程');
+    const cmd = `$procs = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '@deepseek-ai[\\\\/]dsh|bin[\\\\/]dsh|\\.dsh[\\\\/]' }; if($procs){ $n=0; $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $n++ }; "STOPPED:$n" } else { 'NONE' }`;
+    const out = spawnSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' });
+    if ((out.stdout || '').match(/STOPPED:(\d+)/)) {
+      console.log(`✅ 已停止 DeepSeek Harness 进程 ×${RegExp.$1}`);
+      return true;
+    }
+    console.log('ℹ️ DeepSeek Harness 未运行，跳过停止');
+    return false;
   } catch {}
+  return false;
 }
 
-/** 停止 NapCat 相关进程（仅当只卸 NapCat，不动桥接/DSH 时使用）。不匹配 QQ / QQ音乐。 */
+/** 停止 NapCat 相关进程（仅选 3「卸载 NapCat」时使用）。不杀桥接/DSH/QQ/QQ音乐。返回是否停到了。 */
 function stopNapCat(projectDir) {
   try {
     const esc = String(projectDir).replace(/'/g, "''");
-    const cmd = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'napcat|launcher-user|restart-napcat|start-napcat' -or $_.ExecutablePath -like '${esc}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
-    spawnSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' });
-    console.log('✅ 已停止 NapCat 进程');
+    const cmd = `$procs = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'napcat|launcher-user|restart-napcat|start-napcat' -or $_.ExecutablePath -like '${esc}*' }; if($procs){ $n=0; $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $n++ }; "STOPPED:$n" } else { 'NONE' }`;
+    const out = spawnSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' });
+    if ((out.stdout || '').match(/STOPPED:(\d+)/)) {
+      console.log(`✅ 已停止 NapCat 进程 ×${RegExp.$1}`);
+      return true;
+    }
+    console.log('ℹ️ NapCat 未运行，跳过停止');
+    return false;
   } catch {}
+  return false;
+}
+
+/** 是否检测到 DeepSeek Harness 进程在运行（用于判断项目目录为何删不掉）。 */
+function isDshRunning() {
+  try {
+    const out = spawnSync('powershell', ['-NoProfile', '-Command',
+      `@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '@deepseek-ai[\\\\/]dsh|bin[\\\\/]dsh|\\.dsh[\\\\/]' }).Count`], { encoding: 'utf8' });
+    return Number((out.stdout || '').trim()) > 0;
+  } catch {}
+  return false;
 }
 
 /** 延迟删除目录（detached PowerShell）。
@@ -124,17 +149,18 @@ async function main() {
   const confirm = await ask('确认卸载以上内容？此操作不可恢复（y/N）：');
   if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') { console.log('已取消。'); rl.close(); process.exit(0); }
 
-  // 1) 停止占用项目目录的进程（桥接/DSH/NapCat）。卸载项目前必须 Stop，否则目录被占用删不掉。
+  // 1) 按「卸哪个杀哪个」停止对应进程。
+  //    项目(1)：只停桥接 + 项目内 NapCat，**不杀 DSH**（DSH 只在下方卸载 DSH 时停）。
+  //    NapCat(3)：只停 NapCat。DSH(2)：只停 DSH。没开进程则跳过。
   if (picked.has('project')) {
     console.log('\n[停止相关进程]');
     stopProjectProcesses(projectDir);
-  } else if (picked.has('dsh')) {
-    stopDsh();
   }
 
   // 2) 卸载 DSH
   if (picked.has('dsh')) {
     console.log('\n[卸载 DeepSeek Harness]');
+    stopDsh();
     try {
       const ls = spawnSync('npm', ['ls', '-g', '@deepseek-ai/dsh'], { encoding: 'utf8', shell: true });
       if (ls.status === 0) {
@@ -184,8 +210,11 @@ async function main() {
     } catch {}
     if (removed) {
       console.log('✅ 安装目录已删除');
+    } else if (isDshRunning()) {
+      console.log(`⚠️ 目录没能删掉：${projectDir} 正被 DeepSeek Harness 占用（它从本项目目录运行，按你的要求本卸载不杀 DSH）。`);
+      console.log('   若确实要删掉该目录：请在卸载菜单里也选上 [2] 卸载 DSH，或先自行停止 DSH 后重试。');
     } else {
-      // 兜底：仍有进程（如 uninstall.bat 的 cmd 还握着 cwd）占着 → 交给 detached 等它关门后删
+      // 兜底：普通瞬态占用（如文件句柄未释放）→ 交给 detached 等窗口关闭后重试删
       deleteLater(projectDir);
       console.log(`⏳ 正在删除安装目录（${projectDir}）…（窗口关闭后自动完成）`);
     }
