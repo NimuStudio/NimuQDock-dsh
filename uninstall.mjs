@@ -70,7 +70,10 @@ async function main() {
   console.log('  🗑️  NimuQDock-dsh 卸载程序');
   divider();
 
-  const projectDir = locateProject();
+  // 优先用命令行传入的项目目录（uninstall.bat 把 node/uninstall 拷到临时目录运行时传参）；
+  // 否则以本脚本所在目录为准。
+  const argDir = process.argv[2] ? path.resolve(String(process.argv[2]).replace(/[\\/]+$/, '')) : null;
+  const projectDir = (argDir && fs.existsSync(path.join(argDir, 'package.json'))) ? argDir : locateProject();
   if (!projectDir) {
     console.log('❌ 未找到项目目录（当前脚本不在项目根）。');
     return;

@@ -81,9 +81,13 @@ async function detectDshVision() {
 /** 便携安装 DSH 到本目录 node_modules（卸载时随目录一起删）。 */
 function installDshPortable() {
   console.log(`⏳ 正在便携安装 DeepSeek Harness（npm install @deepseek-ai/dsh@${DSH_VERSION}，首次需几分钟）…`);
-  const r = spawnSync('npm', ['install', '--no-save', '--no-package-lock', '--prefix', ROOT, `@deepseek-ai/dsh@${DSH_VERSION}`], {
-    cwd: ROOT, stdio: 'inherit', shell: true, timeout: 900000,
-  });
+  // 优先用当前 node 自带的 npm-cli（便携版内置 node 下 PATH 里没有 npm）；
+  // 源码环境（系统 node）退回 PATH 里的 npm。
+  const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  const args = ['install', '--no-save', '--no-package-lock', '--prefix', ROOT, `@deepseek-ai/dsh@${DSH_VERSION}`];
+  const r = fs.existsSync(npmCli)
+    ? spawnSync(process.execPath, [npmCli, ...args], { cwd: ROOT, stdio: 'inherit', timeout: 900000 })
+    : spawnSync('npm', args, { cwd: ROOT, stdio: 'inherit', shell: true, timeout: 900000 });
   if (r.status !== 0) {
     console.log('❌ 便携安装 DSH 失败，请检查网络后重试。');
     return false;

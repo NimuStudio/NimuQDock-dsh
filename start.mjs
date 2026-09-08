@@ -200,7 +200,7 @@ async function launchPortableDsh(port) {
   try {
     fs.mkdirSync(DSH_WORKDIR, { recursive: true });
     const esc = (s) => String(s).replace(/'/g, "''");
-    const psCmd = `$env:DSH_HOME='${esc(DSH_HOME)}'; Start-Process -FilePath 'node.exe' -ArgumentList @('${esc(DSH_BIN)}','web','--port','${port}','--host','127.0.0.1','--no-open') -WorkingDirectory '${esc(DSH_WORKDIR)}'`;
+    const psCmd = `$env:DSH_HOME='${esc(DSH_HOME)}'; Start-Process -FilePath '${esc(process.execPath)}' -ArgumentList @('${esc(DSH_BIN)}','web','--port','${port}','--host','127.0.0.1','--no-open') -WorkingDirectory '${esc(DSH_WORKDIR)}'`;
     const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
     child.on('error', (err) => console.log(`❌ 启动 DSH 失败：${err?.message ?? err}`));
     child.unref();
@@ -396,7 +396,7 @@ async function startBridge() {
   console.log('⏳ 正在启动桥接（浏览器将自动打开 Web 控制台）…');
   try {
     const esc = (s) => String(s).replace(/'/g, "''");
-    const psCmd = `Start-Process -FilePath 'node.exe' -ArgumentList @('${esc(mainJs)}') -WorkingDirectory '${esc(ROOT)}'`;
+    const psCmd = `Start-Process -FilePath '${esc(process.execPath)}' -ArgumentList @('${esc(mainJs)}') -WorkingDirectory '${esc(ROOT)}'`;
     const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
     child.on('error', (err) => console.log(`❌ 启动桥接失败：${err?.message ?? err}`));
     child.unref();
