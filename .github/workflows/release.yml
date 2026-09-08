@@ -59,8 +59,9 @@ jobs:
         run: |
           NODE_VER=v22.23.2
           curl -fsSL -o /tmp/node-win.zip "https://nodejs.org/dist/${NODE_VER}/node-${NODE_VER}-win-x64.zip"
-          unzip -q /tmp/node-win.zip -d /tmp
-          mv "/tmp/node-${NODE_VER}-win-x64" "${GITHUB_WORKSPACE}/node"
+          mkdir -p /tmp/node-x
+          7z x -y -o/tmp/node-x /tmp/node-win.zip >/dev/null
+          mv "/tmp/node-x/node-${NODE_VER}-win-x64" "${GITHUB_WORKSPACE}/node"
           ls "${GITHUB_WORKSPACE}/node/node.exe"
           echo "portable node ready"
 
