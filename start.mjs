@@ -459,7 +459,7 @@ async function main() {
 
   console.log('\n✅ 完成！');
   console.log('  · Web 控制台: http://127.0.0.1:3100');
-  console.log('  · DeepSeek Harness: http://127.0.0.1:3080');
+  console.log(`  · DeepSeek Harness: ${baseUrl}`);
   rl.close();
 }
 
