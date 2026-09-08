@@ -26,6 +26,22 @@ const divider = () => console.log('─'.repeat(52));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
+/** 便携安装 DSH 到本目录 node_modules（start 自举用；卸载时随目录一起删）。 */
+function installDshPortable() {
+  console.log(`⏳ 正在下载并安装 DeepSeek Harness（npm install @deepseek-ai/dsh@${DSH_VERSION}，首次需几分钟）…`);
+  const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  const args = ['install', '--no-save', '--no-package-lock', '--prefix', ROOT, `@deepseek-ai/dsh@${DSH_VERSION}`];
+  const r = fs.existsSync(npmCli)
+    ? spawnSync(process.execPath, [npmCli, ...args], { cwd: ROOT, stdio: 'inherit', timeout: 1200000 })
+    : spawnSync('npm', args, { cwd: ROOT, stdio: 'inherit', shell: true, timeout: 1200000 });
+  if (r.status !== 0) {
+    console.log('❌ 安装 DeepSeek Harness 失败，请检查网络后重试。');
+    return false;
+  }
+  console.log('✅ DeepSeek Harness 已安装到本目录');
+  return true;
+}
+
 function ask(label, { digits = true, def = '' } = {}) {
   return new Promise((resolve) => {
     const suffix = def ? `（直接回车=${def}）` : '';
@@ -118,8 +134,13 @@ function runSetupDsh(dshHome) {
   console.log('⏳ 正在安装 DSH 预设/插件…');
   fs.mkdirSync(dshHome, { recursive: true });
   const r = spawnSync(process.execPath, [setupDsh], { cwd: ROOT, encoding: 'utf8', shell: true, timeout: 180000, env: { ...process.env, DSH_HOME: dshHome } });
-  if (r.status === 0) console.log('✅ 预设/插件已安装');
-  else console.log(`⚠️ setup-dsh 退出码 ${r.status}（可稍后手动：node scripts/setup-dsh.mjs）`);
+  if (r.status === 0) {
+    console.log('✅ 预设/插件已安装');
+  } else {
+    console.log(`⚠️ setup-dsh 异常退出（码 ${r.status}）——不影响启动，可稍后手动运行：node scripts/setup-dsh.mjs`);
+    const tail = `${r.stdout || ''}${r.stderr || ''}`.trim().slice(-800);
+    if (tail) console.log(`   输出片段：${tail}`);
+  }
 }
 
 /** 把 config.json 的 dsh.baseUrl 更新为实际使用的 DSH 地址（3080 复用 / 3081 便携）。 */
@@ -191,8 +212,12 @@ async function detectDshVision() {
 async function launchPortableDsh(port) {
   const baseUrl = `http://127.0.0.1:${port}`;
   if (!fs.existsSync(DSH_BIN)) {
-    console.log('❌ 未找到便携 DSH。请先运行 install.bat（或 install.mjs）安装组件。');
-    return { reused: false, dshHome: DSH_HOME, baseUrl };
+    // start 自举：没装便携 DSH 就自动下载（不再要求先跑 install.bat）
+    console.log('⏳ 尚未安装 DeepSeek Harness，正在自动下载安装…');
+    if (!installDshPortable()) {
+      console.log('❌ 自动安装失败。可稍后重试，或手动运行 install.bat。');
+      return { reused: false, dshHome: DSH_HOME, baseUrl };
+    }
   }
   // 便携 DSH 是全新的、没有 API key——在启动前先确保 .credentials.yaml 已配 DEEPSEEK_API_KEY
   await ensureApiKey(DSH_HOME);
