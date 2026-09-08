@@ -96,23 +96,21 @@ function installDshPortable() {
   return true;
 }
 
-/** 准备 DSH：3080 在跑就复用（无识图仅警告，避免第二份 DSH 抢占 3080）；没在跑才下载便携版。 */
+/** 准备 DSH：3080 在跑且含识图→复用；否则（含 3080 被无识图 DSH 占用）下载便携版备用。 */
 async function ensureDsh() {
   if (await probePort(3080)) {
     const hasVision = await detectDshVision();
     if (hasVision) {
       console.log('✅ 复用本机 DeepSeek Harness（已带识图模型，不再重复下载）');
-    } else {
-      console.log('✅ 复用本机 DeepSeek Harness');
-      console.log('   ⚠️ 提示：未在其模型列表中发现含 vision 的模型——图片识别可能不可用；如需要，请自行在 DSH 里配置一个识图模型。');
+      return;
     }
-    return true;
+    console.log('⚠️ 本机 DSH 无识图模型——会下载便携版，稍后 start.bat 用 3081 端口另起一份带识图的 DSH');
   }
   if (fs.existsSync(DSH_BIN)) {
     console.log('✅ 本目录已装有便携 DSH（跳过下载）');
-    return true;
+    return;
   }
-  return installDshPortable();
+  installDshPortable();
 }
 
 /** 下载文件（流式写盘）。 */

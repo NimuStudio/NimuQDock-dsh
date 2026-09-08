@@ -2,6 +2,10 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.2.1
+
+- feat(install): **本机 DSH(3080) 无识图时，自动用便携版在 3081 另起一份带识图的 DSH**（不再只是警告）——3080 在跑且含 vision→复用；3080 无识图→便携版起 3081；3080 空闲→便携版起 3080；config.json 的 dsh.baseUrl 自动指向实际端口
+
 ## v0.2.0
 
 - feat(installer): **安装/启动/卸载三件套重构**——setup.exe 解压后自动运行 bootstrap，只下载缺失组件；日常双击 start.bat 填 QQ+扫码启动；卸载只删安装文件夹
