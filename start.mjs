@@ -122,34 +122,84 @@ function runSetupDsh(dshHome) {
   else console.log(`⚠️ setup-dsh 退出码 ${r.status}（可稍后手动：node scripts/setup-dsh.mjs）`);
 }
 
-/** 启动/复用 DSH，返回 { reused, dshHome }：reused=是否复用了本机已在跑的 DSH。 */
-async function ensureDsh() {
-  if (await probePort(3080)) {
-    console.log('✅ DeepSeek Harness 已运行（http://127.0.0.1:3080），复用本机');
-    return { reused: true, dshHome: path.join(os.homedir(), '.dsh') };
+/** 把 config.json 的 dsh.baseUrl 更新为实际使用的 DSH 地址（3080 复用 / 3081 便携）。 */
+function patchDshBaseUrl(baseUrl) {
+  try {
+    const cfg = path.join(ROOT, 'config.json');
+    if (!fs.existsSync(cfg)) return;
+    const obj = JSON.parse(fs.readFileSync(cfg, 'utf8'));
+    obj.dsh = obj.dsh ?? {};
+    obj.dsh.baseUrl = baseUrl;
+    fs.writeFileSync(cfg, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+    console.log(`✅ config.json dsh.baseUrl = ${baseUrl}`);
+  } catch (error) {
+    console.log(`⚠️ 更新 dsh.baseUrl 失败：${error?.message ?? error}`);
   }
+}
+
+/** 检测本机 DSH（3080）是否带识图模型。走 llm.models RPC，任一模型 id/name 含 vision 即算。 */
+async function detectDshVision() {
+  try {
+    const res = await fetch('http://127.0.0.1:3080/api/llm.models', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'client-request', rpcId: `start-${Date.now()}`, method: 'llm.models', payload: {} }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return false;
+    const json = await res.json();
+    const groups = json?.result?.value?.groups ?? [];
+    for (const g of groups) {
+      for (const m of (g?.models ?? [])) {
+        if (`${m?.id ?? ''} ${m?.name ?? ''}`.toLowerCase().includes('vision')) return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** 启动本目录便携 DSH 到指定端口，返回 baseUrl。 */
+async function launchPortableDsh(port) {
+  const baseUrl = `http://127.0.0.1:${port}`;
   if (!fs.existsSync(DSH_BIN)) {
     console.log('❌ 未找到便携 DSH。请先运行 install.bat（或 install.mjs）安装组件。');
-    return { reused: false, dshHome: DSH_HOME };
+    return { reused: false, dshHome: DSH_HOME, baseUrl };
   }
-  console.log('⏳ 正在启动 DeepSeek Harness（本目录便携版）…');
+  console.log(`⏳ 正在启动 DeepSeek Harness（本目录便携版，端口 ${port}）…`);
   try {
     fs.mkdirSync(DSH_WORKDIR, { recursive: true });
     const esc = (s) => String(s).replace(/'/g, "''");
-    const psCmd = `$env:DSH_HOME='${esc(DSH_HOME)}'; Start-Process -FilePath 'node.exe' -ArgumentList @('${esc(DSH_BIN)}','web') -WorkingDirectory '${esc(DSH_WORKDIR)}'`;
+    const psCmd = `$env:DSH_HOME='${esc(DSH_HOME)}'; Start-Process -FilePath 'node.exe' -ArgumentList @('${esc(DSH_BIN)}','web','--port','${port}','--host','127.0.0.1','--no-open') -WorkingDirectory '${esc(DSH_WORKDIR)}'`;
     const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
     child.on('error', (err) => console.log(`❌ 启动 DSH 失败：${err?.message ?? err}`));
     child.unref();
   } catch (error) {
     console.log(`❌ 启动 DSH 失败：${error?.message ?? error}`);
-    return { reused: false, dshHome: DSH_HOME };
+    return { reused: false, dshHome: DSH_HOME, baseUrl };
   }
   const deadline = Date.now() + 300000;
   while (Date.now() < deadline) {
-    if (await probePort(3080)) { console.log('✅ DeepSeek Harness 已启动'); break; }
+    if (await probePort(port)) { console.log(`✅ DeepSeek Harness 已启动（${baseUrl}）`); break; }
     await sleep(3000);
   }
-  return { reused: false, dshHome: DSH_HOME };
+  return { reused: false, dshHome: DSH_HOME, baseUrl };
+}
+
+/** 决定用哪个 DSH：3080 在跑且含识图→复用；3080 无识图→便携版起 3081；3080 空闲→便携版起 3080。
+ *  返回 { reused, dshHome, baseUrl }。 */
+async function ensureDsh() {
+  if (await probePort(3080)) {
+    const hasVision = await detectDshVision();
+    if (hasVision) {
+      console.log('✅ 复用本机 DeepSeek Harness（http://127.0.0.1:3080，含识图）');
+      return { reused: true, dshHome: path.join(os.homedir(), '.dsh'), baseUrl: 'http://127.0.0.1:3080' };
+    }
+    console.log('⚠️ 本机 DSH(3080) 无识图模型 → 用本目录便携版在 3081 另起一份带识图的 DSH');
+    return await launchPortableDsh(3081);
+  }
+  return await launchPortableDsh(3080);
 }
 
 async function downloadFile(url, dest, timeoutMs = 600000) {
@@ -341,7 +391,8 @@ async function main() {
   const { admin, bot } = await ensureConfig();
 
   console.log('\n[3/6] DeepSeek Harness …');
-  const { dshHome } = await ensureDsh();
+  const { dshHome, baseUrl } = await ensureDsh();
+  patchDshBaseUrl(baseUrl);
 
   console.log('\n[4/6] 安装预设 …');
   runSetupDsh(dshHome);
