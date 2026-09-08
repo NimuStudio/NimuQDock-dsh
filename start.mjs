@@ -20,25 +20,36 @@ const DSH_VERSION = '0.1.1-rc.2';
 // DSH 数据/预设放本目录：卸载时删目录即彻底卸载；DSH 从 .dsh/workdir 启动（不把项目根当 cwd）
 const DSH_HOME = path.join(ROOT, '.dsh');
 const DSH_WORKDIR = path.join(DSH_HOME, 'workdir');
-const DSH_BIN = path.join(ROOT, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
+// DSH 便携安装在独立前缀（不动项目自身的 node_modules，避免 npm reconciliation 污染既有依赖）
+const DSH_PREFIX = path.join(ROOT, 'dsh-app');
+const DSH_BIN = path.join(DSH_PREFIX, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
 const NAPCAT_URL = 'https://github.com/NapNeko/NapCatQQ/releases/latest/download/NapCat.Shell.zip';
 const divider = () => console.log('─'.repeat(52));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+// 转义：PS 单引号字符串内、以及 Start-Process -ArgumentList 里需要手动加双引号的路径
+const esc = (s) => String(s).replace(/'/g, "''");
+const dq = (s) => '"' + String(s ?? '').replace(/"/g, '') + '"';
 
-/** 便携安装 DSH 到本目录 node_modules（start 自举用；卸载时随目录一起删）。 */
+/** 便携安装 DSH 到独立前缀 dsh-app/（start 自举用；卸载时随目录一起删）。
+ * 不直接用项目根当 --prefix：避免 npm 以项目 package.json 为准 reconciliation 既有依赖。 */
 function installDshPortable() {
   console.log(`⏳ 正在下载并安装 DeepSeek Harness（npm install @deepseek-ai/dsh@${DSH_VERSION}，首次需几分钟）…`);
+  try { fs.mkdirSync(DSH_PREFIX, { recursive: true }); } catch {}
   const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  const args = ['install', '--no-save', '--no-package-lock', '--prefix', ROOT, `@deepseek-ai/dsh@${DSH_VERSION}`];
+  const args = ['install', '--no-save', '--no-package-lock', '--prefix', DSH_PREFIX, `@deepseek-ai/dsh@${DSH_VERSION}`];
   const r = fs.existsSync(npmCli)
-    ? spawnSync(process.execPath, [npmCli, ...args], { cwd: ROOT, stdio: 'inherit', timeout: 1200000 })
-    : spawnSync('npm', args, { cwd: ROOT, stdio: 'inherit', shell: true, timeout: 1200000 });
+    ? spawnSync(process.execPath, [npmCli, ...args], { cwd: DSH_PREFIX, stdio: 'inherit', timeout: 1200000 })
+    : spawnSync('npm', args, { cwd: DSH_PREFIX, stdio: 'inherit', shell: true, timeout: 1200000 });
   if (r.status !== 0) {
     console.log('❌ 安装 DeepSeek Harness 失败，请检查网络后重试。');
     return false;
   }
-  console.log('✅ DeepSeek Harness 已安装到本目录');
+  if (!fs.existsSync(DSH_BIN)) {
+    console.log(`❌ 安装完成但未找到 DSH 入口（${DSH_BIN}）。`);
+    return false;
+  }
+  console.log('✅ DeepSeek Harness 已安装到本目录 dsh-app');
   return true;
 }
 
@@ -216,7 +227,7 @@ async function launchPortableDsh(port) {
     console.log('⏳ 尚未安装 DeepSeek Harness，正在自动下载安装…');
     if (!installDshPortable()) {
       console.log('❌ 自动安装失败。可稍后重试，或手动运行 install.bat。');
-      return { reused: false, dshHome: DSH_HOME, baseUrl };
+      return { reused: false, dshHome: DSH_HOME, baseUrl, fatal: true };
     }
   }
   // 便携 DSH 是全新的、没有 API key——在启动前先确保 .credentials.yaml 已配 DEEPSEEK_API_KEY
@@ -224,14 +235,14 @@ async function launchPortableDsh(port) {
   console.log(`⏳ 正在启动 DeepSeek Harness（本目录便携版，端口 ${port}）…`);
   try {
     fs.mkdirSync(DSH_WORKDIR, { recursive: true });
-    const esc = (s) => String(s).replace(/'/g, "''");
-    const psCmd = `$env:DSH_HOME='${esc(DSH_HOME)}'; Start-Process -FilePath '${esc(process.execPath)}' -ArgumentList @('${esc(DSH_BIN)}','web','--port','${port}','--host','127.0.0.1','--no-open') -WorkingDirectory '${esc(DSH_WORKDIR)}'`;
+    // -ArgumentList 传单字符串并手动给路径加双引号：@(数组) 形式遇到含空格路径会被拆参
+    const psCmd = `$env:DSH_HOME='${esc(DSH_HOME)}'; Start-Process -FilePath '${esc(process.execPath)}' -ArgumentList '${dq(DSH_BIN)} web --port ${port} --host 127.0.0.1 --no-open' -WorkingDirectory '${esc(DSH_WORKDIR)}'`;
     const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
     child.on('error', (err) => console.log(`❌ 启动 DSH 失败：${err?.message ?? err}`));
     child.unref();
   } catch (error) {
     console.log(`❌ 启动 DSH 失败：${error?.message ?? error}`);
-    return { reused: false, dshHome: DSH_HOME, baseUrl };
+    return { reused: false, dshHome: DSH_HOME, baseUrl, fatal: true };
   }
   const deadline = Date.now() + 300000;
   while (Date.now() < deadline) {
@@ -412,16 +423,17 @@ async function ensureNapCat(bot) {
 /** 启动桥接（detached，自动打开控制台）。 */
 async function startBridge() {
   const mainJs = path.join(ROOT, 'src', 'main.js');
+  // 检测本项目桥接：必须同时命中 src/main.js 与本目录（防止误判别的项目）
   const r = spawnSync('powershell', ['-NoProfile', '-Command',
-    `Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'src[\\\\/]main\\.js' } | Select-Object -First 1 -ExpandProperty ProcessId`], { encoding: 'utf8' });
+    `Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'src[\\\\/]main\\.js' -and $_.CommandLine -like '*${esc(ROOT)}*' } | Select-Object -First 1 -ExpandProperty ProcessId`], { encoding: 'utf8' });
   if (r.status === 0 && r.stdout && String(r.stdout).trim()) {
     console.log('✅ 桥接已在运行（跳过启动）');
     return true;
   }
   console.log('⏳ 正在启动桥接（浏览器将自动打开 Web 控制台）…');
   try {
-    const esc = (s) => String(s).replace(/'/g, "''");
-    const psCmd = `Start-Process -FilePath '${esc(process.execPath)}' -ArgumentList @('${esc(mainJs)}') -WorkingDirectory '${esc(ROOT)}'`;
+    // -ArgumentList 传单字符串并给路径加双引号，避免含空格/中文路径被拆参
+    const psCmd = `Start-Process -FilePath '${esc(process.execPath)}' -ArgumentList '${dq(mainJs)}' -WorkingDirectory '${esc(ROOT)}'`;
     const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
     child.on('error', (err) => console.log(`❌ 启动桥接失败：${err?.message ?? err}`));
     child.unref();
@@ -445,7 +457,12 @@ async function main() {
   const { admin, bot } = await ensureConfig();
 
   console.log('\n[3/6] DeepSeek Harness …');
-  const { dshHome, baseUrl } = await ensureDsh();
+  const { dshHome, baseUrl, fatal } = await ensureDsh();
+  if (fatal) {
+    console.log('\n❌ DeepSeek Harness 安装失败，已停止后续步骤。请检查网络后重试，或手动运行 install.bat。');
+    rl.close();
+    return;
+  }
   patchDshBaseUrl(baseUrl);
 
   console.log('\n[4/6] 安装预设 …');

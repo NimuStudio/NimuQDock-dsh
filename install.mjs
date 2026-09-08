@@ -17,8 +17,10 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url)); // install.mjs 位于
 const DSH_VERSION = '0.1.1-rc.2'; // 与 dsh-host-apiproxy 依赖版本一致，保证 API/preset 兼容
 // DSH 数据/预设也放本目录：卸载时删掉整个目录即彻底卸载（无全局残留）
 const DSH_HOME = path.join(ROOT, '.dsh');
-// 便携安装后 DSH 的入口（npm install --prefix 装进本目录 node_modules）
-const DSH_BIN = path.join(ROOT, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
+// DSH 便携安装在独立前缀（不动项目自身的 node_modules，避免 npm reconciliation 污染既有依赖）
+const DSH_PREFIX = path.join(ROOT, 'dsh-app');
+// 便携安装后 DSH 的入口（npm install --prefix 装进 dsh-app/node_modules）
+const DSH_BIN = path.join(DSH_PREFIX, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
 const NAPCAT_URL = 'https://github.com/NapNeko/NapCatQQ/releases/latest/download/NapCat.Shell.zip';
 const divider = () => console.log('─'.repeat(52));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -78,16 +80,18 @@ async function detectDshVision() {
   }
 }
 
-/** 便携安装 DSH 到本目录 node_modules（卸载时随目录一起删）。 */
+/** 便携安装 DSH 到独立前缀 dsh-app/（卸载时随目录一起删）。
+ * 不直接用项目根当 --prefix：避免 npm 以项目 package.json 为准 reconciliation 既有依赖。 */
 function installDshPortable() {
   console.log(`⏳ 正在便携安装 DeepSeek Harness（npm install @deepseek-ai/dsh@${DSH_VERSION}，首次需几分钟）…`);
+  try { fs.mkdirSync(DSH_PREFIX, { recursive: true }); } catch {}
   // 优先用当前 node 自带的 npm-cli（便携版内置 node 下 PATH 里没有 npm）；
   // 源码环境（系统 node）退回 PATH 里的 npm。
   const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  const args = ['install', '--no-save', '--no-package-lock', '--prefix', ROOT, `@deepseek-ai/dsh@${DSH_VERSION}`];
+  const args = ['install', '--no-save', '--no-package-lock', '--prefix', DSH_PREFIX, `@deepseek-ai/dsh@${DSH_VERSION}`];
   const r = fs.existsSync(npmCli)
-    ? spawnSync(process.execPath, [npmCli, ...args], { cwd: ROOT, stdio: 'inherit', timeout: 900000 })
-    : spawnSync('npm', args, { cwd: ROOT, stdio: 'inherit', shell: true, timeout: 900000 });
+    ? spawnSync(process.execPath, [npmCli, ...args], { cwd: DSH_PREFIX, stdio: 'inherit', timeout: 900000 })
+    : spawnSync('npm', args, { cwd: DSH_PREFIX, stdio: 'inherit', shell: true, timeout: 900000 });
   if (r.status !== 0) {
     console.log('❌ 便携安装 DSH 失败，请检查网络后重试。');
     return false;
@@ -96,7 +100,7 @@ function installDshPortable() {
     console.log(`❌ 安装完成但未找到 DSH 入口（${DSH_BIN}）。`);
     return false;
   }
-  console.log('✅ DeepSeek Harness 已便携安装到本目录');
+  console.log('✅ DeepSeek Harness 已便携安装到本目录 dsh-app');
   return true;
 }
 
