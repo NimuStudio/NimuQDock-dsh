@@ -2,6 +2,10 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.2.2
+
+- fix(uninstall): **修复卸载脚本误杀自身、导致文件夹删不掉**——`stopProjectProcesses` 之前用宽泛匹配 `CommandLine -like "*安装目录*"` 和裸词 `napcat`，会命中卸载脚本自己（`node "…\安装目录\uninstall.mjs"` 绝对路径含目录名；目录名含 "napcat" 时也中招），脚本在删除前就被杀掉。改为精确特征匹配（桥接 `src/main.js`、便携 DSH `node_modules/@deepseek-ai/dsh`+目录、`NapCatShell`/`napcat.mjs`/`NapCatWinBootMain`/`launcher-user` 等）+ 显式排除自身 PID
+
 ## v0.2.1
 
 - feat(install): **本机 DSH(3080) 无识图时，自动用便携版在 3081 另起一份带识图的 DSH**（不再只是警告）——3080 在跑且含 vision→复用；3080 无识图→便携版起 3081；3080 空闲→便携版起 3080；config.json 的 dsh.baseUrl 自动指向实际端口

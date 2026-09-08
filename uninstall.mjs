@@ -22,16 +22,20 @@ function locateProject() {
   return null;
 }
 
-/** 停止从项目目录启动的所有进程（桥接/便携 DSH/NapCat 及其 cmd 包装）。
- * 按 CommandLine / ExecutablePath 是否引用项目目录 + launcher-user 模式匹配；
- * 不匹配用户自己的 DSH（全局安装，命令行不含本项目目录），也不碰 QQ。 */
+/** 停止从项目目录启动的进程（桥接 / 便携 DSH / NapCat 及其 cmd 包装）。
+ * 关键：用「精确特征」匹配，绝不用 `CommandLine -like "*项目目录*"` 这种宽泛匹配——
+ * 否则会连卸载脚本自己（node "<项目目录>\uninstall.mjs"，绝对路径含目录名）和它的 cmd 包装一起杀掉，
+ * 导致脚本还没走到删除就死掉、文件夹删不掉。 */
 function stopProjectProcesses(projectDir) {
   try {
     const esc = String(projectDir).replace(/'/g, "''");
     const cmd = `$procs = Get-CimInstance Win32_Process | Where-Object {
-      $_.CommandLine -like "*${esc}*" -or
-      $_.ExecutablePath -like "*${esc}*" -or
-      $_.CommandLine -match 'launcher-user|restart-napcat|start-napcat'
+      ($_.ProcessId -ne ${process.pid}) -and (
+        $_.CommandLine -match 'src[\\\\/]main\\\\.js' -or
+        ($_.CommandLine -match 'node_modules[\\\\/]@deepseek-ai[\\\\/]dsh' -and $_.CommandLine -like "*${esc}*") -or
+        $_.CommandLine -match 'NapCatShell|napcat\\\\.mjs|NapCatWinBootMain|launcher-user|restart-napcat|start-napcat' -or
+        $_.ExecutablePath -like "*${esc}*"
+      )
     }; if($procs){ $n=0; $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $n++ }; "STOPPED:$n" } else { 'NONE' }`;
     const out = spawnSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' });
     if ((out.stdout || '').match(/STOPPED:(\d+)/)) {
