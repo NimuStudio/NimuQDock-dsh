@@ -1,12 +1,9 @@
 @echo off
-rem NimuQDock-dsh one-click installer (ASCII only, Node does the Chinese output)
+rem NimuQDock-dsh installer. Prefers the bundled portable node (node\node.exe),
+rem otherwise falls back to system node for source users.
 chcp 65001 >nul
 cd /d "%~dp0"
-where node >nul 2>&1
-if errorlevel 1 (
-    echo [install] Node.js not found. Please install Node.js 22.13+ from https://nodejs.org
-    pause
-    exit /b 1
-)
-node install.mjs
+set "NODE=%~dp0node\node.exe"
+if not exist "%NODE%" set "NODE=node"
+"%NODE%" install.mjs
 pause

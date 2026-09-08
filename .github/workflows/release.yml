@@ -54,6 +54,16 @@ jobs:
       - name: Prepare dist dir
         run: mkdir -p dist
 
+      # 内置便携 Node（Windows x64）：拷到仓库根 node/，打包 walk 会自动带上 → 任何电脑双击即可运行，无需预装 Node
+      - name: Fetch portable Node (win-x64)
+        run: |
+          NODE_VER=v22.23.2
+          curl -fsSL -o /tmp/node-win.zip "https://nodejs.org/dist/${NODE_VER}/node-${NODE_VER}-win-x64.zip"
+          unzip -q /tmp/node-win.zip -d /tmp
+          mv "/tmp/node-${NODE_VER}-win-x64" "${GITHUB_WORKSPACE}/node"
+          ls "${GITHUB_WORKSPACE}/node/node.exe"
+          echo "portable node ready"
+
       - name: Build zip (UTF-8 filenames)
         run: node scripts/make-release-zip.mjs "${{ steps.ver.outputs.version }}" "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-win-x64.zip"
 

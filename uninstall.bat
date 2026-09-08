@@ -1,10 +1,23 @@
 @echo off
-rem NimuQDock-dsh uninstaller. ASCII-only here; Node prints the Chinese output.
-rem Important: cd to C:\ first so the project folder is NOT held as the cwd,
-rem otherwise the project folder cannot be deleted. The project dir is found
-rem by uninstall.mjs via HERE (this script's own folder), independent of this cd.
+rem NimuQDock-dsh uninstaller.
+rem If a bundled portable node exists (node\node.exe), copy node + uninstall.mjs to
+rem %TEMP% and run from there: a node.exe running from inside the install folder would
+rem lock itself and prevent the folder from being deleted. Falls back to system node.
 chcp 65001 >nul
-set "PROJ=%~dp0"
+set "PKG=%~dp0"
+set "BUNDLED=%PKG%node\node.exe"
+set "TMPD="
+if exist "%BUNDLED%" (
+    set "TMPD=%TEMP%\nimu-uninstall-%RANDOM%"
+    mkdir "%TMPD%" >nul 2>&1
+    copy /y "%BUNDLED%" "%TMPD%\node.exe" >nul
+    copy /y "%PKG%uninstall.mjs" "%TMPD%\uninstall.mjs" >nul
+)
 cd /d C:\
-node "%PROJ%uninstall.mjs"
+if defined TMPD (
+    "%TMPD%\node.exe" "%TMPD%\uninstall.mjs" "%PKG%"
+) else (
+    node "%PKG%uninstall.mjs" "%PKG%"
+)
 timeout /t 3 /nobreak >nul
+if defined TMPD rmdir /s /q "%TMPD%" >nul 2>&1
