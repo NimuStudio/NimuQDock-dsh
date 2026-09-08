@@ -2,6 +2,15 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.2.0
+
+- feat(installer): **安装/启动/卸载三件套重构**——setup.exe 解压后自动运行 bootstrap，只下载缺失组件；日常双击 start.bat 填 QQ+扫码启动；卸载只删安装文件夹
+- feat(install): **SFX 目录选择框**——用 GUI SFX 模块，安装时可视化选/改安装目录（InstallPath 只是默认值）
+- feat(install): **DSH 便携化**——检测本机 DSH：3080 在跑且模型含识图(vision)就复用（无识图仅警告）；没在跑就把 DSH 便携安装进安装目录 node_modules，数据/预设放目录内 `.dsh`，卸载删目录即彻底卸载
+- feat(install): **NapCat 始终独立装一份**到安装目录（不复用/占用用户自有的 NapCat）
+- feat(start): 新增 `start.mjs` + `start.bat`——首次填管理员QQ+机器人QQ→装预设→起 DSH→下/起 NapCat 扫码→起桥接开控制台；复用本机 DSH 时预设写入 `~/.dsh`
+- fix(uninstall): 卸载简化为「停本项目进程 + 删整个安装文件夹」，不再区分 1/2/3 组件，也不碰用户自己的 DSH/NapCat
+
 ## v0.1.19
 
 - feat(uninstall): **卸哪个杀哪个，没开进程直接卸**——卸项目(1)只停桥接(src/main.js)+项目内 NapCat，不再杀 DSH；DSH 只在卸 DSH(2)时停；NapCat(3)只停 NapCat，不碰桥接/DSH；各停止动作均改为「真停到进程才提示，没开进程则跳过」
