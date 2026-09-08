@@ -30,13 +30,20 @@ function stopProjectProcesses(projectDir) {
   try {
     const esc = String(projectDir).replace(/'/g, "''");
     const cmd = `$procs = Get-CimInstance Win32_Process | Where-Object {
-      ($_.ProcessId -ne ${process.pid}) -and (
-        $_.CommandLine -match 'src[\\\\/]main\\\\.js' -or
+      $_.Name -notin @('powershell.exe','pwsh.exe','conhost.exe') -and $_.ProcessId -ne ${process.pid} -and (
+        ($_.CommandLine -match 'src[\\\\/]main\\.js' -and $_.CommandLine -like "*${esc}*") -or
         ($_.CommandLine -match 'node_modules[\\\\/]@deepseek-ai[\\\\/]dsh' -and $_.CommandLine -like "*${esc}*") -or
-        $_.CommandLine -match 'NapCatShell|napcat\\\\.mjs|NapCatWinBootMain|launcher-user|restart-napcat|start-napcat' -or
+        ($_.CommandLine -match 'napcat\\.mjs|NapCatWinBootMain' -and $_.CommandLine -like "*${esc}*") -or
         $_.ExecutablePath -like "*${esc}*"
       )
-    }; if($procs){ $n=0; $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $n++ }; "STOPPED:$n" } else { 'NONE' }`;
+    };
+    $all = @($procs);
+    if($procs){
+      $ids = @($procs | ForEach-Object { $_.ProcessId });
+      $parents = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'cmd.exe' -and $ids -contains $_.ParentProcessId -and $_.CommandLine -match 'launcher-user|restart-napcat|start-napcat' };
+      $all = @($procs) + @($parents);
+    }
+    if($all.Count){ $n=0; $all | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $n++ }; "STOPPED:$n" } else { 'NONE' }`;
     const out = spawnSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' });
     if ((out.stdout || '').match(/STOPPED:(\d+)/)) {
       console.log(`✅ 已停止本项目相关进程 ×${RegExp.$1}`);
