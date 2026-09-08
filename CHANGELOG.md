@@ -4,24 +4,21 @@
 
 ## v0.2.3
 
-- feat(start): **便携 DSH 首次启动前自动引导填写 DeepSeek API Key**——我们帮用户下的 DSH 是空白的，start 时检测 `dshHome/.credentials.yaml` 是否已配 `DEEPSEEK_API_KEY`，没有就提示输入并写入（provider/model 由桥接 config.json 传入）；复用本机 DSH 时不提示
+- 首次使用会自动提示输入你的 DeepSeek API Key（sk-…），填好后即可正常对话；如果你电脑上已有配好 API 的 DSH，会直接复用、无需再填
 
 ## v0.2.2
 
-- fix(uninstall): **修复卸载脚本误杀自身、导致文件夹删不掉**——`stopProjectProcesses` 之前用宽泛匹配 `CommandLine -like "*安装目录*"` 和裸词 `napcat`，会命中卸载脚本自己（`node "…\安装目录\uninstall.mjs"` 绝对路径含目录名；目录名含 "napcat" 时也中招），脚本在删除前就被杀掉。改为精确特征匹配（桥接 `src/main.js`、便携 DSH `node_modules/@deepseek-ai/dsh`+目录、`NapCatShell`/`napcat.mjs`/`NapCatWinBootMain`/`launcher-user` 等）+ 显式排除自身 PID
+- 修复：卸载后安装文件夹可能仍删不掉的问题——现在卸载会可靠地停止程序并删除整个安装文件夹
 
 ## v0.2.1
 
-- feat(install): **本机 DSH(3080) 无识图时，自动用便携版在 3081 另起一份带识图的 DSH**（不再只是警告）——3080 在跑且含 vision→复用；3080 无识图→便携版起 3081；3080 空闲→便携版起 3080；config.json 的 dsh.baseUrl 自动指向实际端口
+- 安装时若检测到你电脑上已有的 DSH 不支持图片识别，会自动另起一份支持识图的 DSH，全程无需手动操作
 
 ## v0.2.0
 
-- feat(installer): **安装/启动/卸载三件套重构**——setup.exe 解压后自动运行 bootstrap，只下载缺失组件；日常双击 start.bat 填 QQ+扫码启动；卸载只删安装文件夹
-- feat(install): **SFX 目录选择框**——用 GUI SFX 模块，安装时可视化选/改安装目录（InstallPath 只是默认值）
-- feat(install): **DSH 便携化**——检测本机 DSH：3080 在跑且模型含识图(vision)就复用（无识图仅警告）；没在跑就把 DSH 便携安装进安装目录 node_modules，数据/预设放目录内 `.dsh`，卸载删目录即彻底卸载
-- feat(install): **NapCat 始终独立装一份**到安装目录（不复用/占用用户自有的 NapCat）
-- feat(start): 新增 `start.mjs` + `start.bat`——首次填管理员QQ+机器人QQ→装预设→起 DSH→下/起 NapCat 扫码→起桥接开控制台；复用本机 DSH 时预设写入 `~/.dsh`
-- fix(uninstall): 卸载简化为「停本项目进程 + 删整个安装文件夹」，不再区分 1/2/3 组件，也不碰用户自己的 DSH/NapCat
+- 全新安装方式：运行 setup.exe 后可自由选择安装目录，安装器会自动装好运行所需组件；若你电脑上已有可用的 DSH 会直接复用、不重复下载
+- 日常使用：双击 start.bat，按提示填写管理员 QQ 与机器人 QQ、扫码登录即可上线使用
+- 卸载：运行卸载程序即删除整个安装目录，不会影响你电脑上原有的 DSH / NapCat
 
 ## v0.1.19
 
