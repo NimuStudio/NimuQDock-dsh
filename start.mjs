@@ -137,6 +137,33 @@ function patchDshBaseUrl(baseUrl) {
   }
 }
 
+/**
+ * 便携 DSH 是全新的、没有 API key。这里检测 dshHome 的 .credentials.yaml 是否已配 DEEPSEEK_API_KEY，
+ * 没有就提示用户输入并写入（provider/model 由桥接 config.json 传入，DSH 只需这把 key）。
+ */
+async function ensureApiKey(dshHome) {
+  const credFile = path.join(dshHome, '.credentials.yaml');
+  try {
+    if (fs.existsSync(credFile)) {
+      const t = fs.readFileSync(credFile, 'utf8');
+      if (/DEEPSEEK_API_KEY\s*:\s*\S+/.test(t)) return; // 已配置
+    }
+  } catch {}
+  console.log('\n  便携版 DeepSeek Harness 需要你的 API Key：');
+  const key = await ask('③ 你的 DeepSeek API Key（sk-...，到 platform.deepseek.com 获取）', { digits: false });
+  if (!key) {
+    console.log('⚠️ 未填 API Key，机器人将无法生成回复（可稍后到 DSH 网页 http://127.0.0.1:3080 里配置）');
+    return;
+  }
+  try {
+    fs.mkdirSync(dshHome, { recursive: true });
+    fs.writeFileSync(credFile, `version: 1\nrefs:\n  DEEPSEEK_API_KEY: ${key}\n`, 'utf8');
+    console.log('✅ 已写入 DeepSeek API Key');
+  } catch (error) {
+    console.log(`⚠️ 写入 API Key 失败：${error?.message ?? error}`);
+  }
+}
+
 /** 检测本机 DSH（3080）是否带识图模型。走 llm.models RPC，任一模型 id/name 含 vision 即算。 */
 async function detectDshVision() {
   try {
@@ -167,6 +194,8 @@ async function launchPortableDsh(port) {
     console.log('❌ 未找到便携 DSH。请先运行 install.bat（或 install.mjs）安装组件。');
     return { reused: false, dshHome: DSH_HOME, baseUrl };
   }
+  // 便携 DSH 是全新的、没有 API key——在启动前先确保 .credentials.yaml 已配 DEEPSEEK_API_KEY
+  await ensureApiKey(DSH_HOME);
   console.log(`⏳ 正在启动 DeepSeek Harness（本目录便携版，端口 ${port}）…`);
   try {
     fs.mkdirSync(DSH_WORKDIR, { recursive: true });

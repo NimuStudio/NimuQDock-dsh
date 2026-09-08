@@ -2,6 +2,10 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.2.3
+
+- feat(start): **便携 DSH 首次启动前自动引导填写 DeepSeek API Key**——我们帮用户下的 DSH 是空白的，start 时检测 `dshHome/.credentials.yaml` 是否已配 `DEEPSEEK_API_KEY`，没有就提示输入并写入（provider/model 由桥接 config.json 传入）；复用本机 DSH 时不提示
+
 ## v0.2.2
 
 - fix(uninstall): **修复卸载脚本误杀自身、导致文件夹删不掉**——`stopProjectProcesses` 之前用宽泛匹配 `CommandLine -like "*安装目录*"` 和裸词 `napcat`，会命中卸载脚本自己（`node "…\安装目录\uninstall.mjs"` 绝对路径含目录名；目录名含 "napcat" 时也中招），脚本在删除前就被杀掉。改为精确特征匹配（桥接 `src/main.js`、便携 DSH `node_modules/@deepseek-ai/dsh`+目录、`NapCatShell`/`napcat.mjs`/`NapCatWinBootMain`/`launcher-user` 等）+ 显式排除自身 PID
