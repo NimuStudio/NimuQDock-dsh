@@ -1,7 +1,7 @@
 ;!@Install@!UTF-8!
 Title="NimuQDock-dsh 安装"
-BeginPrompt="NimuQDock-dsh（QQ x DeepSeek Harness 对接坞，含全部依赖约 40MB）安装向导。继续？"
+BeginPrompt="NimuQDock-dsh（QQ x DeepSeek Harness 对接坞）。下面请选择安装目录，安装器会下载缺失的组件（DSH/NapCat）到该目录。继续？"
 InstallPath="C:\NimuQDock-dsh"
 RunProgram="install.bat"
-FinishMessage="安装完成！请按安装向导提示操作，最后双击 start.bat 启动。"
+FinishMessage="安装完成！双击安装目录里的 start.bat，填写管理员QQ+机器人QQ并扫码登录即可开始使用。"
 ;!@Install@!End@!
