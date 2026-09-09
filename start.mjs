@@ -38,11 +38,14 @@ function installDshPortable() {
   try { fs.mkdirSync(DSH_PREFIX, { recursive: true }); } catch {}
   const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
   const base = ['install', '--no-save', '--no-package-lock', '--no-audit', '--no-fund', '--prefix', DSH_PREFIX, `@deepseek-ai/dsh@${DSH_VERSION}`];
+  // 关键：npm 装 koffi 等原生包时用 cmd /c node ... 调 node，而包内 node 不在 PATH → 找不到。
+  // 把当前 node 所在目录加进 PATH，让子进程能按名找到 node。
+  const envPath = { ...process.env, PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ''}` };
   const run = (extra) => {
     const args = [...base, ...extra];
     return fs.existsSync(npmCli)
-      ? spawnSync(process.execPath, [npmCli, ...args], { cwd: DSH_PREFIX, stdio: 'inherit', timeout: 1500000 })
-      : spawnSync('npm', args, { cwd: DSH_PREFIX, stdio: 'inherit', shell: true, timeout: 1500000 });
+      ? spawnSync(process.execPath, [npmCli, ...args], { cwd: DSH_PREFIX, stdio: 'inherit', timeout: 1500000, env: envPath })
+      : spawnSync('npm', args, { cwd: DSH_PREFIX, stdio: 'inherit', shell: true, timeout: 1500000, env: envPath });
   };
   // 官方源在国内常超时/卡死 → 先走 npmmirror 镜像，失败再退回官方源
   console.log('   → 使用国内镜像源 npmmirror（更快更稳）…');
