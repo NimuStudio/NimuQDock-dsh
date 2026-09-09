@@ -12,11 +12,11 @@ const [tag, out] = process.argv.slice(2);
 if (!tag || !out) { console.error('usage: node scripts/make-release-zip.mjs <tag> <out.zip>'); process.exit(1); }
 
 // ── 运行时最小包：只装「跑起来」需要的，开发/文档/发布脚本一律不进安装包 ──
-const EXCLUDE_DIRS = new Set([
-  '.git', '.github', 'state', 'dist', 'node_modules/.cache',
-  'docs',            // 说明文档（README 保留一份即可）
-  'assets', 'tests',
-  'scripts',         // 构建脚本整个排除；scripts/setup-dsh.mjs 走下方白名单放行
+// 注意：以下仓库级目录只在【仓库根一级】排除。绝不能在全树按名字排除——
+// node_modules（含内置便携 node 的 npm）里有大量依赖把代码放在 dist/ 目录，
+// 按名删会把它们删成残废（实测 npm 的 walk-up-path 依赖 dist/cjs 被删 → npm 崩）。
+const EXCLUDE_TOP_DIRS = new Set([
+  '.git', '.github', 'state', 'dist', 'docs', 'assets', 'tests', 'scripts',
 ]);
 const EXCLUDE_FILES = new Set(['config.json']);
 const EXCLUDE_EXT = new Set(['.log', '.tmp']);
@@ -34,14 +34,16 @@ function walk(dir, base, list) {
     const abs = path.join(dir, entry.name);
     const rel = path.join(base, entry.name);
     if (entry.isDirectory()) {
-      if (EXCLUDE_DIRS.has(entry.name)) continue;
+      // 仅仓库根一级排除开发目录；依赖树内（node_modules / 便携 node 等）一律保留
+      if (!relDir && EXCLUDE_TOP_DIRS.has(entry.name)) continue;
+      if (relDir && (entry.name === '.git' || entry.name === '.github')) continue;
       walk(abs, rel, list);
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
-      if (EXCLUDE_FILES.has(entry.name) || EXCLUDE_EXT.has(ext)) continue;
+      if (EXCLUDE_EXT.has(ext)) continue;
       if (!relDir) {
-        // 根目录文件只放行白名单
-        if (!ROOT_ALLOW.has(entry.name)) continue;
+        // 根目录文件：排除 config.json（含隐私）+ 只放行白名单
+        if (EXCLUDE_FILES.has(entry.name) || !ROOT_ALLOW.has(entry.name)) continue;
       }
       list.push({ abs, rel });
     }
