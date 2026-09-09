@@ -88,10 +88,20 @@ function installDshPortable() {
   // 优先用当前 node 自带的 npm-cli（便携版内置 node 下 PATH 里没有 npm）；
   // 源码环境（系统 node）退回 PATH 里的 npm。
   const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  const args = ['install', '--no-save', '--no-package-lock', '--prefix', DSH_PREFIX, `@deepseek-ai/dsh@${DSH_VERSION}`];
-  const r = fs.existsSync(npmCli)
-    ? spawnSync(process.execPath, [npmCli, ...args], { cwd: DSH_PREFIX, stdio: 'inherit', timeout: 900000 })
-    : spawnSync('npm', args, { cwd: DSH_PREFIX, stdio: 'inherit', shell: true, timeout: 900000 });
+  const base = ['install', '--no-save', '--no-package-lock', '--no-audit', '--no-fund', '--prefix', DSH_PREFIX, `@deepseek-ai/dsh@${DSH_VERSION}`];
+  const run = (extra) => {
+    const args = [...base, ...extra];
+    return fs.existsSync(npmCli)
+      ? spawnSync(process.execPath, [npmCli, ...args], { cwd: DSH_PREFIX, stdio: 'inherit', timeout: 1500000 })
+      : spawnSync('npm', args, { cwd: DSH_PREFIX, stdio: 'inherit', shell: true, timeout: 1500000 });
+  };
+  // 官方源在国内常超时/卡死 → 先走 npmmirror 镜像，失败再退回官方源
+  console.log('   → 使用国内镜像源 npmmirror（更快更稳）…');
+  let r = run(['--registry=https://registry.npmmirror.com']);
+  if (r.status !== 0) {
+    console.log('   镜像源失败，改用官方源重试一次…');
+    r = run([]);
+  }
   if (r.status !== 0) {
     console.log('❌ 便携安装 DSH 失败，请检查网络后重试。');
     return false;

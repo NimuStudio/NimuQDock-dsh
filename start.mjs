@@ -37,10 +37,20 @@ function installDshPortable() {
   console.log(`⏳ 正在下载并安装 DeepSeek Harness（npm install @deepseek-ai/dsh@${DSH_VERSION}，首次需几分钟）…`);
   try { fs.mkdirSync(DSH_PREFIX, { recursive: true }); } catch {}
   const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  const args = ['install', '--no-save', '--no-package-lock', '--prefix', DSH_PREFIX, `@deepseek-ai/dsh@${DSH_VERSION}`];
-  const r = fs.existsSync(npmCli)
-    ? spawnSync(process.execPath, [npmCli, ...args], { cwd: DSH_PREFIX, stdio: 'inherit', timeout: 1200000 })
-    : spawnSync('npm', args, { cwd: DSH_PREFIX, stdio: 'inherit', shell: true, timeout: 1200000 });
+  const base = ['install', '--no-save', '--no-package-lock', '--no-audit', '--no-fund', '--prefix', DSH_PREFIX, `@deepseek-ai/dsh@${DSH_VERSION}`];
+  const run = (extra) => {
+    const args = [...base, ...extra];
+    return fs.existsSync(npmCli)
+      ? spawnSync(process.execPath, [npmCli, ...args], { cwd: DSH_PREFIX, stdio: 'inherit', timeout: 1500000 })
+      : spawnSync('npm', args, { cwd: DSH_PREFIX, stdio: 'inherit', shell: true, timeout: 1500000 });
+  };
+  // 官方源在国内常超时/卡死 → 先走 npmmirror 镜像，失败再退回官方源
+  console.log('   → 使用国内镜像源 npmmirror（更快更稳）…');
+  let r = run(['--registry=https://registry.npmmirror.com']);
+  if (r.status !== 0) {
+    console.log('   镜像源失败，改用官方源重试一次…');
+    r = run([]);
+  }
   if (r.status !== 0) {
     console.log('❌ 安装 DeepSeek Harness 失败，请检查网络后重试。');
     return false;
