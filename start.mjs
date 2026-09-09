@@ -409,16 +409,45 @@ async function ensureNapCat(bot) {
     }
   }
 
-  const launchers = ['launcher-user.bat', 'start-napcat.bat', 'restart-napcat.bat'];
-  const launcher = launchers.find((n) => fs.existsSync(path.join(napcatDir, n)));
-  if (!launcher) {
-    console.log('❌ 未在 NapCatShell 找到启动脚本。请手动双击 NapCatShell\\restart-napcat.bat <机器人QQ>。');
+  // 启动 NapCat + QQ。不用 NapCat 官方 launcher-user.bat（它只查一个注册表分支找 QQ，
+  // QQ 装到别的路径/分支就找不到 → QQ 拉不起来、没窗口没二维码、只留个乱码控制台）。
+  // 这里生成一个等价的自定义启动 bat，QQ 路径直接用我们 detectQQ() 检测到的。
+  const launchBat = path.join(napcatDir, 'napcat-launch.bat');
+  const mainExe = path.join(napcatDir, 'NapCatWinBootMain.exe');
+  const hookDll = path.join(napcatDir, 'NapCatWinBootHook.dll');
+  const napcatMain = path.join(napcatDir, 'napcat.mjs');
+  if (!fs.existsSync(mainExe) || !fs.existsSync(hookDll) || !fs.existsSync(napcatMain)) {
+    console.log(`❌ NapCatShell 不完整（缺启动组件）。请重新运行安装/下载 NapCat。`);
     return false;
   }
-  console.log(`⏳ 正在启动 NapCat + QQ（${launcher}）…`);
+  const qt = (s) => String(s).replace(/"/g, '');
+  const lines = [
+    '@echo off',
+    'chcp 65001 >nul',
+    `cd /d "${qt(napcatDir)}"`,
+    'set NAPCAT_PATCH_PACKAGE=%cd%\\qqnt.json',
+    'set NAPCAT_LOAD_PATH=%cd%\\loadNapCat.js',
+    'set NAPCAT_INJECT_PATH=%cd%\\NapCatWinBootHook.dll',
+    'set NAPCAT_LAUNCHER_PATH=%cd%\\NapCatWinBootMain.exe',
+    'set NAPCAT_MAIN_PATH=%cd%\\napcat.mjs',
+    `set "QQPath=${qt(qq)}"`,
+    'if not exist "%QQPath%" ( echo [nqd] QQ not found: "%QQPath%" & pause & exit /b 1 )',
+    'set NAPCAT_MAIN_PATH=%NAPCAT_MAIN_PATH:\\=/%',
+    'echo (async () =^> {await import("file:///%NAPCAT_MAIN_PATH%")})() > "%NAPCAT_LOAD_PATH%"',
+    `"%NAPCAT_LAUNCHER_PATH%" "%QQPath%" "%NAPCAT_INJECT_PATH%"${bot ? ` ${String(bot)}` : ''}`,
+    'echo.',
+    'echo [nqd] NapCat 已启动，请在 QQ 登录窗口或上方二维码处扫码。',
+    'pause',
+  ].join('\r\n');
   try {
-    const args = (launcher === 'launcher-user.bat' || launcher === 'restart-napcat.bat') ? [launcher, bot ? String(bot) : ''] : [launcher];
-    const child = spawn('cmd.exe', ['/c', ...args], { cwd: napcatDir, detached: true, stdio: 'ignore' });
+    fs.writeFileSync(launchBat, lines, 'utf8');
+  } catch (error) {
+    console.log(`❌ 写启动脚本失败：${error?.message ?? error}`);
+    return false;
+  }
+  console.log('⏳ 正在启动 NapCat + QQ（会弹出 QQ 登录窗口，请扫码）…');
+  try {
+    const child = spawn('cmd.exe', ['/c', launchBat], { cwd: napcatDir, detached: true, stdio: 'ignore' });
     child.on('error', (err) => console.log(`⚠️ 启动 NapCat 失败：${err?.message ?? err}`));
     child.unref();
   } catch (error) {
