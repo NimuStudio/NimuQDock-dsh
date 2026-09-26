@@ -137,6 +137,8 @@ while [ -z "$API_KEY" ]; do
 done
 if [ -n "$ENV_GROUPS" ]; then
   GROUPS_RAW="$ENV_GROUPS"
+elif [ "$AUTO_YES" = "1" ]; then
+  GROUPS_RAW=""   # 非交互且未指定群 → 不响应任何群（可稍后改 config.json）
 else
   GROUPS_RAW="$(ask '④ 允许响应的QQ群号（多个用逗号分隔，不需要就留空）' '')"
 fi
