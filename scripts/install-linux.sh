@@ -14,6 +14,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DSH_VERSION="0.1.1-rc.2"
 NAPCAT_IMAGE="mlikiowa/napcat-docker:latest"
 NAPCAT_DIR="/opt/napcat"
+# NapCat 的 HTTP 端口（宿主机侧）。若 3000 被别的服务占用，用 NQD_NAPCAT_HTTP_PORT 换个（如 3010）
+NAPCAT_HTTP_PORT="${NQD_NAPCAT_HTTP_PORT:-3000}"
+WS_PORT=3001
 NPM_MIRROR="https://registry.npmmirror.com"
 RUN_USER="${SUDO_USER:-$(id -un)}"
 RUN_HOME="$(getent passwd "$RUN_USER" | cut -d: -f6)"
@@ -91,14 +94,24 @@ fi
 ok "Docker: $(dk -v 2>/dev/null | head -n1)"
 
 NEED_NODE=1
-if command -v node >/dev/null 2>&1; then
-  major="$(node -v | sed 's/^v//' | cut -d. -f1)"
-  if [ "${major:-0}" -ge 22 ]; then NEED_NODE=0; ok "Node: $(node -v)"; fi
+NODE_BIN="${NQD_NODE_BIN:-}"
+if [ -n "$NODE_BIN" ]; then
+  # 指定了 node 就完全不动系统 node（避免影响服务器上已有的其它 Node 服务）
+  [ -x "$NODE_BIN" ] || die "NQD_NODE_BIN 指定的 node 不存在或不可执行：$NODE_BIN"
+  v="$("$NODE_BIN" -v | sed 's/^v//' | cut -d. -f1)"
+  [ "${v:-0}" -ge 22 ] || die "NQD_NODE_BIN 版本过低：$("$NODE_BIN" -v)（需 ≥22）"
+  NEED_NODE=0
+  ok "使用指定 Node: $NODE_BIN（$("$NODE_BIN" -v)），不改动系统 node"
+elif command -v node >/dev/null 2>&1 && [ "$(node -v | sed 's/^v//' | cut -d. -f1)" -ge 22 ]; then
+  NEED_NODE=0
+  NODE_BIN="$(command -v node)"
+  ok "Node: $(node -v)"
 fi
 if [ "$NEED_NODE" -eq 1 ]; then
-  warn "未检测到 Node.js ≥22（本项目需要）。"
-  if [ "$(yes_no '是否现在自动安装 Node.js 22？(y/n)' y)" != "y" ]; then
-    die "请先安装 Node.js ≥22.13 后重试：https://nodejs.org"
+  warn "系统 Node 缺失或 <22，且未指定 NQD_NODE_BIN。"
+  warn "注意：若本机已有其它 Node 服务，升级系统 Node 可能影响它们；那种情况请改用 NQD_NODE_BIN 指向独立安装的 node。"
+  if [ "$(yes_no '是否现在安装/升级系统 Node.js 22？(y/n)' y)" != "y" ]; then
+    die "请先准备 Node ≥22（可设 NQD_NODE_BIN=/opt/node22/bin/node）后重试。"
   fi
   if [ "$IS_ROOT" -eq 1 ]; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
@@ -106,8 +119,12 @@ if [ "$NEED_NODE" -eq 1 ]; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
   fi
   as_root apt-get install -y nodejs
+  NODE_BIN="$(command -v node)"
   ok "Node: $(node -v)"
 fi
+NODE_DIR="$(dirname "$NODE_BIN")"
+# npm 一律让 PATH 里的 node 指向我们选定的 node，避免 npm 的 shebang 抓到旧 node
+npm_run() { PATH="$NODE_DIR:$PATH" npm "$@"; }
 
 # ── [2/8] 收集信息 ──────────────────────────────────────────────────────────
 say "[2/8] 填写信息"
@@ -135,12 +152,12 @@ if dk ps -a --format '{{.Names}}' | grep -qx napcat; then
 else
   dk run -d --name napcat --restart=always \
     -e NAPCAT_UID="$(id -u "$RUN_USER")" -e NAPCAT_GID="$(id -g "$RUN_USER")" \
-    -p 127.0.0.1:3000:3000 -p 127.0.0.1:3001:3001 -p 127.0.0.1:6099:6099 \
+    -p "127.0.0.1:${NAPCAT_HTTP_PORT}:3000" -p "127.0.0.1:${WS_PORT}:3001" -p 127.0.0.1:6099:6099 \
     -v "$NAPCAT_DIR/config:/app/napcat/config" \
     -v "$NAPCAT_DIR/qq:/app/.config/QQ" \
     -v "$NAPCAT_DIR/plugins:/app/napcat/plugins" \
     "$NAPCAT_IMAGE" >/dev/null
-  ok "napcat 容器已创建并启动"
+  ok "napcat 容器已创建并启动（HTTP 宿主 ${NAPCAT_HTTP_PORT} → 容器 3000）"
 fi
 
 # OneBot 配置（HTTP 3000 + WS 3001），文件名必须与登录的机器人 QQ 一致
@@ -169,7 +186,7 @@ cd "$ROOT"
 if [ -d node_modules ] && [ -d node_modules/yaml ]; then
   ok "项目依赖已存在（跳过）"
 else
-  npm ci --registry="$NPM_MIRROR" || npm ci
+  npm_run ci --registry="$NPM_MIRROR" || npm_run ci
   ok "项目依赖已安装"
 fi
 
@@ -178,9 +195,9 @@ say "[5/8] 安装 DeepSeek Harness 到 dsh-app/ …"
 DSH_BIN="$ROOT/dsh-app/node_modules/@deepseek-ai/dsh/lib/bin.js"
 if [ ! -f "$DSH_BIN" ]; then
   mkdir -p "$ROOT/dsh-app"
-  npm install --prefix "$ROOT/dsh-app" --no-save --no-package-lock \
+  npm_run install --prefix "$ROOT/dsh-app" --no-save --no-package-lock \
     --registry="$NPM_MIRROR" "@deepseek-ai/dsh@${DSH_VERSION}" \
-    || npm install --prefix "$ROOT/dsh-app" --no-save --no-package-lock "@deepseek-ai/dsh@${DSH_VERSION}"
+    || npm_run install --prefix "$ROOT/dsh-app" --no-save --no-package-lock "@deepseek-ai/dsh@${DSH_VERSION}"
 fi
 [ -f "$DSH_BIN" ] || die "DSH 安装失败，请检查网络后重试。"
 ok "DSH 已安装"
@@ -197,23 +214,24 @@ chmod 600 "$DSH_HOME/.credentials.yaml"
 ok "API Key 已写入 $DSH_HOME/.credentials.yaml"
 
 say "      安装 DSH 预设/插件（setup-dsh）…"
-DSH_HOME="$DSH_HOME" node "$ROOT/scripts/setup-dsh.mjs" || warn "setup-dsh 有告警，可稍后手动重跑"
+PATH="$NODE_DIR:$PATH" DSH_HOME="$DSH_HOME" "$NODE_BIN" "$ROOT/scripts/setup-dsh.mjs" || warn "setup-dsh 有告警，可稍后手动重跑"
 
 # ── [6/8] config.json ───────────────────────────────────────────────────────
 say "[6/8] 生成 config.json …"
 [ -f "$ROOT/config.example.json" ] || die "缺少 config.example.json"
 cp -f "$ROOT/config.example.json" "$ROOT/config.json"
 GROUPS_JSON="$(printf '%s' "$GROUPS_RAW" | tr ',' '\n' | tr -d '[:space:]' | grep -E '^[0-9]+$' | paste -sd, - || true)"
-node - "$ROOT/config.json" "$ADMIN_QQ" "$GROUPS_JSON" <<'NODE'
+node_cfg() { PATH="$NODE_DIR:$PATH" "$NODE_BIN" "$@"; }
+node_cfg - "$ROOT/config.json" "$ADMIN_QQ" "$GROUPS_JSON" "$NAPCAT_HTTP_PORT" "$WS_PORT" <<'NODE'
 const fs = require('node:fs');
-const [file, admin, groups] = process.argv.slice(2);
+const [file, admin, groups, httpPort, wsPort] = process.argv.slice(2);
 const c = JSON.parse(fs.readFileSync(file, 'utf8'));
 c.ownerQQ = admin;
 c.allow = c.allow || {};
 c.allow.private = [admin];
 c.allow.groups = groups ? groups.split(',') : [];
 c.allowAllWhenEmpty = false;
-c.napcat = { wsUrl: 'ws://127.0.0.1:3001', httpUrl: 'http://127.0.0.1:3000', accessToken: '' };
+c.napcat = { wsUrl: `ws://127.0.0.1:${wsPort}`, httpUrl: `http://127.0.0.1:${httpPort}`, accessToken: '' };
 c.dsh = Object.assign({}, c.dsh, { baseUrl: 'http://127.0.0.1:3080', provider: 'deepseek-official', model: 'deepseek-v4-flash-vision-exp' });
 c.console = Object.assign({}, c.console, { port: 3100, autoOpen: false });
 fs.writeFileSync(file, JSON.stringify(c, null, 2) + '\n');
@@ -222,7 +240,6 @@ ok "config.json 已生成（ownerQQ=$ADMIN_QQ，群白名单：${GROUPS_JSON:-�
 
 # ── [7/8] systemd 服务 ──────────────────────────────────────────────────────
 say "[7/8] 配置开机自启（systemd）…"
-NODE_BIN="$(command -v node)"
 as_root tee /etc/systemd/system/dsh.service >/dev/null <<UNIT
 [Unit]
 Description=DeepSeek Harness (web)
@@ -273,7 +290,7 @@ sleep 3
 echo
 say "自检："
 if curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:3080/ ; then ok "DSH(3080) 可访问"; else warn "DSH(3080) 暂不可访问，看 journalctl -u dsh -f"; fi
-LOGIN="$(curl -fsS --max-time 5 http://127.0.0.1:3000/get_login_info 2>/dev/null || true)"
+LOGIN="$(curl -fsS --max-time 5 "http://127.0.0.1:${NAPCAT_HTTP_PORT}/get_login_info" 2>/dev/null || true)"
 if printf '%s' "$LOGIN" | grep -q '"status":"ok"'; then
   ok "NapCat 已登录：$LOGIN"
 else
