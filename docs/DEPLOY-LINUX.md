@@ -14,6 +14,12 @@ sudo bash scripts/install-linux.sh
 跑完后按提示做 SSH 隧道、在 NapCat WebUI 扫码即可。
 
 > 想手动一步步来 / 排障，见下面的分步说明。
+>
+> **无人值守（脚本调用/远程执行）**：用环境变量传入，跳过所有交互：
+> ```bash
+> NQD_ADMIN_QQ=你的QQ NQD_BOT_QQ=机器人QQ NQD_API_KEY=sk-xxx NQD_GROUPS=群号1,群号2 NQD_YES=1 \
+>   sudo -E bash scripts/install-linux.sh
+> ```
 
 ---
 
