@@ -51,6 +51,24 @@ ask_qq() { # ask_qq <提示>：校验 5~12 位数字，返回号
   done
 }
 
+# 非交互模式：设置环境变量即可无人值守部署（适合远程/脚本调用）
+#   NQD_ADMIN_QQ=123 NQD_BOT_QQ=456 NQD_API_KEY=sk-xxx [NQD_GROUPS=111,222] [NQD_YES=1] bash scripts/install-linux.sh
+ENV_ADMIN="${NQD_ADMIN_QQ:-}"
+ENV_BOT="${NQD_BOT_QQ:-}"
+ENV_KEY="${NQD_API_KEY:-}"
+ENV_GROUPS="${NQD_GROUPS:-}"
+AUTO_YES="${NQD_YES:-0}"
+yes_no() { # yes_no <提示> <默认 y/n>：非交互模式直接返回默认
+  local p="$1" d="${2:-y}"
+  if [ "$AUTO_YES" = "1" ]; then printf '%s' "$d"; return 0; fi
+  ask "$p" "$d"
+}
+input_qq() { # input_qq <提示> <环境变量值>
+  local p="$1" v="$2"
+  if [ -n "$v" ]; then printf '%s' "$v"; return 0; fi
+  ask_qq "$p"
+}
+
 echo "────────────────────────────────────────────────────"
 echo "  🔌 NimuQDock-dsh · Linux 一键部署（Ubuntu/Debian）"
 echo "────────────────────────────────────────────────────"
@@ -63,7 +81,7 @@ say "[1/8] 检查 Docker 与 Node.js …"
 
 if ! command -v docker >/dev/null 2>&1; then
   warn "未检测到 Docker。"
-  if [ "$(ask '是否现在自动安装 Docker？(y/n)' y)" = "y" ]; then
+  if [ "$(yes_no '是否现在自动安装 Docker？(y/n)' y)" = "y" ]; then
     curl -fsSL https://get.docker.com | as_root sh
     ok "Docker 已安装"
   else
@@ -79,7 +97,7 @@ if command -v node >/dev/null 2>&1; then
 fi
 if [ "$NEED_NODE" -eq 1 ]; then
   warn "未检测到 Node.js ≥22（本项目需要）。"
-  if [ "$(ask '是否现在自动安装 Node.js 22？(y/n)' y)" != "y" ]; then
+  if [ "$(yes_no '是否现在自动安装 Node.js 22？(y/n)' y)" != "y" ]; then
     die "请先安装 Node.js ≥22.13 后重试：https://nodejs.org"
   fi
   if [ "$IS_ROOT" -eq 1 ]; then
@@ -93,14 +111,18 @@ fi
 
 # ── [2/8] 收集信息 ──────────────────────────────────────────────────────────
 say "[2/8] 填写信息"
-ADMIN_QQ="$(ask_qq '① 你的QQ号（管理员/你自己）')"
-BOT_QQ="$(ask_qq '② 机器人的QQ号（扫码登录用）')"
-API_KEY=""
+ADMIN_QQ="$(input_qq '① 你的QQ号（管理员/你自己）' "$ENV_ADMIN")"
+BOT_QQ="$(input_qq '② 机器人的QQ号（扫码登录用）' "$ENV_BOT")"
+API_KEY="$ENV_KEY"
 while [ -z "$API_KEY" ]; do
   API_KEY="$(ask_secret '③ DeepSeek API Key（sk-...，用于机器人回话）')"
   [ -n "$API_KEY" ] || warn "不能为空。"
 done
-GROUPS_RAW="$(ask '④ 允许响应的QQ群号（多个用逗号分隔，不需要就留空）' '')"
+if [ -n "$ENV_GROUPS" ]; then
+  GROUPS_RAW="$ENV_GROUPS"
+else
+  GROUPS_RAW="$(ask '④ 允许响应的QQ群号（多个用逗号分隔，不需要就留空）' '')"
+fi
 
 # ── [3/8] NapCat（Docker） ──────────────────────────────────────────────────
 say "[3/8] 启动 NapCat（Docker）…"
