@@ -2,6 +2,21 @@
 
 把 QQ ↔ DeepSeek Harness 对接坞跑在 Linux 服务器上：**NapCat 用 Docker 跑 QQ，桥接与 DSH 用 Node 直接跑**。
 
+## 一键部署（推荐）
+
+```bash
+git clone https://github.com/NimuStudio/NimuQDock-dsh.git
+cd NimuQDock-dsh
+sudo bash scripts/install-linux.sh
+```
+
+脚本会自动：检查/安装 Docker 与 Node 22 → 起 NapCat 容器 → 问你的**管理员QQ / 机器人QQ / DeepSeek API Key /（可选）群白名单** → 写 OneBot 与项目配置 → 装 DSH 与预设 → 装 systemd 服务并启动 → 自检。
+跑完后按提示做 SSH 隧道、在 NapCat WebUI 扫码即可。
+
+> 想手动一步步来 / 排障，见下面的分步说明。
+
+---
+
 ## 架构
 
 ```
