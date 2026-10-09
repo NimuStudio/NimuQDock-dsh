@@ -8,11 +8,11 @@
 
 **把 DeepSeek Harness 的 AI 停靠进 QQ 的对接坞 · 带人格引擎的仿真群友：心情、精力、记忆，像真人一样潜水与参与**
 
-[![GitHub stars](https://img.shields.io/github/stars/NimuStudio/NimuQDock-dsh?style=flat-square&label=Stars&color=6b9589)](https://github.com/NimuStudio/NimuQDock-dsh)
-[![License](https://img.shields.io/github/license/NimuStudio/NimuQDock-dsh?style=flat-square&label=License&color=6b9589)](https://github.com/NimuStudio/NimuQDock-dsh/blob/main/LICENSE)
-[![Node](https://img.shields.io/badge/Node-%E2%89%A522.13-4a7a6e?style=flat-square)](https://nodejs.org)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.1.1--rc.2-f7f5f0?style=flat-square&labelColor=2c2416&color=6b9589)](https://github.com/deepseek-ai/deepseek-harness)
-[![NapCat](https://img.shields.io/badge/QQ-NapCat%20OneBot%20v11-4a7a6e?style=flat-square)](https://github.com/NapNeko/NapCatQQ)
+[![GitHub stars](https://img.shields.io/github/stars/NimuStudio/NimuQDock-dsh?style=flat-square&label=Stars&color=b48ccd)](https://github.com/NimuStudio/NimuQDock-dsh)
+[![License](https://img.shields.io/github/license/NimuStudio/NimuQDock-dsh?style=flat-square&label=License&color=b48ccd)](https://github.com/NimuStudio/NimuQDock-dsh/blob/main/LICENSE)
+[![Node](https://img.shields.io/badge/Node-%E2%89%A522.13-6aa055?style=flat-square)](https://nodejs.org)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.1.1--rc.2-f6f4f7?style=flat-square&labelColor=2a2430&color=b48ccd)](https://github.com/deepseek-ai/deepseek-harness)
+[![NapCat](https://img.shields.io/badge/QQ-NapCat%20OneBot%20v11-6aa055?style=flat-square)](https://github.com/NapNeko/NapCatQQ)
 
 [**中文**](README.md) · [**English**](README.en.md)
 

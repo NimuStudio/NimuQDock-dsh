@@ -16,12 +16,12 @@
   .status-dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim)}
   .status-dot.ok{background:#4a9}
   .status-dot.bad{background:var(--danger)}
-  .status-pill.mode{color:#a07008;background:rgba(232,184,48,.2);border-color:rgba(232,184,48,.35)}
+  .status-pill.mode{color:#7d4f9c;background:rgba(180,140,205,.2);border-color:rgba(180,140,205,.35)}
   .main-layout{display:flex;flex:1;min-height:0;overflow:hidden}
   .sidebar{width:200px;background:rgba(255,255,255,.35);backdrop-filter:blur(50px) saturate(1.8);-webkit-backdrop-filter:blur(50px) saturate(1.8);border:1px solid rgba(255,255,255,.55);border-radius:20px;margin:12px 6px 12px 12px;box-shadow:0 8px 32px rgba(0,0,0,.04);padding:16px 10px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;overflow-y:auto}
   .game-btn{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.22);border-radius:10px;font-size:13px;font-weight:500;color:var(--text-secondary);cursor:pointer;transition:all .3s ease;font-family:inherit;text-align:left;width:100%;margin-bottom:2px}
   .game-btn:hover{background:rgba(255,255,255,.5);border-color:rgba(255,255,255,.7);color:var(--text)}
-  .game-btn.active{background:rgba(232,184,48,.28);backdrop-filter:blur(36px) saturate(1.8);-webkit-backdrop-filter:blur(36px) saturate(1.8);border-color:rgba(232,184,48,.4);color:#a07008;font-weight:700}
+  .game-btn.active{background:rgba(180,140,205,.28);backdrop-filter:blur(36px) saturate(1.8);-webkit-backdrop-filter:blur(36px) saturate(1.8);border-color:rgba(180,140,205,.4);color:#7d4f9c;font-weight:700}
   .main-content{flex:1;padding:20px 24px;overflow-y:auto;min-width:0;background:rgba(255,255,255,.22);backdrop-filter:blur(44px) saturate(1.6);-webkit-backdrop-filter:blur(44px) saturate(1.6);border:1px solid rgba(255,255,255,.45);border-radius:20px;margin:12px 12px 12px 6px;box-shadow:0 8px 32px rgba(0,0,0,.04);scrollbar-gutter:stable}
   .section-header{display:flex;align-items:center;gap:14px;margin-bottom:18px}
   .section-header-icon{font-size:24px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.35);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:12px;border:1px solid rgba(255,255,255,.4)}
@@ -31,7 +31,7 @@
   .sub-tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
   .sub-tab{padding:7px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.35);color:var(--text-dim);font-size:13px;font-weight:600;cursor:pointer;transition:all .25s var(--spring)}
   .sub-tab:hover{background:rgba(255,255,255,.55)}
-  .sub-tab.active{background:rgba(232,184,48,.25);border-color:rgba(232,184,48,.45);color:#a07008;font-weight:700}
+  .sub-tab.active{background:rgba(180,140,205,.25);border-color:rgba(180,140,205,.45);color:#7d4f9c;font-weight:700}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-bottom:16px}
   .order-card{position:relative;background:rgba(255,255,255,.45);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.5);border-radius:var(--radius);padding:18px 20px;transition:transform .3s var(--spring),box-shadow .3s ease}
   /* backdrop-filter 会为卡片创建独立 stacking context：兄弟卡片会盖住溢出内容（如展开的下拉菜单）。
@@ -44,15 +44,15 @@
   .kv .v{font-weight:600}
   .btn-group{display:flex;gap:8px;flex-wrap:wrap}
   .btn-accept,.btn-cancel{padding:8px 18px;border-radius:var(--radius-pill);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .3s var(--spring)}
-  .btn-accept{background:rgba(107,149,137,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(255,255,255,.3)}
-  .btn-accept:hover{background:rgba(107,149,137,.7);transform:translateY(-2px)}
-  .btn-accept.active{background:rgba(200,164,92,.7);border-color:rgba(200,164,92,.4)}
+  .btn-accept{background:rgba(106,160,85,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(255,255,255,.3)}
+  .btn-accept:hover{background:rgba(106,160,85,.7);transform:translateY(-2px)}
+  .btn-accept.active{background:rgba(180,140,205,.7);border-color:rgba(180,140,205,.4)}
   .btn-cancel{background:rgba(0,0,0,.03);border:1px solid rgba(0,0,0,.08);color:var(--text)}
   .btn-cancel:hover{background:rgba(0,0,0,.06)}
   .btn-cancel.danger{color:var(--danger);border-color:rgba(196,85,77,.25)}
   .chip{display:inline-block;padding:4px 12px;border-radius:var(--radius-pill);font-size:12px;background:rgba(255,255,255,.25);border:1px solid rgba(255,255,255,.4);cursor:pointer;margin:2px 3px 2px 0;transition:all .2s ease;color:var(--text-secondary)}
   .chip:hover{border-color:var(--accent);color:var(--text)}
-  .chip.cur{background:rgba(232,184,48,.3);border-color:rgba(232,184,48,.5);color:#a07008;font-weight:700}
+  .chip.cur{background:rgba(180,140,205,.3);border-color:rgba(180,140,205,.5);color:#7d4f9c;font-weight:700}
   .muted{font-size:12px;color:var(--text-dim)}
   .row-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:rgba(255,255,255,.25);border:1px solid rgba(255,255,255,.35);border-radius:var(--radius-sm);margin-bottom:8px;font-size:13px}
   .row-item .sid{font-size:11px;color:var(--text-dim);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -66,8 +66,8 @@
   .p-key{font-size:11px;color:var(--text-dim)}
   .meter{height:6px;background:rgba(0,0,0,.06);border-radius:3px;margin:4px 0 8px;overflow:hidden}
   .meter>div{height:100%;border-radius:3px}
-  .meter .mood{background:linear-gradient(90deg,#e8d5a3,#c8a45c)}
-  .meter .energy{background:linear-gradient(90deg,#6b9589,#9fc0b5)}
+  .meter .mood{background:linear-gradient(90deg,#f9c0d0,#b48ccd)}
+  .meter .energy{background:linear-gradient(90deg,#6aa055,#9fc0b5)}
   .log-area{background:rgba(0,0,0,.05);border:1px solid rgba(0,0,0,.06);border-radius:var(--radius-sm);padding:12px;font-size:12px;line-height:1.7;height:420px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:var(--text);font-family:ui-monospace,Consolas,monospace}
   /* 玻璃化表单控件 */
   .glass-select,.glass-input{
@@ -75,28 +75,28 @@
     border:1px solid rgba(255,255,255,.5);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;
     padding:7px 12px;font-size:13px;outline:none;transition:all .25s ease;box-shadow:0 2px 10px rgba(0,0,0,.05);
   }
-  .glass-select:hover,.glass-input:hover{border-color:rgba(200,164,92,.45);background:rgba(255,255,255,.5)}
+  .glass-select:hover,.glass-input:hover{border-color:rgba(180,140,205,.45);background:rgba(255,255,255,.5)}
   .glass-select:focus,.glass-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
   .glass-input::placeholder{color:var(--text-dim)}
   body.dark-mode .glass-select,body.dark-mode .glass-input{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#e8e6e3}
-  body.dark-mode .glass-select:hover,body.dark-mode .glass-input:hover{background:rgba(255,255,255,.14);border-color:rgba(200,164,92,.4)}
+  body.dark-mode .glass-select:hover,body.dark-mode .glass-input:hover{background:rgba(255,255,255,.14);border-color:rgba(180,140,205,.4)}
   body.light-mode .glass-select,body.light-mode .glass-input{background:rgba(255,255,255,.85);border-color:rgba(0,0,0,.08)}
   /* 调节滑块玻璃化 */
-  .glass-range{appearance:none;-webkit-appearance:none;height:6px;border-radius:3px;background:linear-gradient(90deg,var(--accent),rgba(200,164,92,.3));outline:none;cursor:pointer;flex:1}
+  .glass-range{appearance:none;-webkit-appearance:none;height:6px;border-radius:3px;background:linear-gradient(90deg,var(--accent),rgba(180,140,205,.3));outline:none;cursor:pointer;flex:1}
   .glass-range::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer}
   .glass-range::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--accent);cursor:pointer}
   /* 自定义玻璃下拉（原生 select 弹层无法样式化，用组件替代） */
   .glass-dd{position:relative;display:inline-block}
   .glass-dd-trigger{display:flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(255,255,255,.35);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);border:1px solid rgba(255,255,255,.5);border-radius:var(--radius-pill);font-size:12px;color:var(--text);cursor:pointer;font-family:inherit;transition:all .25s ease;box-shadow:0 2px 10px rgba(0,0,0,.05);user-select:none}
-  .glass-dd-trigger:hover{border-color:rgba(200,164,92,.5);background:rgba(255,255,255,.55)}
-  .glass-dd.open .glass-dd-trigger{border-color:rgba(200,164,92,.5);box-shadow:0 0 0 3px var(--accent-glow)}
+  .glass-dd-trigger:hover{border-color:rgba(180,140,205,.5);background:rgba(255,255,255,.55)}
+  .glass-dd.open .glass-dd-trigger{border-color:rgba(180,140,205,.5);box-shadow:0 0 0 3px var(--accent-glow)}
   .glass-dd-arrow{font-size:9px;color:var(--text-dim);transition:transform .25s ease}
   .glass-dd.open .glass-dd-arrow{transform:rotate(180deg)}
   .glass-dd-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;max-height:320px;overflow-y:auto;background:rgba(255,255,255,.95);backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8);border:1px solid rgba(255,255,255,.75);border-radius:var(--radius-sm);padding:4px;box-shadow:0 12px 40px rgba(0,0,0,.16);opacity:0;visibility:hidden;transform:translateY(-6px);transition:all .2s var(--ease-out);z-index:999}
   .glass-dd.open .glass-dd-menu{opacity:1;visibility:visible;transform:translateY(0)}
   .glass-dd-item{padding:7px 14px;font-size:12px;border-radius:8px;cursor:pointer;white-space:nowrap;color:var(--text-secondary);transition:all .15s ease}
-  .glass-dd-item:hover{background:rgba(200,164,92,.14);color:var(--text)}
-  .glass-dd-item.active{background:rgba(200,164,92,.2);color:#a07008;font-weight:700}
+  .glass-dd-item:hover{background:rgba(180,140,205,.14);color:var(--text)}
+  .glass-dd-item.active{background:rgba(180,140,205,.2);color:#7d4f9c;font-weight:700}
   body.dark-mode .glass-dd-trigger{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#e8e6e3}
   body.dark-mode .glass-dd-menu{background:rgba(42,42,48,.92);border-color:rgba(255,255,255,.16);box-shadow:0 12px 40px rgba(0,0,0,.4)}
   body.dark-mode .glass-dd-item{color:rgba(232,230,227,.8)}
@@ -109,21 +109,21 @@
   .persona-card{position:relative;transition:transform .3s var(--spring),box-shadow .3s ease,border-color .3s ease}
   .persona-card:has(.glass-dd.open){z-index:30}
   /* ── hover 泛光（参考 Nimu Glass UI：hover 时边框提亮 + 环境光晕）── */
-  .order-card:hover,.persona-card:hover{border-color:rgba(200,164,92,.5);box-shadow:0 10px 30px rgba(200,164,92,.16),0 0 0 1px rgba(200,164,92,.10)}
+  .order-card:hover,.persona-card:hover{border-color:rgba(180,140,205,.5);box-shadow:0 10px 30px rgba(180,140,205,.16),0 0 0 1px rgba(180,140,205,.10)}
   .persona-card:hover{transform:translateY(-2px)}
-  .game-btn:hover{box-shadow:0 6px 18px rgba(200,164,92,.18),inset 0 1px 0 rgba(255,255,255,.35)}
-  .game-btn.active{box-shadow:0 6px 20px rgba(232,184,48,.22)}
-  .sub-tab:hover{border-color:rgba(200,164,92,.5);box-shadow:0 4px 14px rgba(200,164,92,.2)}
-  .btn-accept:hover{box-shadow:0 6px 18px rgba(107,149,137,.35),0 0 10px rgba(107,149,137,.22)}
+  .game-btn:hover{box-shadow:0 6px 18px rgba(180,140,205,.18),inset 0 1px 0 rgba(255,255,255,.35)}
+  .game-btn.active{box-shadow:0 6px 20px rgba(180,140,205,.22)}
+  .sub-tab:hover{border-color:rgba(180,140,205,.5);box-shadow:0 4px 14px rgba(180,140,205,.2)}
+  .btn-accept:hover{box-shadow:0 6px 18px rgba(106,160,85,.35),0 0 10px rgba(106,160,85,.22)}
   .btn-cancel:hover{border-color:rgba(0,0,0,.16);box-shadow:0 4px 12px rgba(0,0,0,.10)}
   .btn-cancel.danger:hover{border-color:rgba(196,85,77,.45);box-shadow:0 4px 12px rgba(196,85,77,.2)}
-  .chip:hover{transform:translateY(-1px);box-shadow:0 2px 10px rgba(200,164,92,.25)}
-  .glass-dd-trigger:hover{box-shadow:0 4px 14px rgba(200,164,92,.2)}
-  .status-pill:hover{border-color:rgba(255,255,255,.6);box-shadow:0 2px 10px rgba(200,164,92,.16)}
-  .row-item:hover{border-color:rgba(200,164,92,.35);box-shadow:0 2px 10px rgba(200,164,92,.10)}
-  .glass-select:hover,.glass-input:hover{box-shadow:0 4px 14px rgba(200,164,92,.16)}
+  .chip:hover{transform:translateY(-1px);box-shadow:0 2px 10px rgba(180,140,205,.25)}
+  .glass-dd-trigger:hover{box-shadow:0 4px 14px rgba(180,140,205,.2)}
+  .status-pill:hover{border-color:rgba(255,255,255,.6);box-shadow:0 2px 10px rgba(180,140,205,.16)}
+  .row-item:hover{border-color:rgba(180,140,205,.35);box-shadow:0 2px 10px rgba(180,140,205,.10)}
+  .glass-select:hover,.glass-input:hover{box-shadow:0 4px 14px rgba(180,140,205,.16)}
   .section-header-icon{transition:transform .25s var(--spring),box-shadow .3s ease}
-  .section-header-icon:hover{transform:scale(1.06);box-shadow:0 4px 14px rgba(200,164,92,.18)}
+  .section-header-icon:hover{transform:scale(1.06);box-shadow:0 4px 14px rgba(180,140,205,.18)}
   .toast{top:80px}
 </style>
 </head>
@@ -837,7 +837,7 @@ async function refreshRemoteChat() {
       return '<div style="display:flex;justify-content:' + (isUser ? 'flex-end' : 'flex-start') + ';margin:2px 0">' +
         '<div style="max-width:78%;padding:6px 10px;border-radius:10px;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;' +
         (isUser
-          ? 'background:rgba(200,164,92,.18);border:1px solid rgba(200,164,92,.3);color:var(--text)'
+          ? 'background:rgba(180,140,205,.18);border:1px solid rgba(180,140,205,.3);color:var(--text)'
           : 'background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);color:var(--text)') +
         '">' + esc(m.text) + '</div></div>';
     }).join('');
