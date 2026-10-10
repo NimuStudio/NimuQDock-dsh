@@ -1,9 +1,9 @@
 
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{--glass-bg:rgba(255,255,255,0.45);--glass-bg-hover:rgba(255,255,255,0.65);--glass-border:rgba(255,255,255,0.5);--glass-blur:blur(28px);--glass-shadow:0 8px 40px rgba(0,0,0,0.08);--glass-shadow-hover:0 16px 56px rgba(0,0,0,0.12);--accent:#b48ccd;--accent2:#f9c0d0;--accent-glow:rgba(180,140,205,0.3);--teal:#6aa055;--teal-glow:rgba(106,160,85,0.25);--danger:#c4554d;--danger-glow:rgba(196,85,77,0.2);--text:#2a2430;--text-secondary:rgba(44,36,22,0.55);--text-dim:rgba(44,36,22,0.35);--bg:#f6f4f7;--radius:20px;--radius-sm:14px;--radius-xs:10px;--radius-pill:100px;--spring:cubic-bezier(0.34,1.56,0.64,1);--ease-out:cubic-bezier(0.16,1,0.3,1)}
+:root{--glass-bg:rgba(255,255,255,0.30);--glass-bg-hover:rgba(255,255,255,0.46);--glass-border:rgba(255,255,255,0.78);--glass-blur:blur(28px);--glass-shadow:0 8px 40px rgba(0,0,0,0.08);--glass-shadow-hover:0 16px 56px rgba(0,0,0,0.12);--accent:#b48ccd;--accent2:#f9c0d0;--accent-glow:rgba(226,138,194,0.32);--teal:#558f42;--teal-glow:rgba(106,160,85,0.25);--danger:#c4554d;--danger-glow:rgba(196,85,77,0.2);--text:#241f18;--text-secondary:rgba(44,36,22,0.55);--text-dim:rgba(44,36,22,0.35);--bg:#f4f2f6;--radius:20px;--radius-sm:14px;--radius-xs:10px;--radius-pill:100px;--spring:cubic-bezier(0.34,1.56,0.64,1);--ease-out:cubic-bezier(0.16,1,0.3,1)}
 html{scroll-behavior:smooth;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;color:var(--text)}
 body{background:var(--bg);overflow:hidden;height:100vh;line-height:1.5}
-.login-overlay{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(247,245,240,0.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:opacity .45s ease,visibility .45s ease}
+.login-overlay{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(244,241,234,0.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:opacity .45s ease,visibility .45s ease}
 .login-overlay.hidden{opacity:0;visibility:hidden;pointer-events:none}
 .login-panel{background:#fff;border:1px solid rgba(0,0,0,0.06);border-radius:28px;padding:52px 44px;width:100%;max-width:440px;text-align:center;box-shadow:0 2px 20px rgba(0,0,0,0.06);animation:panelIn .6s var(--spring)}
 @keyframes panelIn{from{opacity:0;transform:translateY(28px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
@@ -82,7 +82,7 @@ body{background:var(--bg);overflow:hidden;height:100vh;line-height:1.5}
 
 
 body.light-mode .oc-cart-entry{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08)}
-body.dark-mode .oc-cart-entry{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1);color:#e8e6e3}
+body.dark-mode .oc-cart-entry{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1);color:#f4f1ea}
 .section-header-icon{font-size:28px;flex-shrink:0;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.35);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:12px;border:1px solid rgba(255,255,255,.4)}
 .section-title{font-size:20px;font-weight:700;letter-spacing:-.02em}
 .section-subtitle{font-size:13px;color:var(--text-dim);margin-top:4px}
@@ -110,10 +110,10 @@ body.dark-mode .oc-cart-entry{background:rgba(255,255,255,.06);border-color:rgba
 .filter-dropdown-item{padding:8px 14px;font-size:12px;font-weight:500;color:var(--text);cursor:pointer;border-radius:6px;transition:all .15s ease;white-space:nowrap}
 .filter-dropdown-item:hover{background:rgba(180,140,205,.12);color:#8f63ab}
 .filter-dropdown-item.active{background:rgba(180,140,205,.18);color:#8f63ab;font-weight:700}
-body.dark-mode .filter-dropdown-trigger{background:rgba(255,255,255,0.1)!important;backdrop-filter:blur(20px) saturate(1.6)!important;-webkit-backdrop-filter:blur(20px) saturate(1.6)!important;border:1px solid rgba(255,255,255,0.2)!important;color:rgba(232,230,227,0.9)!important;box-shadow:0 2px 12px rgba(0,0,0,.2)!important}
+body.dark-mode .filter-dropdown-trigger{background:rgba(255,255,255,0.1)!important;backdrop-filter:blur(20px) saturate(1.6)!important;-webkit-backdrop-filter:blur(20px) saturate(1.6)!important;border:1px solid rgba(255,255,255,0.2)!important;color:rgba(244,241,234,0.9)!important;box-shadow:0 2px 12px rgba(0,0,0,.2)!important}
 body.dark-mode .filter-dropdown-trigger:hover{border-color:rgba(180,140,205,.5)!important}
-body.dark-mode .filter-dropdown-menu{background:rgba(38,38,42,.95)!important;border:1px solid rgba(255,255,255,0.15)!important;box-shadow:0 12px 40px rgba(0,0,0,.4)!important}
-body.dark-mode .filter-dropdown-item{color:rgba(232,230,227,0.8)!important}
+body.dark-mode .filter-dropdown-menu{background:rgba(35,36,40,.95)!important;border:1px solid rgba(255,255,255,0.15)!important;box-shadow:0 12px 40px rgba(0,0,0,.4)!important}
+body.dark-mode .filter-dropdown-item{color:rgba(244,241,234,0.8)!important}
 body.dark-mode .filter-dropdown-item:hover{background:rgba(180,140,205,.15)!important}
 body.dark-mode .filter-dropdown-item.active{background:rgba(180,140,205,.22)!important}
 
@@ -190,7 +190,7 @@ body.dark-mode .filter-dropdown-item.active{background:rgba(180,140,205,.22)!imp
 .empty-hint{font-size:13px;color:var(--text-dim);opacity:.7}
 .toast{position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:10001;padding:12px 24px;border-radius:var(--radius-pill);font-size:14px;font-weight:600;background:rgba(255,255,255,.8);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);border:1px solid var(--glass-border);color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,.1);animation:toastIn .4s var(--spring);pointer-events:none;white-space:nowrap}
 @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(-16px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
-.modal-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(247,245,240,.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);animation:fadeIn .3s ease}
+.modal-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(244,241,234,.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);animation:fadeIn .3s ease}
 .modal-panel{background:rgba(255,255,255,.3);backdrop-filter:blur(40px) saturate(1.8);-webkit-backdrop-filter:blur(40px) saturate(1.8);border:1px solid rgba(255,255,255,.6);border-radius:28px;padding:40px;width:100%;max-width:460px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.08);animation:panelIn .5s var(--spring);max-height:90vh;overflow-y:auto}
 .modal-panel.wide{max-width:520px;text-align:left}
 .modal-icon{font-size:44px;margin-bottom:12px}
@@ -288,7 +288,7 @@ body.dark-mode .filter-dropdown-item.active{background:rgba(180,140,205,.22)!imp
 html{background:transparent}
 body{background:linear-gradient(135deg,#b0c8f0 0%,#f0d8c0 25%,#b8d8f0 50%,#d8c0f0 75%,#c0d0f0 100%)!important;background-attachment:fixed!important}
 #liquid-glass-bg{display:none !important}
-:root{--glass-blur-strong:blur(60px) saturate(2);--glass-blur:blur(40px) saturate(1.8);--glass-highlight:rgba(255,255,255,0.6);--edge-bright:rgba(255,255,255,0.9);--bg:#e3dfd8}
+:root{--glass-blur-strong:blur(60px) saturate(2);--glass-blur:blur(40px) saturate(1.8);--glass-highlight:rgba(255,255,255,0.95);--edge-bright:rgba(255,255,255,0.9);--bg:#f4f2f6}
 .login-overlay{z-index:10000!important}
 .toast{z-index:10001!important}
 .settings-dropdown,.notify-dropdown{z-index:101!important}
@@ -326,8 +326,8 @@ body{background:linear-gradient(135deg,#b0c8f0 0%,#f0d8c0 25%,#b8d8f0 50%,#d8c0f
 
 
 /* === Light Mode Overrides === */
-body.light-mode{background:#f6f4f7!important} body.light-mode .search-input{background:#fff!important;border:1px solid rgba(0,0,0,.12)!important} body.light-mode .search-btn{background:linear-gradient(135deg,#b48ccd,#f9c0d0)!important;border:none!important;color:#fff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important} body.light-mode .search-input::placeholder{color:rgba(0,0,0,.35)!important}
-body.light-mode .login-overlay{background:rgba(247,245,240,0.75)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body.light-mode{background:#f4f2f6!important} body.light-mode .search-input{background:#fff!important;border:1px solid rgba(0,0,0,.12)!important} body.light-mode .search-btn{background:linear-gradient(135deg,#b48ccd,#f9c0d0)!important;border:none!important;color:#fff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important} body.light-mode .search-input::placeholder{color:rgba(0,0,0,.35)!important}
+body.light-mode .login-overlay{background:rgba(244,241,234,0.75)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 
  
 body.light-mode .modal-panel{background:rgba(255,255,255,.92)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border:1px solid rgba(0,0,0,.08)!important;box-shadow:0 16px 48px rgba(0,0,0,.12)!important}
@@ -373,74 +373,74 @@ body.light-mode .filter-dropdown-menu{position:absolute!important;background:rgb
 body.light-mode .filter-dropdown-item{color:var(--text)!important}
 body.light-mode .filter-dropdown-item:hover{background:rgba(0,0,0,.04)!important}
 body.light-mode .filter-dropdown-item.active{background:rgba(180,140,205,.12)!important;color:var(--accent)!important;font-weight:600!important}
-.search-bar>.filter-group{gap:1px!important}.filter-dropdown-trigger{padding:6px 10px!important}.filter-dropdown-trigger .filter-dropdown-arrow{margin-left:2px!important}body.dark-mode{background:#1c1c1e!important;--text:#e8e6e3;--text-secondary:rgba(232,230,227,0.55);--text-dim:rgba(232,230,227,0.35);--bg:#1c1c1e;--accent:#c8b2e0;--accent2:#f9c0d0}
+.search-bar>.filter-group{gap:1px!important}.filter-dropdown-trigger{padding:6px 10px!important}.filter-dropdown-trigger .filter-dropdown-arrow{margin-left:2px!important}body.dark-mode{background:#14161a!important;--text:#f4f1ea;--text-secondary:rgba(244,241,234,0.62);--text-dim:rgba(244,241,234,0.38);--bg:#14161a;--accent:#c8b2e0;--accent2:#f9c0d0}
 body.dark-mode .login-overlay{background:rgba(18,18,20,0.85)!important;backdrop-filter:blur(12px)!important;-webkit-backdrop-filter:blur(12px)!important}
-body.dark-mode .login-panel{background:rgba(38,38,42,0.7)!important;backdrop-filter:blur(40px) saturate(1.8)!important;-webkit-backdrop-filter:blur(40px) saturate(1.8)!important;border:1px solid rgba(255,255,255,0.1)!important;box-shadow:0 24px 80px rgba(0,0,0,0.4)!important}
-body.dark-mode .login-field input{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:#e8e6e3!important}
-body.dark-mode .login-field input::placeholder{color:rgba(232,230,227,0.35)!important}
+body.dark-mode .login-panel{background:rgba(35,36,40,0.7)!important;backdrop-filter:blur(40px) saturate(1.8)!important;-webkit-backdrop-filter:blur(40px) saturate(1.8)!important;border:1px solid rgba(255,255,255,0.1)!important;box-shadow:0 24px 80px rgba(0,0,0,0.4)!important}
+body.dark-mode .login-field input{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:#f4f1ea!important}
+body.dark-mode .login-field input::placeholder{color:rgba(244,241,234,0.35)!important}
 body.dark-mode .login-tabs{background:rgba(255,255,255,0.04)!important}
-body.dark-mode .login-tab{color:rgba(232,230,227,0.5)!important}
+body.dark-mode .login-tab{color:rgba(244,241,234,0.5)!important}
 body.dark-mode .login-tab.active{background:rgba(255,255,255,0.1)!important;color:var(--accent)!important}
 body.dark-mode .topbar{background:rgba(28,28,30,0.85)!important;backdrop-filter:blur(30px) saturate(1.8)!important;-webkit-backdrop-filter:blur(30px) saturate(1.8)!important;border:1px solid rgba(255,255,255,0.1)!important;border-radius:20px!important;margin:12px 12px 0 12px!important;box-shadow:0 8px 32px rgba(0,0,0,.2)}
 body.dark-mode .sidebar{background:rgba(28,28,30,0.7)!important;backdrop-filter:blur(44px) saturate(1.6)!important;-webkit-backdrop-filter:blur(44px) saturate(1.6)!important;border:1px solid rgba(255,255,255,0.1)!important;border-radius:20px!important;margin:12px 6px 12px 12px!important;box-shadow:0 8px 32px rgba(0,0,0,.2)} body.dark-mode .main-content{background:rgba(28,28,30,0.7)!important;backdrop-filter:blur(44px) saturate(1.6)!important;-webkit-backdrop-filter:blur(44px) saturate(1.6)!important;border:1px solid rgba(255,255,255,0.08)!important;border-radius:20px!important;margin:12px 12px 12px 6px!important;box-shadow:0 8px 32px rgba(0,0,0,.2)}
-body.dark-mode .modal-panel{background:rgba(38,38,42,0.8)!important;backdrop-filter:blur(40px) saturate(1.8)!important;-webkit-backdrop-filter:blur(40px) saturate(1.8)!important;border:1px solid rgba(255,255,255,0.1)!important;box-shadow:0 16px 48px rgba(0,0,0,0.4)!important}
-body.dark-mode .glass-panel{background:rgba(38,38,42,0.35)!important;backdrop-filter:blur(40px) saturate(1.6)!important;-webkit-backdrop-filter:blur(40px) saturate(1.6)!important;border:1px solid rgba(255,255,255,0.1)!important}
+body.dark-mode .modal-panel{background:rgba(35,36,40,0.8)!important;backdrop-filter:blur(40px) saturate(1.8)!important;-webkit-backdrop-filter:blur(40px) saturate(1.8)!important;border:1px solid rgba(255,255,255,0.1)!important;box-shadow:0 16px 48px rgba(0,0,0,0.4)!important}
+body.dark-mode .glass-panel{background:rgba(35,36,40,0.35)!important;backdrop-filter:blur(40px) saturate(1.6)!important;-webkit-backdrop-filter:blur(40px) saturate(1.6)!important;border:1px solid rgba(255,255,255,0.1)!important}
 body.dark-mode #cursorGlow{opacity:0.6!important}
-body.dark-mode .game-btn{background:transparent!important;border:1px solid transparent!important;color:rgba(232,230,227,0.55)!important;box-shadow:none!important}
-body.dark-mode .game-btn:hover{background:rgba(255,255,255,0.06)!important;border-color:rgba(255,255,255,0.1)!important;color:#e8e6e3!important}
-body.dark-mode .toast{background:rgba(38,38,42,0.95)!important;backdrop-filter:blur(30px)!important;-webkit-backdrop-filter:blur(30px)!important;border:1px solid rgba(255,255,255,0.12)!important;color:#e8e6e3!important;box-shadow:0 8px 32px rgba(0,0,0,0.5)!important}
-body.dark-mode .game-btn.active{background:rgba(200,178,224,0.15)!important;color:var(--accent)!important;border-color:rgba(200,178,224,0.3)!important}
-body.dark-mode .topbar-nav-btn{background:transparent!important;border:1px solid transparent!important;color:rgba(232,230,227,0.55)!important}
-body.dark-mode .topbar-nav-btn:hover{background:rgba(255,255,255,0.06)!important;border-color:rgba(255,255,255,0.1)!important;color:#e8e6e3!important;box-shadow:none!important}
-body.dark-mode .topbar-nav-btn.active{background:rgba(200,178,224,0.15)!important;color:var(--accent)!important;border-color:rgba(200,178,224,0.3)!important;box-shadow:none!important}
-body.dark-mode .order-card,.dark-mode .svc-card,.dark-mode .cart-item,.dark-mode .recharge-card{background:rgba(38,38,42,0.7)!important;backdrop-filter:blur(20px) saturate(1.4)!important;-webkit-backdrop-filter:blur(20px) saturate(1.4)!important;border:1px solid rgba(200,178,224,0.2)!important}
-body.dark-mode .order-card:hover,.dark-mode .svc-card:hover{box-shadow:inset 0 0 0 2px rgba(200,178,224,0.8),0 0 30px rgba(200,178,224,0.25),0 16px 48px rgba(0,0,0,0.3)}body.dark-mode .oc-order-item{background:rgba(38,38,42,0.7)!important;backdrop-filter:blur(20px) saturate(1.4)!important;-webkit-backdrop-filter:blur(20px) saturate(1.4)!important;border:1px solid rgba(200,178,224,0.2)!important}body.dark-mode .oc-order-item:hover{box-shadow:inset 0 0 0 2px rgba(200,178,224,0.8),0 0 25px rgba(200,178,224,0.2),0 8px 28px rgba(0,0,0,0.3)}body.dark-mode .oc-order-title{color:#e8e6e3!important}body.dark-mode .oc-order-meta{color:rgba(232,230,227,0.55)!important}body.dark-mode .oc-order-game{color:#c8b2e0!important}body.dark-mode .oc-order-price{color:#c8b2e0!important}
+body.dark-mode .game-btn{background:transparent!important;border:1px solid transparent!important;color:rgba(244,241,234,0.55)!important;box-shadow:none!important}
+body.dark-mode .game-btn:hover{background:rgba(255,255,255,0.06)!important;border-color:rgba(255,255,255,0.1)!important;color:#f4f1ea!important}
+body.dark-mode .toast{background:rgba(35,36,40,0.95)!important;backdrop-filter:blur(30px)!important;-webkit-backdrop-filter:blur(30px)!important;border:1px solid rgba(255,255,255,0.12)!important;color:#f4f1ea!important;box-shadow:0 8px 32px rgba(0,0,0,0.5)!important}
+body.dark-mode .game-btn.active{background:rgba(198,162,222,0.15)!important;color:var(--accent)!important;border-color:rgba(198,162,222,0.3)!important}
+body.dark-mode .topbar-nav-btn{background:transparent!important;border:1px solid transparent!important;color:rgba(244,241,234,0.55)!important}
+body.dark-mode .topbar-nav-btn:hover{background:rgba(255,255,255,0.06)!important;border-color:rgba(255,255,255,0.1)!important;color:#f4f1ea!important;box-shadow:none!important}
+body.dark-mode .topbar-nav-btn.active{background:rgba(198,162,222,0.15)!important;color:var(--accent)!important;border-color:rgba(198,162,222,0.3)!important;box-shadow:none!important}
+body.dark-mode .order-card,.dark-mode .svc-card,.dark-mode .cart-item,.dark-mode .recharge-card{background:rgba(35,36,40,0.7)!important;backdrop-filter:blur(20px) saturate(1.4)!important;-webkit-backdrop-filter:blur(20px) saturate(1.4)!important;border:1px solid rgba(198,162,222,0.2)!important}
+body.dark-mode .order-card:hover,.dark-mode .svc-card:hover{box-shadow:inset 0 0 0 2px rgba(198,162,222,0.8),0 0 30px rgba(198,162,222,0.25),0 16px 48px rgba(0,0,0,0.3)}body.dark-mode .oc-order-item{background:rgba(35,36,40,0.7)!important;backdrop-filter:blur(20px) saturate(1.4)!important;-webkit-backdrop-filter:blur(20px) saturate(1.4)!important;border:1px solid rgba(198,162,222,0.2)!important}body.dark-mode .oc-order-item:hover{box-shadow:inset 0 0 0 2px rgba(198,162,222,0.8),0 0 25px rgba(198,162,222,0.2),0 8px 28px rgba(0,0,0,0.3)}body.dark-mode .oc-order-title{color:#f4f1ea!important}body.dark-mode .oc-order-meta{color:rgba(244,241,234,0.55)!important}body.dark-mode .oc-order-game{color:#c8b2e0!important}body.dark-mode .oc-order-price{color:#c8b2e0!important}
 
-body.dark-mode .btn-accept,.dark-mode .btn-confirm,.dark-mode .btn-checkout,.dark-mode .btn-submit,.dark-mode .btn-save,.dark-mode .btn-recharge{background:rgba(200,178,224,0.15)!important;border:1px solid rgba(200,178,224,0.3)!important;color:#c8b2e0!important}
-body.dark-mode .btn-cancel{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:rgba(232,230,227,0.7)!important}body.dark-mode .btn-accept:hover,.dark-mode .btn-confirm:hover,.dark-mode .btn-checkout:hover,.dark-mode .btn-submit:hover,.dark-mode .btn-save:hover,.dark-mode .btn-recharge:hover{background:rgba(200,178,224,0.35)!important;border-color:rgba(200,178,224,0.65)!important;color:#fff!important;transform:translateY(-2px);box-shadow:0 6px 20px rgba(200,178,224,0.25)}
+body.dark-mode .btn-accept,.dark-mode .btn-confirm,.dark-mode .btn-checkout,.dark-mode .btn-submit,.dark-mode .btn-save,.dark-mode .btn-recharge{background:rgba(198,162,222,0.15)!important;border:1px solid rgba(198,162,222,0.3)!important;color:#c8b2e0!important}
+body.dark-mode .btn-cancel{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:rgba(244,241,234,0.7)!important}body.dark-mode .btn-accept:hover,.dark-mode .btn-confirm:hover,.dark-mode .btn-checkout:hover,.dark-mode .btn-submit:hover,.dark-mode .btn-save:hover,.dark-mode .btn-recharge:hover{background:rgba(198,162,222,0.35)!important;border-color:rgba(198,162,222,0.65)!important;color:#fff!important;transform:translateY(-2px);box-shadow:0 6px 20px rgba(198,162,222,0.25)}
 body.dark-mode .btn-cancel:hover{background:rgba(255,255,255,0.12)!important}
-body.dark-mode .publish-form{background:rgba(38,38,42,0.6)!important;box-shadow:0 2px 16px rgba(0,0,0,0.2)!important;border:1px solid rgba(255,255,255,0.08)!important}
-body.dark-mode .settings-dropdown,.dark-mode .notify-dropdown{background:rgba(38,38,42,0.9)!important;backdrop-filter:blur(40px) saturate(1.8)!important;-webkit-backdrop-filter:blur(40px) saturate(1.8)!important;box-shadow:0 8px 32px rgba(0,0,0,0.4)!important;border:1px solid rgba(255,255,255,0.1)!important}
-body.dark-mode .dropdown-item{color:rgba(232,230,227,0.7)!important}
+body.dark-mode .publish-form{background:rgba(35,36,40,0.6)!important;box-shadow:0 2px 16px rgba(0,0,0,0.2)!important;border:1px solid rgba(255,255,255,0.08)!important}
+body.dark-mode .settings-dropdown,.dark-mode .notify-dropdown{background:rgba(35,36,40,0.9)!important;backdrop-filter:blur(40px) saturate(1.8)!important;-webkit-backdrop-filter:blur(40px) saturate(1.8)!important;box-shadow:0 8px 32px rgba(0,0,0,0.4)!important;border:1px solid rgba(255,255,255,0.1)!important}
+body.dark-mode .dropdown-item{color:rgba(244,241,234,0.7)!important}
 body.dark-mode .dropdown-item:hover{background:rgba(255,255,255,0.06)!important}
 body.dark-mode .topbar-balance,.dark-mode .user-badge{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important}
-body.dark-mode .icon-btn{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:rgba(232,230,227,0.7)!important}
+body.dark-mode .icon-btn{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:rgba(244,241,234,0.7)!important}
 body.dark-mode .icon-btn:hover{background:rgba(255,255,255,0.12)!important}
-body.dark-mode .withdraw-section{background:rgba(38,38,42,0.7)!important;backdrop-filter:blur(20px) saturate(1.4)!important;-webkit-backdrop-filter:blur(20px) saturate(1.4)!important;border:1px solid rgba(200,178,224,0.2)!important}
-body.dark-mode .withdraw-section h4{color:#e8e6e3!important}
-body.dark-mode .withdraw-section p{color:rgba(232,230,227,0.55)!important}
-body.dark-mode .withdraw-section .form-group input{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:#e8e6e3!important}
-body.dark-mode .withdraw-section .form-group label{color:rgba(232,230,227,0.55)!important}
+body.dark-mode .withdraw-section{background:rgba(35,36,40,0.7)!important;backdrop-filter:blur(20px) saturate(1.4)!important;-webkit-backdrop-filter:blur(20px) saturate(1.4)!important;border:1px solid rgba(198,162,222,0.2)!important}
+body.dark-mode .withdraw-section h4{color:#f4f1ea!important}
+body.dark-mode .withdraw-section p{color:rgba(244,241,234,0.55)!important}
+body.dark-mode .withdraw-section .form-group input{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:#f4f1ea!important}
+body.dark-mode .withdraw-section .form-group label{color:rgba(244,241,234,0.55)!important}
 
-body.dark-mode .qty-btn{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:rgba(232,230,227,0.7)!important}
-body.dark-mode .tier-option{background:rgba(255,255,255,0.04)!important;border:1px solid rgba(255,255,255,0.08)!important;color:rgba(232,230,227,0.7)!important}
-body.dark-mode .tier-option:hover{background:rgba(200,178,224,0.12)!important}
-body.dark-mode .tier-option.selected{background:rgba(200,178,224,0.2)!important}
+body.dark-mode .qty-btn{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:rgba(244,241,234,0.7)!important}
+body.dark-mode .tier-option{background:rgba(255,255,255,0.04)!important;border:1px solid rgba(255,255,255,0.08)!important;color:rgba(244,241,234,0.7)!important}
+body.dark-mode .tier-option:hover{background:rgba(198,162,222,0.12)!important}
+body.dark-mode .tier-option.selected{background:rgba(198,162,222,0.2)!important}
 body.dark-mode .price-card{background:rgba(255,255,255,0.06)!important}
-body.dark-mode #profileModal input[type=password]{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:#e8e6e3!important}
-body.dark-mode .form-group input,.dark-mode .form-group textarea,.dark-mode .form-group select{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:#e8e6e3!important}
-body.dark-mode .search-input{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:#e8e6e3!important}
-body.dark-mode .search-input::placeholder{color:rgba(232,230,227,0.35)!important} body.dark-mode .search-btn{background:rgba(180,140,205,.3)!important;color:#e8e6e3!important;border:1px solid rgba(255,255,255,.2)!important} body.dark-mode .filter-select{background:rgba(255,255,255,0.1)!important;backdrop-filter:blur(20px) saturate(1.6)!important;-webkit-backdrop-filter:blur(20px) saturate(1.6)!important;border:1px solid rgba(255,255,255,0.2)!important;color:rgba(232,230,227,0.9)!important;box-shadow:0 2px 12px rgba(0,0,0,.2)!important}
-body.dark-mode .oc-dropdown-trigger{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:rgba(232,230,227,0.7)!important}
+body.dark-mode #profileModal input[type=password]{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:#f4f1ea!important}
+body.dark-mode .form-group input,.dark-mode .form-group textarea,.dark-mode .form-group select{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:#f4f1ea!important}
+body.dark-mode .search-input{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:#f4f1ea!important}
+body.dark-mode .search-input::placeholder{color:rgba(244,241,234,0.35)!important} body.dark-mode .search-btn{background:rgba(180,140,205,.3)!important;color:#f4f1ea!important;border:1px solid rgba(255,255,255,.2)!important} body.dark-mode .filter-select{background:rgba(255,255,255,0.1)!important;backdrop-filter:blur(20px) saturate(1.6)!important;-webkit-backdrop-filter:blur(20px) saturate(1.6)!important;border:1px solid rgba(255,255,255,0.2)!important;color:rgba(244,241,234,0.9)!important;box-shadow:0 2px 12px rgba(0,0,0,.2)!important}
+body.dark-mode .oc-dropdown-trigger{background:rgba(255,255,255,0.06)!important;border:1px solid rgba(255,255,255,0.1)!important;color:rgba(244,241,234,0.7)!important}
 body.dark-mode .oc-dropdown-trigger:hover{background:rgba(255,255,255,0.12)!important}
-body.dark-mode .oc-dropdown-menu{background:rgba(38,38,42,0.95)!important;backdrop-filter:blur(40px) saturate(1.8)!important;-webkit-backdrop-filter:blur(40px) saturate(1.8)!important;border:1px solid rgba(255,255,255,0.1)!important;box-shadow:0 8px 24px rgba(0,0,0,0.4)!important}
-body.dark-mode .oc-dropdown-item{color:rgba(232,230,227,0.7)!important}
+body.dark-mode .oc-dropdown-menu{background:rgba(35,36,40,0.95)!important;backdrop-filter:blur(40px) saturate(1.8)!important;-webkit-backdrop-filter:blur(40px) saturate(1.8)!important;border:1px solid rgba(255,255,255,0.1)!important;box-shadow:0 8px 24px rgba(0,0,0,0.4)!important}
+body.dark-mode .oc-dropdown-item{color:rgba(244,241,234,0.7)!important}
 body.dark-mode .oc-dropdown-item:hover{background:rgba(255,255,255,0.06)!important}
-body.dark-mode .section-header-icon{background:rgba(255,255,255,0.08)!important;border:1px solid rgba(255,255,255,0.12)!important;color:#e8e6e3!important}
-body.dark-mode .login-icon{background:linear-gradient(135deg,rgba(200,178,224,0.15),rgba(249,192,208,0.1))!important;border:1px solid rgba(200,178,224,0.2)!important}
-body.dark-mode .login-hint{color:rgba(232,230,227,0.35)!important}
-body.dark-mode .empty-state{color:rgba(232,230,227,0.4)!important}
-body.dark-mode .order-title{color:#e8e6e3!important} body.dark-mode .section-title{color:#e8e6e3!important}
-body.dark-mode .order-desc{color:rgba(232,230,227,0.6)!important}
-body.dark-mode .order-meta,.dark-mode .order-footer{color:rgba(232,230,227,0.4)!important}
+body.dark-mode .section-header-icon{background:rgba(255,255,255,0.08)!important;border:1px solid rgba(255,255,255,0.12)!important;color:#f4f1ea!important}
+body.dark-mode .login-icon{background:linear-gradient(135deg,rgba(198,162,222,0.15),rgba(249,192,208,0.1))!important;border:1px solid rgba(198,162,222,0.2)!important}
+body.dark-mode .login-hint{color:rgba(244,241,234,0.35)!important}
+body.dark-mode .empty-state{color:rgba(244,241,234,0.4)!important}
+body.dark-mode .order-title{color:#f4f1ea!important} body.dark-mode .section-title{color:#f4f1ea!important}
+body.dark-mode .order-desc{color:rgba(244,241,234,0.6)!important}
+body.dark-mode .order-meta,.dark-mode .order-footer{color:rgba(244,241,234,0.4)!important}
 body.dark-mode .dropdown-divider{background:rgba(255,255,255,0.06)!important}
 body.dark-mode .profile-divider{background:rgba(255,255,255,0.08)!important}
-body.dark-mode .section-subtitle{color:rgba(232,230,227,0.6)!important}
+body.dark-mode .section-subtitle{color:rgba(244,241,234,0.6)!important}
 body.dark-mode .topbar-logo{color:var(--accent)!important}
 body.dark-mode .topbar-logo:hover{background:rgba(255,255,255,0.04)!important}
-body.dark-mode .cart-footer{background:rgba(38,38,42,0.7)!important;backdrop-filter:blur(20px) saturate(1.4)!important;-webkit-backdrop-filter:blur(20px) saturate(1.4)!important;border:1px solid rgba(255,255,255,0.08)!important}
-body.dark-mode .notify-dropdown{background:rgba(38,38,42,0.9)!important;backdrop-filter:blur(40px) saturate(1.8)!important;-webkit-backdrop-filter:blur(40px) saturate(1.8)!important;box-shadow:0 8px 32px rgba(0,0,0,0.4)!important;border:1px solid rgba(255,255,255,0.1)!important}
-body.dark-mode .notify-empty{color:rgba(232,230,227,0.35)!important}
+body.dark-mode .cart-footer{background:rgba(35,36,40,0.7)!important;backdrop-filter:blur(20px) saturate(1.4)!important;-webkit-backdrop-filter:blur(20px) saturate(1.4)!important;border:1px solid rgba(255,255,255,0.08)!important}
+body.dark-mode .notify-dropdown{background:rgba(35,36,40,0.9)!important;backdrop-filter:blur(40px) saturate(1.8)!important;-webkit-backdrop-filter:blur(40px) saturate(1.8)!important;box-shadow:0 8px 32px rgba(0,0,0,0.4)!important;border:1px solid rgba(255,255,255,0.1)!important}
+body.dark-mode .notify-empty{color:rgba(244,241,234,0.35)!important}
 body.dark-mode canvas{opacity:0.4!important}
 /* Chat Styles - Glass Panel */
 .chat-layout{display:none}
@@ -490,29 +490,29 @@ body.dark-mode canvas{opacity:0.4!important}
 .chat-contact-badge{background:var(--danger);color:#fff;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;padding:0 5px;line-height:1}
 .chat-main{flex:1;display:flex;flex-direction:column;min-width:0}
 body.dark-mode .chat-layout{background:rgba(30,30,32,.95)!important;border:1px solid rgba(255,255,255,.08)!important}
-body.dark-mode .chat-sidebar{background:#1e1e20!important;border-right-color:rgba(255,255,255,.06)!important}
-body.dark-mode .chat-sidebar-header{background:#1e1e20!important;border-bottom-color:rgba(255,255,255,.06)!important;color:#e8e6e3!important}
-body.dark-mode .chat-sidebar-search{background:#1e1e20!important;border-bottom-color:rgba(255,255,255,.06)!important}
-body.dark-mode .chat-sidebar-search input{background:rgba(255,255,255,.06)!important;border-color:rgba(255,255,255,.1)!important;color:#e8e6e3!important}
+body.dark-mode .chat-sidebar{background:#191d1c!important;border-right-color:rgba(255,255,255,.06)!important}
+body.dark-mode .chat-sidebar-header{background:#191d1c!important;border-bottom-color:rgba(255,255,255,.06)!important;color:#f4f1ea!important}
+body.dark-mode .chat-sidebar-search{background:#191d1c!important;border-bottom-color:rgba(255,255,255,.06)!important}
+body.dark-mode .chat-sidebar-search input{background:rgba(255,255,255,.06)!important;border-color:rgba(255,255,255,.1)!important;color:#f4f1ea!important}
 body.dark-mode .chat-sidebar-search input:focus{border-color:rgba(180,140,205,.5)!important;background:rgba(255,255,255,.08)!important}
-body.dark-mode .chat-contact-list{background:#1e1e20!important}
+body.dark-mode .chat-contact-list{background:#191d1c!important}
 body.dark-mode .chat-contact-item{border-bottom-color:rgba(255,255,255,.04)!important}
 body.dark-mode .chat-contact-item:hover{background:rgba(255,255,255,.04)!important}
 body.dark-mode .chat-contact-item.active{background:rgba(180,140,205,.15)!important}
-body.dark-mode .chat-contact-name{color:#e8e6e3!important}
-body.dark-mode .chat-contact-preview{color:rgba(232,230,227,.45)!important}
-body.dark-mode .chat-contact-time{color:rgba(232,230,227,.35)!important}
-body.dark-mode .chat-main{background:#161618!important} body.dark-mode .chat-messages-glass{background:rgba(30,30,34,.8)!important;backdrop-filter:blur(24px) saturate(1.4)!important;-webkit-backdrop-filter:blur(24px) saturate(1.4)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:14px!important;box-shadow:0 4px 24px rgba(0,0,0,.4),0 2px 8px rgba(180,140,205,.06),inset 0 1px 0 rgba(255,255,255,.08)!important} body.dark-mode #chatActive{overflow:visible!important;padding:4px!important;background:rgba(24,24,28,.8)!important;backdrop-filter:blur(40px) saturate(1.6)!important;-webkit-backdrop-filter:blur(40px) saturate(1.6)!important;border:1px solid rgba(255,255,255,.1)!important;box-shadow:0 8px 40px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.08)!important}
-body.dark-mode .chat-main-header{background:rgba(30,30,34,.75)!important;backdrop-filter:blur(24px) saturate(1.4)!important;-webkit-backdrop-filter:blur(24px) saturate(1.4)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:14px!important;color:#e8e6e3!important;box-shadow:0 4px 24px rgba(0,0,0,.4),0 2px 8px rgba(180,140,205,.06),inset 0 1px 0 rgba(255,255,255,.08)!important}
-body.dark-mode .chat-msg.received .chat-msg-bubble{background:#2c2c2e!important;color:#e8e6e3!important}
-body.dark-mode .chat-msg.sent .chat-msg-bubble{background:rgba(180,140,205,.35)!important;color:#e8e6e3!important;border:1px solid rgba(180,140,205,.25)!important}
-body.dark-mode .chat-input-area{background:rgba(30,30,34,.8)!important;backdrop-filter:blur(24px) saturate(1.4)!important;-webkit-backdrop-filter:blur(24px) saturate(1.4)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:14px!important;box-shadow:0 4px 24px rgba(0,0,0,.4),0 2px 8px rgba(180,140,205,.06),inset 0 1px 0 rgba(255,255,255,.08)!important}
-body.dark-mode .chat-input-area textarea{background:rgba(255,255,255,.06)!important;color:#e8e6e3!important}
+body.dark-mode .chat-contact-name{color:#f4f1ea!important}
+body.dark-mode .chat-contact-preview{color:rgba(244,241,234,.45)!important}
+body.dark-mode .chat-contact-time{color:rgba(244,241,234,.35)!important}
+body.dark-mode .chat-main{background:#14161a!important} body.dark-mode .chat-messages-glass{background:rgba(25,29,28,.8)!important;backdrop-filter:blur(24px) saturate(1.4)!important;-webkit-backdrop-filter:blur(24px) saturate(1.4)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:14px!important;box-shadow:0 4px 24px rgba(0,0,0,.4),0 2px 8px rgba(180,140,205,.06),inset 0 1px 0 rgba(255,255,255,.08)!important} body.dark-mode #chatActive{overflow:visible!important;padding:4px!important;background:rgba(20,22,26,.8)!important;backdrop-filter:blur(40px) saturate(1.6)!important;-webkit-backdrop-filter:blur(40px) saturate(1.6)!important;border:1px solid rgba(255,255,255,.1)!important;box-shadow:0 8px 40px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.08)!important}
+body.dark-mode .chat-main-header{background:rgba(25,29,28,.75)!important;backdrop-filter:blur(24px) saturate(1.4)!important;-webkit-backdrop-filter:blur(24px) saturate(1.4)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:14px!important;color:#f4f1ea!important;box-shadow:0 4px 24px rgba(0,0,0,.4),0 2px 8px rgba(180,140,205,.06),inset 0 1px 0 rgba(255,255,255,.08)!important}
+body.dark-mode .chat-msg.received .chat-msg-bubble{background:#232428!important;color:#f4f1ea!important}
+body.dark-mode .chat-msg.sent .chat-msg-bubble{background:rgba(180,140,205,.35)!important;color:#f4f1ea!important;border:1px solid rgba(180,140,205,.25)!important}
+body.dark-mode .chat-input-area{background:rgba(25,29,28,.8)!important;backdrop-filter:blur(24px) saturate(1.4)!important;-webkit-backdrop-filter:blur(24px) saturate(1.4)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:14px!important;box-shadow:0 4px 24px rgba(0,0,0,.4),0 2px 8px rgba(180,140,205,.06),inset 0 1px 0 rgba(255,255,255,.08)!important}
+body.dark-mode .chat-input-area textarea{background:rgba(255,255,255,.06)!important;color:#f4f1ea!important}
 body.dark-mode .chat-input-area textarea:focus{background:rgba(255,255,255,.08)!important;box-shadow:0 0 0 2px rgba(180,140,205,.2)!important}
-body.dark-mode .chat-start-search-results{background:#2c2c2e!important;border-color:rgba(255,255,255,.1)!important}
-body.dark-mode .chat-start-search-item{color:#e8e6e3!important;border-bottom-color:rgba(255,255,255,.04)!important}
+body.dark-mode .chat-start-search-results{background:#232428!important;border-color:rgba(255,255,255,.1)!important}
+body.dark-mode .chat-start-search-item{color:#f4f1ea!important;border-bottom-color:rgba(255,255,255,.04)!important}
 body.dark-mode .chat-start-search-item:hover{background:rgba(255,255,255,.06)!important}
-body.dark-mode .chat-time-divider span{background:rgba(255,255,255,.06)!important;color:rgba(232,230,227,.4)!important}
+body.dark-mode .chat-time-divider span{background:rgba(255,255,255,.06)!important;color:rgba(244,241,234,.4)!important}
 
 /* === Force search bar layout consistency across all themes === */
 .search-bar{display:flex!important;flex-wrap:nowrap!important;align-items:center!important;gap:6px!important;margin-bottom:16px!important}
@@ -933,19 +933,19 @@ body.light-mode .filter-dropdown-trigger{border:1px solid rgba(0,0,0,.05)!import
     -webkit-backdrop-filter: blur(18px) saturate(1.6) !important;
     border: 1px solid rgba(255,255,255,.65) !important;
     box-shadow: 0 4px 18px rgba(0,0,0,.16) !important;
-    color: #1c1c1e !important;
+    color: #14161a !important;
   }
   body.dark-mode #chatFixedBack.show {
     background: rgba(42,42,48,.88) !important;
     border-color: rgba(255,255,255,.16) !important;
     box-shadow: 0 4px 18px rgba(0,0,0,.45) !important;
-    color: #e8e6e3 !important;
+    color: #f4f1ea !important;
   }
   body.light-mode #chatFixedBack.show {
     background: rgba(255,255,255,.9) !important;
     border-color: rgba(0,0,0,.12) !important;
     box-shadow: 0 4px 18px rgba(0,0,0,.14) !important;
-    color: #1c1c1e !important;
+    color: #14161a !important;
   }
 
   /* ---- Mobile Chat Contact List ---- */
@@ -1041,13 +1041,13 @@ body.light-mode .filter-dropdown-trigger{border:1px solid rgba(0,0,0,.05)!import
      DARK MODE - Mobile overrides (same specificity as desktop)
      ================================================================ */
   body.dark-mode .topbar {
-    background: rgba(20,20,24,.9) !important;
+    background: rgba(20,22,26,.9) !important;
     border-color: rgba(255,255,255,.12) !important;
     margin: 6px 8px 0 8px !important;
     border-radius: 16px !important;
   }
   body.dark-mode .mobile-bottom-nav {
-    background: rgba(20,20,24,.9) !important;
+    background: rgba(20,22,26,.9) !important;
     border-color: rgba(255,255,255,.12) !important;
   }
   body.dark-mode .mobile-nav-item { color: rgba(255,255,255,.45); }
@@ -1058,7 +1058,7 @@ body.light-mode .filter-dropdown-trigger{border:1px solid rgba(0,0,0,.05)!import
     color: rgba(255,255,255,.8);
   }
   body.dark-mode .mobile-game-sheet-inner {
-    background: rgba(20,20,24,.95);
+    background: rgba(20,22,26,.95);
   }
   body.dark-mode .mobile-game-sheet-inner .game-btn {
     background: rgba(255,255,255,.05);
@@ -1066,15 +1066,15 @@ body.light-mode .filter-dropdown-trigger{border:1px solid rgba(0,0,0,.05)!import
     color: rgba(255,255,255,.75);
   }
   body.dark-mode .chat-main-header {
-    background: rgba(24,24,28,.9) !important;
+    background: rgba(20,22,26,.9) !important;
     border-bottom-color: rgba(255,255,255,.08) !important;
-    color: #e8e6e3 !important;
+    color: #f4f1ea !important;
   }
   body.dark-mode .chat-messages-glass {
     background: rgba(18,18,22,.85) !important;
   }
   body.dark-mode .chat-input-area {
-    background: rgba(24,24,28,.9) !important;
+    background: rgba(20,22,26,.9) !important;
     border-top-color: rgba(255,255,255,.08) !important;
   }
   body.dark-mode .chat-back-btn {
@@ -1082,12 +1082,12 @@ body.light-mode .filter-dropdown-trigger{border:1px solid rgba(0,0,0,.05)!import
     color: rgba(255,255,255,.7);
   }
   body.dark-mode .chat-mobile-sidebar {
-    background: rgba(20,20,24,.9);
+    background: rgba(20,22,26,.9);
   }
   body.dark-mode #chatUserSearchMobile {
     background: rgba(255,255,255,.06) !important;
     border-color: rgba(255,255,255,.08) !important;
-    color: #e8e6e3 !important;
+    color: #f4f1ea !important;
   }
   body.dark-mode .main-content {
     margin: 0 !important;
@@ -1330,28 +1330,28 @@ body.light-mode .filter-dropdown-trigger{border:1px solid rgba(0,0,0,.05)!import
   }
   #chatActive.chat-fullscreen .chat-input-area button:active { transform: scale(.96) !important; }
   body.dark-mode .chat-mobile-sidebar { background: rgba(26,26,30,.72) !important; backdrop-filter: blur(30px) saturate(1.4) !important; -webkit-backdrop-filter: blur(30px) saturate(1.4) !important; border-radius: 24px !important; border: 1px solid rgba(255,255,255,.09) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 8px 32px rgba(0,0,0,.35) !important; overflow: hidden; }
-  body.dark-mode .mchat-nav { background: rgba(30,30,34,.6) !important; border-bottom-color: rgba(255,255,255,.1) !important; }
-  body.dark-mode .mchat-nav span { color: #e8e6e3 !important; }
-  body.dark-mode .mchat-search { background: rgba(30,30,34,.5) !important; border-bottom-color: rgba(255,255,255,.08) !important; }
-  body.dark-mode #chatUserSearchMobile { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.14) !important; color: #e8e6e3 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.08) !important; }
+  body.dark-mode .mchat-nav { background: rgba(25,29,28,.6) !important; border-bottom-color: rgba(255,255,255,.1) !important; }
+  body.dark-mode .mchat-nav span { color: #f4f1ea !important; }
+  body.dark-mode .mchat-search { background: rgba(25,29,28,.5) !important; border-bottom-color: rgba(255,255,255,.08) !important; }
+  body.dark-mode #chatUserSearchMobile { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.14) !important; color: #f4f1ea !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.08) !important; }
   body.dark-mode .chat-mobile-sidebar .chat-contact-list { background: transparent !important; }
   body.dark-mode .chat-mobile-sidebar .chat-contact-item { border-bottom-color: rgba(255,255,255,.06) !important; }
   body.dark-mode .chat-mobile-sidebar .chat-contact-item:active { background: rgba(255,255,255,.08) !important; }
-  body.dark-mode .chat-mobile-sidebar .chat-contact-name { color: #e8e6e3 !important; }
-  body.dark-mode .chat-mobile-sidebar .chat-contact-preview { color: rgba(232,230,227,.5) !important; }
-  body.dark-mode .chat-mobile-sidebar .chat-contact-time { color: rgba(232,230,227,.4) !important; }
+  body.dark-mode .chat-mobile-sidebar .chat-contact-name { color: #f4f1ea !important; }
+  body.dark-mode .chat-mobile-sidebar .chat-contact-preview { color: rgba(244,241,234,.5) !important; }
+  body.dark-mode .chat-mobile-sidebar .chat-contact-time { color: rgba(244,241,234,.4) !important; }
   body.dark-mode .chat-mobile-sidebar .chat-contact-avatar { background: rgba(255,255,255,.1) !important; border-color: rgba(255,255,255,.14) !important; }
-  body.dark-mode #chatActive.chat-fullscreen { background: rgba(24,24,28,.65) !important; border-color: rgba(255,255,255,.12) !important; box-shadow: 0 8px 40px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08) !important; }
-  body.dark-mode #chatActive.chat-fullscreen .chat-main-header { background: rgba(30,30,34,.6) !important; border-color: rgba(255,255,255,.1) !important; border-bottom-color: rgba(255,255,255,.08) !important; }
-  body.dark-mode #chatActive.chat-fullscreen .chat-main-header span { color: #e8e6e3 !important; }
-  body.dark-mode #chatActive.chat-fullscreen .chat-main-header .chat-back-btn { background: rgba(255,255,255,.1) !important; border-color: rgba(255,255,255,.14) !important; color: #e8e6e3 !important; }
-  body.dark-mode #chatActive.chat-fullscreen .chat-messages-glass { background: rgba(30,30,34,.5) !important; border-color: rgba(255,255,255,.1) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.06) !important; }
+  body.dark-mode #chatActive.chat-fullscreen { background: rgba(20,22,26,.65) !important; border-color: rgba(255,255,255,.12) !important; box-shadow: 0 8px 40px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08) !important; }
+  body.dark-mode #chatActive.chat-fullscreen .chat-main-header { background: rgba(25,29,28,.6) !important; border-color: rgba(255,255,255,.1) !important; border-bottom-color: rgba(255,255,255,.08) !important; }
+  body.dark-mode #chatActive.chat-fullscreen .chat-main-header span { color: #f4f1ea !important; }
+  body.dark-mode #chatActive.chat-fullscreen .chat-main-header .chat-back-btn { background: rgba(255,255,255,.1) !important; border-color: rgba(255,255,255,.14) !important; color: #f4f1ea !important; }
+  body.dark-mode #chatActive.chat-fullscreen .chat-messages-glass { background: rgba(25,29,28,.5) !important; border-color: rgba(255,255,255,.1) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.06) !important; }
   body.dark-mode #chatActive.chat-fullscreen .chat-msg-avatar { background: rgba(255,255,255,.1) !important; border-color: rgba(255,255,255,.14) !important; }
-  body.dark-mode #chatActive.chat-fullscreen .chat-msg.received .chat-msg-bubble { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.1) !important; color: #e8e6e3 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.06) !important; }
-  body.dark-mode #chatActive.chat-fullscreen .chat-msg.sent .chat-msg-bubble { background: rgba(180,140,205,.35) !important; border-color: rgba(180,140,205,.25) !important; color: #e8e6e3 !important; box-shadow: 0 2px 10px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.15) !important; }
-  body.dark-mode #chatActive.chat-fullscreen .chat-time-divider span { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.12) !important; color: rgba(232,230,227,.5) !important; }
-  body.dark-mode #chatActive.chat-fullscreen .chat-input-area { background: rgba(30,30,34,.55) !important; border-color: rgba(255,255,255,.1) !important; border-top-color: rgba(255,255,255,.08) !important; }
-  body.dark-mode #chatActive.chat-fullscreen .chat-input-area textarea { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.12) !important; color: #e8e6e3 !important; }
+  body.dark-mode #chatActive.chat-fullscreen .chat-msg.received .chat-msg-bubble { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.1) !important; color: #f4f1ea !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.06) !important; }
+  body.dark-mode #chatActive.chat-fullscreen .chat-msg.sent .chat-msg-bubble { background: rgba(180,140,205,.35) !important; border-color: rgba(180,140,205,.25) !important; color: #f4f1ea !important; box-shadow: 0 2px 10px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.15) !important; }
+  body.dark-mode #chatActive.chat-fullscreen .chat-time-divider span { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.12) !important; color: rgba(244,241,234,.5) !important; }
+  body.dark-mode #chatActive.chat-fullscreen .chat-input-area { background: rgba(25,29,28,.55) !important; border-color: rgba(255,255,255,.1) !important; border-top-color: rgba(255,255,255,.08) !important; }
+  body.dark-mode #chatActive.chat-fullscreen .chat-input-area textarea { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.12) !important; color: #f4f1ea !important; }
   body.dark-mode #chatActive.chat-fullscreen .chat-input-area button { background: var(--accent) !important; }
   /* 浅色模式：与深色相同几何（内缩 4px、细边框、圆角、无白色大外泛光） */
   body.light-mode .chat-mobile-sidebar { background: rgba(255,255,255,.55) !important; border-radius: 24px !important; box-shadow: none !important; }
@@ -1440,11 +1440,11 @@ body.light-mode .filter-dropdown-trigger{border:1px solid rgba(0,0,0,.05)!import
 .btn-sm.ok{background:rgba(106,160,85,.6);color:#fff;border-color:transparent}
 .btn-sm.gold{background:rgba(180,140,205,.6);color:#fff;border-color:transparent}
 body.light-mode .admin-user-row,body.light-mode .admin-order-row{background:rgba(255,255,255,.9)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border:1px solid rgba(0,0,0,.06)!important}
-body.dark-mode .admin-user-row,body.dark-mode .admin-order-row{background:rgba(38,38,42,0.7)!important;backdrop-filter:blur(20px) saturate(1.4)!important;-webkit-backdrop-filter:blur(20px) saturate(1.4)!important;border:1px solid rgba(200,178,224,0.2)!important}
-body.dark-mode .admin-user-row .au-name,body.dark-mode .admin-order-row .ao-title{color:#e8e6e3!important}
-body.dark-mode .admin-user-row .au-meta,body.dark-mode .admin-order-row .ao-meta{color:rgba(232,230,227,0.55)!important}
+body.dark-mode .admin-user-row,body.dark-mode .admin-order-row{background:rgba(35,36,40,0.7)!important;backdrop-filter:blur(20px) saturate(1.4)!important;-webkit-backdrop-filter:blur(20px) saturate(1.4)!important;border:1px solid rgba(198,162,222,0.2)!important}
+body.dark-mode .admin-user-row .au-name,body.dark-mode .admin-order-row .ao-title{color:#f4f1ea!important}
+body.dark-mode .admin-user-row .au-meta,body.dark-mode .admin-order-row .ao-meta{color:rgba(244,241,234,0.55)!important}
 body.light-mode .admin-tab,body.light-mode .admin-search input{background:rgba(0,0,0,.04)!important;border-color:rgba(0,0,0,.1)!important}
-body.dark-mode .admin-tab,body.dark-mode .admin-search input{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.14)!important;color:#e8e6e3!important}
+body.dark-mode .admin-tab,body.dark-mode .admin-search input{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.14)!important;color:#f4f1ea!important}
 .topbar-nav-btn:active,.game-btn:active,.qty-btn:active{transform:scale(.96)}
 .filter-dropdown-trigger:active{opacity:.7}
 
