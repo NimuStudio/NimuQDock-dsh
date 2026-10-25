@@ -15,6 +15,7 @@ import {
 import { log } from './log.js';
 import { OneBot11Client } from './transport/onebot11.js';
 import { NodeApiClient, unwrap } from './transport/dsh-client.js';
+import { createDshAuth, resolveDshHome } from './transport/dsh-auth.js';
 import { SessionManager } from './core/session-manager.js';
 import { Router } from './core/router.js';
 import { Sender } from './core/sender.js';
@@ -36,7 +37,11 @@ async function main() {
   log('配置已加载。');
 
   // DSH 客户端（SSE 事件流 + unary RPC，Node 22 原生 fetch 即可）
-  const api = new NodeApiClient(cfg.dsh.baseUrl, 180000);
+  // 新版 DSH 的 /api 要求浏览器会话 cookie：用 DSH_HOME 里持久化的 secret 自签，
+  // 老版本（0.1.1）没有该 secret，此时自动退化为无需鉴权。
+  const dshAuth = createDshAuth({ baseUrl: cfg.dsh.baseUrl, home: resolveDshHome(cfg) });
+  const api = new NodeApiClient(cfg.dsh.baseUrl, 180000, dshAuth);
+  log(`DSH 鉴权：${dshAuth.describe()}`);
   const sessions = new SessionManager({ api, cfg, state: { sessions: loadSessions() }, log });
 
   // NapCat OneBot11 客户端（正向 WS + HTTP 动作）

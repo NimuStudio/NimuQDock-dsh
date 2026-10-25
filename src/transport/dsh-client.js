@@ -73,18 +73,39 @@ class AsyncQueue {
 }
 
 export class NodeApiClient extends AbstractApiClient {
-  constructor(baseUrl = 'http://127.0.0.1:3080', timeoutMs = 180000) {
+  /**
+   * @param {string} baseUrl DSH 地址
+   * @param {number} timeoutMs unary 超时
+   * @param {{cookieHeader?: () => (string|null)}|null} auth 可选的鉴权器：
+   *   新版 DSH（0.1.5+ / 0.2.x）的 /api 要求浏览器会话 cookie，老版本（0.1.1）不需要，
+   *   因此这里做成可选：拿不到 cookie 就按无需鉴权处理。
+   */
+  constructor(baseUrl = 'http://127.0.0.1:3080', timeoutMs = 180000, auth = null) {
     super(timeoutMs);
     this.baseUrl = String(baseUrl).replace(/\/+$/, '');
+    this.auth = auth ?? null;
   }
 
-  /** Node 没有 location；把 base 固定为配置的 DSH 地址（回环地址天然通过 /api 信任栅栏）。 */
+  /** Node 没有 location；把 base 固定为配置的 DSH 地址。 */
   resolveBase() {
     return this.baseUrl;
   }
 
-  doFetch(input, init) {
-    return fetch(input, init);
+  /** 取当前 cookie（无鉴权器 / 无 secret 时返回 null）。 */
+  cookie() {
+    try {
+      return this.auth?.cookieHeader?.() ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  doFetch(input, init = {}) {
+    const cookie = this.cookie();
+    if (!cookie) return fetch(input, init);
+    const headers = { ...(init.headers ?? {}) };
+    if (!headers.cookie) headers.cookie = cookie;
+    return fetch(input, { ...init, headers });
   }
 
   openMux(_payload, signal, onOpen) {
@@ -103,7 +124,9 @@ export class NodeApiClient extends AbstractApiClient {
   async *readWebSocket(path, signal, frameSchema, onOpen) {
     const url = new URL(path, this.baseUrl);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socket = new WebSocket(url);
+    // 新版 DSH 的 WS 升级同样要 cookie；Node 内置 WebSocket（undici）支持 headers 选项
+    const cookie = this.cookie();
+    const socket = cookie ? new WebSocket(url, { headers: { cookie } }) : new WebSocket(url);
     const queue = new AsyncQueue(512); // 有界缓冲，防事件风暴内存膨胀
     let handshakeTimer = null;
 

@@ -14,9 +14,10 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { DSH_VERSION, installDshPortable as installDshCore } from './src/dsh-install.js';
+import { createDshAuth } from './src/transport/dsh-auth.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url)); // start.mjs 位于项目根目录
-const DSH_VERSION = '0.1.1-rc.2';
 // DSH 数据/预设放本目录：卸载时删目录即彻底卸载；DSH 从 .dsh/workdir 启动（不把项目根当 cwd）
 const DSH_HOME = path.join(ROOT, '.dsh');
 const DSH_WORKDIR = path.join(DSH_HOME, 'workdir');
@@ -32,38 +33,9 @@ const esc = (s) => String(s).replace(/'/g, "''");
 const dq = (s) => '"' + String(s ?? '').replace(/"/g, '') + '"';
 
 /** 便携安装 DSH 到独立前缀 dsh-app/（start 自举用；卸载时随目录一起删）。
- * 不直接用项目根当 --prefix：避免 npm 以项目 package.json 为准 reconciliation 既有依赖。 */
+ * 具体安装策略（pnpm + 钉死 hmr 版本）见 src/dsh-install.js。 */
 function installDshPortable() {
-  console.log(`⏳ 正在下载并安装 DeepSeek Harness（npm install @deepseek-ai/dsh@${DSH_VERSION}，首次需几分钟）…`);
-  try { fs.mkdirSync(DSH_PREFIX, { recursive: true }); } catch {}
-  const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  const base = ['install', '--no-save', '--no-package-lock', '--no-audit', '--no-fund', '--prefix', DSH_PREFIX, `@deepseek-ai/dsh@${DSH_VERSION}`];
-  // 关键：npm 装 koffi 等原生包时用 cmd /c node ... 调 node，而包内 node 不在 PATH → 找不到。
-  // 把当前 node 所在目录加进 PATH，让子进程能按名找到 node。
-  const envPath = { ...process.env, PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ''}` };
-  const run = (extra) => {
-    const args = [...base, ...extra];
-    return fs.existsSync(npmCli)
-      ? spawnSync(process.execPath, [npmCli, ...args], { cwd: DSH_PREFIX, stdio: 'inherit', timeout: 1500000, env: envPath })
-      : spawnSync('npm', args, { cwd: DSH_PREFIX, stdio: 'inherit', shell: true, timeout: 1500000, env: envPath });
-  };
-  // 官方源在国内常超时/卡死 → 先走 npmmirror 镜像，失败再退回官方源
-  console.log('   → 使用国内镜像源 npmmirror（更快更稳）…');
-  let r = run(['--registry=https://registry.npmmirror.com']);
-  if (r.status !== 0) {
-    console.log('   镜像源失败，改用官方源重试一次…');
-    r = run([]);
-  }
-  if (r.status !== 0) {
-    console.log('❌ 安装 DeepSeek Harness 失败，请检查网络后重试。');
-    return false;
-  }
-  if (!fs.existsSync(DSH_BIN)) {
-    console.log(`❌ 安装完成但未找到 DSH 入口（${DSH_BIN}）。`);
-    return false;
-  }
-  console.log('✅ DeepSeek Harness 已安装到本目录 dsh-app');
-  return true;
+  return installDshCore({ root: ROOT, prefix: DSH_PREFIX, binPath: DSH_BIN, version: DSH_VERSION });
 }
 
 function ask(label, { digits = true, def = '' } = {}) {
@@ -209,27 +181,46 @@ async function ensureApiKey(dshHome) {
   }
 }
 
-/** 检测本机 DSH（3080）是否带识图模型。走 llm.models RPC，任一模型 id/name 含 vision 即算。 */
-async function detectDshVision() {
-  try {
-    const res = await fetch('http://127.0.0.1:3080/api/llm.models', {
+/** 探测本机 3080 的 DSH 能否被本项目复用。
+ * 判据是「能力」而不是版本号：session.list 能正常返回，说明 API 形状与鉴权都对；
+ * 再看模型目录里有没有识图模型。新版 DSH 的 /api 要求浏览器会话 cookie，
+ * 这里用 ~/.dsh 里持久化的 secret 自签 cookie；老版本（0.1.1）不需要 cookie 也能过。 */
+async function probeLocalDsh() {
+  const baseUrl = 'http://127.0.0.1:3080';
+  const auth = createDshAuth({ baseUrl, home: path.join(os.homedir(), '.dsh') });
+  const cookie = auth.cookieHeader();
+  const call = async (method) => {
+    const res = await fetch(`${baseUrl}/api/${method}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'client-request', rpcId: `start-${Date.now()}`, method: 'llm.models', payload: {} }),
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
+      body: JSON.stringify({ type: 'client-request', rpcId: `start-${method}-${Date.now()}`, method, payload: {} }),
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return false;
-    const json = await res.json();
-    const groups = json?.result?.value?.groups ?? [];
-    for (const g of groups) {
-      for (const m of (g?.models ?? [])) {
-        if (`${m?.id ?? ''} ${m?.name ?? ''}`.toLowerCase().includes('vision')) return true;
-      }
-    }
-    return false;
-  } catch {
-    return false;
+    if (!res.ok) return { ok: false, status: res.status };
+    const json = await res.json().catch(() => null);
+    return { ok: json?.result?.ok === true, status: res.status, value: json?.result?.value };
+  };
+  let sessions;
+  try {
+    sessions = await call('session.list');
+  } catch (error) {
+    return { usable: false, hasVision: false, reason: `连不上：${error?.message ?? error}` };
   }
+  if (!sessions.ok) {
+    const hint = sessions.status === 401 ? '（需要鉴权，且本地拿不到可用的 cookie）' : '';
+    return { usable: false, hasVision: false, reason: `session.list 返回 HTTP ${sessions.status}${hint}` };
+  }
+  let hasVision = false;
+  try {
+    const models = await call('llm.models');
+    for (const g of (models?.value?.groups ?? [])) {
+      for (const m of (g?.models ?? [])) {
+        if (`${m?.id ?? ''} ${m?.name ?? ''}`.toLowerCase().includes('vision')) { hasVision = true; break; }
+      }
+      if (hasVision) break;
+    }
+  } catch {}
+  return { usable: true, hasVision };
 }
 
 /** 启动本目录便携 DSH 到指定端口，返回 baseUrl。 */
@@ -243,6 +234,10 @@ async function launchPortableDsh(port) {
       return { reused: false, dshHome: DSH_HOME, baseUrl, fatal: true };
     }
   }
+  // 必须**在首次启动前**铺好 profile（web bundles）并重新启用 hmr：
+  // DSH 初始化 profile 时遇到已存在的 package.json 不会补写 bundles，
+  // 而 dsh-web-app 又把 hmr 禁用了 → 不处理就会启动失败（"requires the Cordis HMR service"）。
+  runSetupDsh(DSH_HOME);
   // 便携 DSH 是全新的、没有 API key——在启动前先确保 .credentials.yaml 已配 DEEPSEEK_API_KEY
   await ensureApiKey(DSH_HOME);
   console.log(`⏳ 正在启动 DeepSeek Harness（本目录便携版，端口 ${port}）…`);
@@ -265,16 +260,17 @@ async function launchPortableDsh(port) {
   return { reused: false, dshHome: DSH_HOME, baseUrl };
 }
 
-/** 决定用哪个 DSH：3080 在跑且含识图→复用；3080 无识图→便携版起 3081；3080 空闲→便携版起 3080。
+/** 决定用哪个 DSH：3080 在跑且 API 可用→复用；否则用便携版（3080 被占则起 3081）。
  *  返回 { reused, dshHome, baseUrl }。 */
 async function ensureDsh() {
   if (await probePort(3080)) {
-    const hasVision = await detectDshVision();
-    if (hasVision) {
-      console.log('✅ 复用本机 DeepSeek Harness（http://127.0.0.1:3080，含识图）');
+    const info = await probeLocalDsh();
+    if (info.usable) {
+      console.log(`✅ 复用本机 DeepSeek Harness（http://127.0.0.1:3080${info.hasVision ? '，含识图' : '，⚠️ 无识图模型'}）`);
       return { reused: true, dshHome: path.join(os.homedir(), '.dsh'), baseUrl: 'http://127.0.0.1:3080' };
     }
-    console.log('⚠️ 本机 DSH(3080) 无识图模型 → 用本目录便携版在 3081 另起一份带识图的 DSH');
+    console.log(`⚠️ 本机 3080 的 DSH 无法复用（${info.reason}）`);
+    console.log('   → 改用本目录便携版在 3081 另起一份（不会动你现有的 DSH）');
     return await launchPortableDsh(3081);
   }
   return await launchPortableDsh(3080);
@@ -463,7 +459,7 @@ async function ensureNapCat(bot) {
 }
 
 /** 启动桥接（detached，自动打开控制台）。 */
-async function startBridge() {
+async function startBridge(dshHome) {
   const mainJs = path.join(ROOT, 'src', 'main.js');
   // 检测本项目桥接：必须同时命中 src/main.js 与本目录（防止误判别的项目）
   const r = spawnSync('powershell', ['-NoProfile', '-Command',
@@ -475,7 +471,8 @@ async function startBridge() {
   console.log('⏳ 正在启动桥接（浏览器将自动打开 Web 控制台）…');
   try {
     // -ArgumentList 传单字符串并给路径加双引号，避免含空格/中文路径被拆参
-    const psCmd = `Start-Process -FilePath '${esc(process.execPath)}' -ArgumentList '${dq(mainJs)}' -WorkingDirectory '${esc(ROOT)}'`;
+    // 同时把 DSH_HOME 传给桥接：新版 DSH 的 /api 鉴权要用该目录下持久化的 secret 自签 cookie
+    const psCmd = `$env:DSH_HOME='${esc(dshHome ?? DSH_HOME)}'; Start-Process -FilePath '${esc(process.execPath)}' -ArgumentList '${dq(mainJs)}' -WorkingDirectory '${esc(ROOT)}'`;
     const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
     child.on('error', (err) => console.log(`❌ 启动桥接失败：${err?.message ?? err}`));
     child.unref();
@@ -514,7 +511,7 @@ async function main() {
   await ensureNapCat(bot);
 
   console.log('\n[6/6] 启动桥接 …');
-  await startBridge();
+  await startBridge(dshHome);
 
   console.log('\n✅ 完成！');
   console.log('  · Web 控制台: http://127.0.0.1:3100');

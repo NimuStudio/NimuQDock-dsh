@@ -12,9 +12,11 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { DSH_VERSION, installDshPortable as installDshCore } from './src/dsh-install.js';
+import { createDshAuth } from './src/transport/dsh-auth.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url)); // install.mjs 位于项目根目录
-const DSH_VERSION = '0.1.1-rc.2'; // 与 dsh-host-apiproxy 依赖版本一致，保证 API/preset 兼容
+// DSH 版本与安装方式统一由 src/dsh-install.js 提供（与 dsh-host-apiproxy 同版本线，保证 API 兼容）
 // DSH 数据/预设也放本目录：卸载时删掉整个目录即彻底卸载（无全局残留）
 const DSH_HOME = path.join(ROOT, '.dsh');
 // DSH 便携安装在独立前缀（不动项目自身的 node_modules，避免 npm reconciliation 污染既有依赖）
@@ -48,84 +50,67 @@ function checkNode() {
 }
 
 /**
- * 检测本机 DSH 是否「在跑且带识图模型」。
- * 通过 unary RPC 调 llm.models：POST /api/llm.models，信封 {type:"client-request", rpcId, method, payload:{}}。
- * 返回 value.groups[].models[]，只要任一模型 id/name 含 "vision" 即认为带识图。
+ * 探测本机 3080 的 DSH 是否可被本项目复用。
+ * 判据是「能力」：session.list 能正常返回（说明 API 形状/鉴权都匹配），且模型目录含识图模型。
+ * 新版 DSH（0.1.5+ / 0.2.x）的 /api 要求浏览器会话 cookie，这里用 ~/.dsh 里持久化的
+ * secret 自签 cookie；老版本（0.1.1）不需要 cookie 也能过。
  */
-async function detectDshVision() {
-  try {
-    const res = await fetch('http://127.0.0.1:3080/api/llm.models', {
+async function probeLocalDsh() {
+  const baseUrl = 'http://127.0.0.1:3080';
+  const auth = createDshAuth({ baseUrl, home: path.join(os.homedir(), '.dsh') });
+  const cookie = auth.cookieHeader();
+  const call = async (method) => {
+    const res = await fetch(`${baseUrl}/api/${method}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        type: 'client-request',
-        rpcId: `install-${Date.now()}`,
-        method: 'llm.models',
-        payload: {},
-      }),
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
+      body: JSON.stringify({ type: 'client-request', rpcId: `install-${method}-${Date.now()}`, method, payload: {} }),
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return false;
-    const json = await res.json();
-    const groups = json?.result?.value?.groups ?? [];
-    for (const g of groups) {
-      for (const m of (g?.models ?? [])) {
-        const s = `${m?.id ?? ''} ${m?.name ?? ''}`.toLowerCase();
-        if (s.includes('vision')) return true;
-      }
-    }
-    return false;
-  } catch {
-    return false;
+    if (!res.ok) return { ok: false, status: res.status };
+    const json = await res.json().catch(() => null);
+    return { ok: json?.result?.ok === true, status: res.status, value: json?.result?.value };
+  };
+  let sessions;
+  try {
+    sessions = await call('session.list');
+  } catch (error) {
+    return { usable: false, hasVision: false, reason: `连不上：${error?.message ?? error}` };
   }
+  if (!sessions.ok) {
+    return { usable: false, hasVision: false, reason: `session.list 返回 HTTP ${sessions.status}` };
+  }
+  let hasVision = false;
+  try {
+    const models = await call('llm.models');
+    for (const g of (models?.value?.groups ?? [])) {
+      for (const m of (g?.models ?? [])) {
+        if (`${m?.id ?? ''} ${m?.name ?? ''}`.toLowerCase().includes('vision')) { hasVision = true; break; }
+      }
+      if (hasVision) break;
+    }
+  } catch {}
+  return { usable: true, hasVision };
 }
 
 /** 便携安装 DSH 到独立前缀 dsh-app/（卸载时随目录一起删）。
- * 不直接用项目根当 --prefix：避免 npm 以项目 package.json 为准 reconciliation 既有依赖。 */
+ * 具体安装策略（pnpm + 钉死 hmr 版本）见 src/dsh-install.js。 */
 function installDshPortable() {
-  console.log(`⏳ 正在便携安装 DeepSeek Harness（npm install @deepseek-ai/dsh@${DSH_VERSION}，首次需几分钟）…`);
-  try { fs.mkdirSync(DSH_PREFIX, { recursive: true }); } catch {}
-  // 优先用当前 node 自带的 npm-cli（便携版内置 node 下 PATH 里没有 npm）；
-  // 源码环境（系统 node）退回 PATH 里的 npm。
-  const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  const base = ['install', '--no-save', '--no-package-lock', '--no-audit', '--no-fund', '--prefix', DSH_PREFIX, `@deepseek-ai/dsh@${DSH_VERSION}`];
-  // 关键：npm 装 koffi 等原生包时用 cmd /c node ... 调 node，而包内 node 不在 PATH → 找不到。
-  // 把当前 node 所在目录加进 PATH，让子进程能按名找到 node。
-  const envPath = { ...process.env, PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ''}` };
-  const run = (extra) => {
-    const args = [...base, ...extra];
-    return fs.existsSync(npmCli)
-      ? spawnSync(process.execPath, [npmCli, ...args], { cwd: DSH_PREFIX, stdio: 'inherit', timeout: 1500000, env: envPath })
-      : spawnSync('npm', args, { cwd: DSH_PREFIX, stdio: 'inherit', shell: true, timeout: 1500000, env: envPath });
-  };
-  // 官方源在国内常超时/卡死 → 先走 npmmirror 镜像，失败再退回官方源
-  console.log('   → 使用国内镜像源 npmmirror（更快更稳）…');
-  let r = run(['--registry=https://registry.npmmirror.com']);
-  if (r.status !== 0) {
-    console.log('   镜像源失败，改用官方源重试一次…');
-    r = run([]);
-  }
-  if (r.status !== 0) {
-    console.log('❌ 便携安装 DSH 失败，请检查网络后重试。');
-    return false;
-  }
-  if (!fs.existsSync(DSH_BIN)) {
-    console.log(`❌ 安装完成但未找到 DSH 入口（${DSH_BIN}）。`);
-    return false;
-  }
-  console.log('✅ DeepSeek Harness 已便携安装到本目录 dsh-app');
-  return true;
+  return installDshCore({ root: ROOT, prefix: DSH_PREFIX, binPath: DSH_BIN, version: DSH_VERSION });
 }
 
-/** 准备 DSH：3080 在跑且含识图→复用；否则（含 3080 被无识图 DSH 占用）下载便携版备用。 */
+/** 准备 DSH：3080 在跑且可复用→跳过下载；否则下载便携版备用。 */
 async function ensureDsh() {
   if (await probePort(3080)) {
-    const hasVision = await detectDshVision();
-    if (hasVision) {
-      console.log('✅ 复用本机 DeepSeek Harness（已带识图模型，不再重复下载）');
+    const info = await probeLocalDsh();
+    if (info.usable && info.hasVision) {
+      console.log('✅ 复用本机 DeepSeek Harness（API 可用且带识图模型，不再重复下载）');
       return;
     }
-    console.log('⚠️ 本机 DSH 无识图模型——会下载便携版，稍后 start.bat 用 3081 端口另起一份带识图的 DSH');
+    if (info.usable) {
+      console.log('⚠️ 本机 DSH 可用但模型目录里没有识图模型——会下载便携版，稍后用 3081 端口另起一份');
+    } else {
+      console.log(`⚠️ 本机 3080 的 DSH 无法复用（${info.reason}）——会下载便携版到本目录备用`);
+    }
   }
   if (fs.existsSync(DSH_BIN)) {
     console.log('✅ 本目录已装有便携 DSH（跳过下载）');

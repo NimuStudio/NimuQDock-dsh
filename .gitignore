@@ -1,5 +1,8 @@
 node_modules/
 node/
+dsh-app/
+pnpm-tool/
+.dsh/
 config.json
 state/
 *.log
