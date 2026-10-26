@@ -7,6 +7,18 @@
 <link rel="stylesheet" href="ysti-glass.css">
 <style>
   /* ── 控制台专用补充样式（基于 Nimu Glass UI 组件体系） ── */
+  /* 品牌背景：一条斜向的薄荷→粉→薰衣草柔和洗色（整体有色，玻璃面板才透得出来） */
+  body{background-color:#edeef3!important;background-image:linear-gradient(150deg,rgba(203,236,189,.62) 0%,rgba(228,222,238,.55) 38%,rgba(249,192,208,.55) 68%,rgba(180,140,205,.48) 100%)!important;background-attachment:fixed!important}
+  body.light-mode{background-color:#f6f5f8!important;background-image:linear-gradient(150deg,rgba(203,236,189,.35) 0%,rgba(240,238,246,.30) 45%,rgba(249,192,208,.32) 100%)!important}
+  body.dark-mode{background-color:#14161a!important;background-image:linear-gradient(150deg,rgba(85,143,66,.16) 0%,rgba(28,26,34,.60) 45%,rgba(180,140,205,.18) 100%)!important}<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NimuQDock-dsh 控制台</title>
+<link rel="stylesheet" href="ysti-glass.css">
+<style>
+  /* ── 控制台专用补充样式（基于 Nimu Glass UI 组件体系） ── */
   /* 品牌背景：薄荷 / 薰衣草 / 粉（取自工作室官网 ysti.com.cn 的玻璃拟态体系） */
   body{background-color:#f4f2f6!important;background-image:radial-gradient(1100px 760px at 6% -6%,rgba(203,236,189,.70),transparent 62%),radial-gradient(980px 700px at 96% 2%,rgba(249,192,208,.62),transparent 60%),radial-gradient(900px 860px at 70% 104%,rgba(180,140,205,.42),transparent 66%)!important;background-attachment:fixed!important}
   body.light-mode{background-color:#faf9fb!important;background-image:radial-gradient(900px 600px at 8% -10%,rgba(203,236,189,.35),transparent 60%),radial-gradient(900px 600px at 100% 0%,rgba(249,192,208,.30),transparent 60%)!important}
@@ -145,6 +157,33 @@
   body.dark-mode .log-area{background:rgba(0,0,0,.35)!important;border-color:rgba(255,255,255,.10)!important;color:#f4f1ea!important}
   /* 品牌渐变字标（取官网按钮渐变） */
   .logo-text{background:linear-gradient(135deg,#b48ccd,#eb9cb6 55%,#558f42);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800}
+
+
+  /* ── 逐级泛光：--near 由鼠标距离驱动（0~1），两层彩色阴影随接近程度增强 ── */
+  .order-card,.persona-card,.row-item{
+    --near:0;
+    transition:box-shadow .3s ease,transform .3s ease,border-color .3s ease;
+    box-shadow:
+      0 1px 2px rgba(0,0,0,.04),
+      0 8px 24px rgba(0,0,0,.05),
+      0 0 calc(var(--near) * 30px) rgba(226,138,194,calc(var(--near) * .42)),
+      0 0 calc(var(--near) * 62px) rgba(198,162,222,calc(var(--near) * .26));
+  }
+  .order-card:hover,.persona-card:hover,.row-item:hover{transform:translateY(-3px);border-color:rgba(180,140,205,.55)}
+  body.dark-mode .order-card,body.dark-mode .persona-card,body.dark-mode .row-item{
+    box-shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25),
+      0 0 calc(var(--near) * 34px) rgba(206,178,236,calc(var(--near) * .42)),
+      0 0 calc(var(--near) * 68px) rgba(206,178,236,calc(var(--near) * .24));
+  }
+  /* ── 主按钮：官网三色渐变（薰衣草→粉→薄荷） ── */
+  .btn-accept,.login-btn{
+    background:linear-gradient(135deg,#dcc2ec,#f9c0d0 55%,#d3ebc6)!important;
+    color:#43304f!important;border:1px solid rgba(255,255,255,.6)!important;font-weight:700;
+    box-shadow:0 4px 14px rgba(180,140,205,.28);transition:all .25s ease;
+  }
+  .btn-accept:hover,.login-btn:hover{filter:brightness(1.06);transform:translateY(-1px)}
+  .btn-accept:active,.login-btn:active{transform:scale(.97)}
+  .btn-accept.active{background:linear-gradient(135deg,#c8b2e0,#f9c0d0 55%,#cbecbd)!important;box-shadow:0 0 0 3px rgba(180,140,205,.22)!important}
 
 </style>
 </head>
@@ -1029,6 +1068,27 @@ document.getElementById('remoteCmd')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); remoteExec(); }
 });
 setInterval(() => { if (TOKEN) { refreshStatus(); if (!document.getElementById('view-overview').classList.contains('hidden-view')) refreshLog(); } }, 5000);
+</script>
+
+<script>
+// 逐级泛光：按鼠标与卡片的距离实时设置 --near（0~1），靠近时彩色泛光逐渐增强
+(function initNearGlow(){
+  let raf = 0, mx = 0, my = 0;
+  const selector = '.order-card,.persona-card,.row-item';
+  function update(){
+    raf = 0;
+    for (const el of document.querySelectorAll(selector)) {
+      const r = el.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > innerHeight) continue;
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const d = Math.hypot(mx - cx, my - cy);
+      const reach = Math.max(r.width, r.height) * 0.75 + 160;
+      el.style.setProperty('--near', Math.max(0, Math.min(1, 1 - d / reach)).toFixed(3));
+    }
+  }
+  addEventListener('mousemove', (e) => { mx = e.clientX; my = e.clientY; if (!raf) raf = requestAnimationFrame(update); }, { passive: true });
+  addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(update); }, { passive: true });
+})();
 </script>
 </body>
 </html>
