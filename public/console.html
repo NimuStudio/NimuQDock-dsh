@@ -268,21 +268,44 @@
   /* 输入：统一 44px 与焦点态 */
   .glass-input,.glass-select,select{min-height:44px;border-radius:var(--radius-sm)}
 
-  /* 卡片：克制的双层阴影 + 跟随鼠标的高光（与 --near 距离泛光叠加） */
-  .order-card,.persona-card,.row-item,.card{
-    position:relative;overflow:hidden;
-    --mx:50%;--my:50%;
-    background-image:radial-gradient(420px circle at var(--mx) var(--my),rgba(255,255,255,.28),transparent 45%);
-    background-repeat:no-repeat;
+  /* 全局光标光：跟随鼠标、铺满整页、位于玻璃面板之下 */
+  .cursor-glow{
+    position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(520px circle at var(--gx,50%) var(--gy,50%),rgba(233,156,182,.20),transparent 62%),
+      radial-gradient(360px circle at var(--gx,50%) var(--gy,50%),rgba(255,255,255,.32),transparent 58%);
+    opacity:0;transition:opacity .45s ease;
   }
-  .order-card::after,.persona-card::after,.row-item::after,.card::after{
-    content:'';position:absolute;inset:0;pointer-events:none;border-radius:inherit;
-    background:radial-gradient(220px circle at var(--mx) var(--my),rgba(233,156,182,calc(var(--near,0)*.16)),transparent 60%);
-    opacity:calc(var(--near,0));transition:opacity .3s var(--ease-standard);
+  body.cursor-active .cursor-glow{opacity:1}
+  body.dark-mode .cursor-glow{
+    background:
+      radial-gradient(560px circle at var(--gx,50%) var(--gy,50%),rgba(200,178,224,.22),transparent 62%),
+      radial-gradient(380px circle at var(--gx,50%) var(--gy,50%),rgba(255,255,255,.10),transparent 58%);
   }
-  body.dark-mode .order-card::after,body.dark-mode .persona-card::after,body.dark-mode .row-item::after,body.dark-mode .card::after{
-    background:radial-gradient(220px circle at var(--mx) var(--my),rgba(200,178,224,calc(var(--near,0)*.2)),transparent 60%);
+  /* 内容层压在光标光之上 */
+  .app-container{position:relative;z-index:1}
+
+  /* 接近边框 / 玻璃面板时逐渐泛光（距离按到矩形边缘计算，鼠标在内部时最亮） */
+  .card,.order-card,.persona-card,.row-item,.sidebar,.topbar,.login-panel{
+    --near:0;
+    transition:box-shadow .35s ease,border-color .35s ease,transform .35s ease;
+    box-shadow:
+      0 1px 2px rgba(0,0,0,.04),
+      0 10px 30px rgba(0,0,0,.05),
+      0 0 calc(var(--near) * 26px) rgba(233,156,182,calc(var(--near) * .45)),
+      0 0 calc(var(--near) * 56px) rgba(200,162,222,calc(var(--near) * .28));
+    border-color:rgba(233,156,182,calc(.28 + var(--near) * .34));
   }
+  body.dark-mode .card,body.dark-mode .order-card,body.dark-mode .persona-card,body.dark-mode .row-item,
+  body.dark-mode .sidebar,body.dark-mode .topbar,body.dark-mode .login-panel{
+    box-shadow:
+      0 1px 2px rgba(0,0,0,.3),
+      0 10px 30px rgba(0,0,0,.25),
+      0 0 calc(var(--near) * 30px) rgba(200,178,224,calc(var(--near) * .45)),
+      0 0 calc(var(--near) * 64px) rgba(200,178,224,calc(var(--near) * .26));
+    border-color:rgba(200,178,224,calc(.20 + var(--near) * .35));
+  }
+  .card:hover,.order-card:hover,.persona-card:hover,.row-item:hover{transform:translateY(-2px)}
 
   /* 卡片网格节奏 */
   .cards{gap:var(--space-4)}
@@ -295,6 +318,8 @@
 </style>
 </head>
 <body>
+
+<div class="cursor-glow" aria-hidden="true"></div>
 
 <div class="login-overlay" id="login" style="display:none">
   <div class="login-panel">
@@ -1180,24 +1205,43 @@ setInterval(() => { if (TOKEN) { refreshStatus(); if (!document.getElementById('
 <script>
 // 逐级泛光：按鼠标与卡片的距离实时设置 --near（0~1），靠近时彩色泛光逐渐增强
 (function initNearGlow(){
-  let raf = 0, mx = 0, my = 0;
-  const selector = '.order-card,.persona-card,.row-item';
-  function update(){
+  let raf = 0;
+  let mx = -9999, my = -9999;        // 目标位置
+  let cx = -9999, cy = -9999;        // 平滑后的光位置
+  const glow = document.querySelector('.cursor-glow');
+  const selector = '.card,.order-card,.persona-card,.row-item,.sidebar,.topbar,.login-panel';
+  const REACH = 170;                 // 距离边缘多少像素开始泛光
+
+  function frame(){
     raf = 0;
+    // 光点带一点延迟，移动更柔和
+    cx += (mx - cx) * 0.18;
+    cy += (my - cy) * 0.18;
+    if (glow) {
+      glow.style.setProperty('--gx', cx + 'px');
+      glow.style.setProperty('--gy', cy + 'px');
+    }
     for (const el of document.querySelectorAll(selector)) {
       const r = el.getBoundingClientRect();
-      if (r.bottom < 0 || r.top > innerHeight) continue;
-      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      const d = Math.hypot(mx - cx, my - cy);
-      const reach = Math.max(r.width, r.height) * 0.75 + 160;
-      el.style.setProperty('--near', Math.max(0, Math.min(1, 1 - d / reach)).toFixed(3));
-      // 高光跟随鼠标：卡片内坐标（0~100%）
-      el.style.setProperty('--mx', Math.max(0, Math.min(100, ((mx - r.left) / r.width) * 100)).toFixed(1) + '%');
-      el.style.setProperty('--my', Math.max(0, Math.min(100, ((my - r.top) / r.height) * 100)).toFixed(1) + '%');
+      if (r.bottom < -REACH || r.top > innerHeight + REACH) continue;
+      // 到矩形边缘的距离（在内部为 0）
+      const dx = Math.max(r.left - cx, 0, cx - r.right);
+      const dy = Math.max(r.top - cy, 0, cy - r.bottom);
+      const d = Math.hypot(dx, dy);
+      const near = d === 0 ? 1 : Math.max(0, 1 - d / REACH);
+      el.style.setProperty('--near', near.toFixed(3));
     }
   }
-  addEventListener('mousemove', (e) => { mx = e.clientX; my = e.clientY; if (!raf) raf = requestAnimationFrame(update); }, { passive: true });
-  addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(update); }, { passive: true });
+  function request(){ if (!raf) raf = requestAnimationFrame(frame); }
+
+  addEventListener('mousemove', (e) => {
+    mx = e.clientX; my = e.clientY;
+    document.body.classList.add('cursor-active');
+    request();
+  }, { passive: true });
+  addEventListener('mouseleave', () => { mx = -9999; my = -9999; document.body.classList.remove('cursor-active'); request(); });
+  addEventListener('scroll', request, { passive: true });
+  request();
 })();
 </script>
 </body>
