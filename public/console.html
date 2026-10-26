@@ -14,7 +14,9 @@
   html{background:transparent}
   .app-container{display:flex;flex-direction:column;height:100vh;overflow:hidden}
   .topbar{background:rgba(255,255,255,.32);backdrop-filter:blur(50px) saturate(1.8);-webkit-backdrop-filter:blur(50px) saturate(1.8);border:1px solid rgba(255,255,255,.5);border-radius:20px;margin:12px 12px 0 12px;box-shadow:0 8px 32px rgba(0,0,0,.04);z-index:100}
-  .topbar-logo{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--accent)}
+  .topbar-logo{display:inline-flex;align-items:center;gap:10px;font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--accent);line-height:1}
+  .topbar-logo svg{display:block;flex:0 0 22px}
+  .logo-text{display:inline-block;line-height:1.1}
   .status-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;background:rgba(255,255,255,.25);backdrop-filter:blur(24px) saturate(1.2);-webkit-backdrop-filter:blur(24px) saturate(1.2);border:1px solid rgba(255,255,255,.35);border-radius:var(--radius-pill);font-size:12px;font-weight:600;white-space:nowrap}
   .status-dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim)}
   .status-dot.ok{background:#4a9}
@@ -328,6 +330,21 @@
   .section-header-icon svg{width:22px;height:22px}
   .login-icon svg{width:46px;height:46px}
   .field-icon svg{width:18px;height:18px}
+
+  /* 视图切换动画：淡入 + 轻微上移，卡片依次浮现 */
+  @keyframes viewIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .main-content > div:not(.hidden-view){animation:viewIn .32s cubic-bezier(.2,0,0,1) both}
+  .main-content > div:not(.hidden-view) .cards > *{animation:cardIn .36s cubic-bezier(.2,0,0,1) both}
+  .main-content > div:not(.hidden-view) .cards > *:nth-child(2){animation-delay:.03s}
+  .main-content > div:not(.hidden-view) .cards > *:nth-child(3){animation-delay:.06s}
+  .main-content > div:not(.hidden-view) .cards > *:nth-child(4){animation-delay:.09s}
+  .main-content > div:not(.hidden-view) .cards > *:nth-child(5){animation-delay:.12s}
+  .main-content > div:not(.hidden-view) .cards > *:nth-child(6){animation-delay:.15s}
+  .sub-panel:not(.hidden-view){animation:viewIn .3s cubic-bezier(.2,0,0,1) both}
+  @media (prefers-reduced-motion:reduce){
+    .main-content > div,.sub-panel,.cards > *{animation:none!important}
+  }
 </style>
 </head>
 <body>
