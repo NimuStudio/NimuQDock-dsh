@@ -66,11 +66,13 @@ function main() {
     || (process.platform === 'win32' ? 'makensis.exe' : 'makensis');
   const nsi = path.join(ROOT, 'installer', 'installer.nsi');
   const sep = process.platform === 'win32' ? '\\' : '/';
+  // makensis 在 POSIX 上只认 -D；Windows 用 /D
+  const d = process.platform === 'win32' ? '/D' : '-D';
   const args = [
-    `/DAPP_VERSION=${version}`,
-    `/DSEP=${sep}`,
-    `/DPAYLOAD=${payload}`,
-    `/DOUTFILE=${path.join(outDir, `NimuQDock-dsh-${version}-setup.exe`)}`,
+    `${d}APP_VERSION=${version}`,
+    `${d}SEP=${sep}`,
+    `${d}PAYLOAD=${payload}`,
+    `${d}OUTFILE=${path.join(outDir, `NimuQDock-dsh-${version}-setup.exe`)}`,
     nsi,
   ];
   console.log(`[installer] makensis ${args.slice(0, 3).join(' ')} …`);
