@@ -169,8 +169,11 @@ async function detect() {
   if (llama.installed) { setState($('st-llama'), '已安装', 'ok'); $('row-llama').classList.add('disabled'); $('cb-llama').disabled = true; $('cb-llama').checked = false; }
   else { setState($('st-llama'), '未安装', 'warn'); $('cb-llama').checked = true; }
 
-  if (model.installed) { setState($('st-model'), '已安装 · ' + model.models.map(m => m.file.replace('Qwen3-', '').replace('-Q4_K_M.gguf', '')).join(' / '), 'ok'); $('row-model').classList.add('disabled'); $('cb-model').disabled = true; $('cb-model').checked = false; }
-  else { setState($('st-model'), '未安装', 'warn'); $('cb-model').checked = true; }
+  if (model.installed) {
+    const names = model.models.map(m => m.file.replace('Qwen3-', '').replace('-Q4_K_M.gguf', '')).join(' / ');
+    setState($('st-model'), '已安装 · ' + names + '（勾选可更换）', 'ok');
+    $('cb-model').checked = false;
+  } else { setState($('st-model'), '未安装', 'warn'); $('cb-model').checked = true; }
 
   if (!qq.found) $('hint').textContent = '⚠️ 没检测到 QQ 客户端，NapCat 需要它才能登录';
   else $('hint').textContent = '已检测到 QQ：' + qq.path;
@@ -201,7 +204,9 @@ $('btn-install').addEventListener('click', async () => {
   $('log').textContent = '';
   $('done').classList.remove('show');
   const modelKind = (document.querySelector('input[name=mk]:checked') || {}).value || '1.7b';
-  const res = await fetch('/api/install', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items, modelKind }) });
+  // 已装模型时再勾选 = 更换（会先停掉正在跑的推理服务，再替换模型）
+  const forceModel = $('cb-model').checked && Boolean(state?.model?.installed);
+  const res = await fetch('/api/install', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items, modelKind, forceModel }) });
   const { id } = await res.json();
   let lastLogs = 0;
   const timer = setInterval(async () => {

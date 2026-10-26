@@ -62,7 +62,7 @@ function serveStatic(res, file, type) {
   }
 }
 
-async function runInstall(items, modelKind) {
+async function runInstall(items, modelKind, forceModel = false) {
   const id = `job${++jobSeq}`;
   const job = { id, logs: [], done: false, error: null, progress: {}, startedAt: Date.now() };
   jobs.set(id, job);
@@ -87,7 +87,7 @@ async function runInstall(items, modelKind) {
       }
       if (items.includes('model')) {
         log('[3/4] 判断模型');
-        await installModelStep(modelKind, log, progress('model'));
+        await installModelStep(modelKind, log, progress('model'), { force: forceModel });
       }
       if (items.includes('llama')) {
         log('[4/4] 推理引擎');
@@ -140,7 +140,8 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       const items = Array.isArray(body.items) ? body.items : [];
       const modelKind = body.modelKind === '0.6b' ? '0.6b' : '1.7b';
-      const id = await runInstall(items, modelKind);
+      const forceModel = body.forceModel === true;
+      const id = await runInstall(items, modelKind, forceModel);
       return sendJson(res, 200, { id });
     }
 

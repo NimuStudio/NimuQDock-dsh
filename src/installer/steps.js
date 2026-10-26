@@ -26,6 +26,7 @@ export const PATHS = {
   modelsDir: path.join(ROOT, 'models'),
   llamaDir: path.join(ROOT, 'llama'),
   llamaServer: path.join(ROOT, 'llama', 'llama-server.exe'),
+  downloads: path.join(ROOT, 'state', 'downloads'),
 };
 
 const MIRRORS = [
@@ -137,6 +138,16 @@ export async function detect() {
   };
 }
 
+
+/** 停掉正在为「本目录 models/」服务的 llama-server（更换模型前必须停，否则 .gguf 被占用删不掉）。 */
+function stopLocalJudgeServer() {
+  try {
+    const dir = PATHS.modelsDir.replace(/'/g, "''");
+    const ps = `Get-CimInstance Win32_Process -Filter \"Name='llama-server.exe'\" | Where-Object { $_.CommandLine -like '*${dir}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
+    spawnSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', timeout: 15000 });
+  } catch {}
+}
+
 /** 计算文件 SHA256（流式，避免整文件读入内存）。 */
 export async function sha256File(file) {
   const hash = crypto.createHash('sha256');
@@ -145,39 +156,91 @@ export async function sha256File(file) {
 }
 
 /**
- * 下载并校验。
+ * 下载并校验（支持断点续传：目标文件已存在时用 Range 续传）。
  * @param {string} url
  * @param {string} dest
- * @param {{onProgress?: Function, useMirrors?: boolean, sha256?: string}} opts
+ * @param {{onProgress?: Function, useMirrors?: boolean, sha256?: string, resume?: boolean}} opts
  */
-async function download(url, dest, { onProgress = noop, useMirrors = true, sha256 = '' } = {}) {
+export async function downloadFile(url, dest, { onProgress = noop, useMirrors = true, sha256 = '', resume = true, onResume = null, size = 0 } = {}) {
   // 只有 GitHub 资源才走 gh-proxy/ghfast；魔搭等其它源直连（前缀加速反而多一次失败）
   const github = /github\.com|githubusercontent\.com/i.test(url);
   const chain = useMirrors && github ? MIRRORS : [(u) => u];
+  const sizeOf = () => { try { return fs.statSync(dest).size; } catch { return 0; } };
+
+  // 已经完整下过（大小吻合）：直接校验哈希返回，不再请求网络
+  if (resume && size > 0 && sizeOf() === size) {
+    if (!sha256 || (await sha256File(dest)) === sha256) {
+      onProgress(100);
+      return;
+    }
+    try { fs.unlinkSync(dest); } catch {}
+  }
+  // 比预期还大 → 文件损坏，删掉重下
+  if (size > 0 && sizeOf() > size) {
+    try { fs.unlinkSync(dest); } catch {}
+  }
+
   let lastError = null;
   for (const mirror of chain) {
     const target = mirror(url);
-    try {
-      const file = fs.createWriteStream(dest);
-      const res = await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(1800000) });
-      if (!res.ok || !res.body) { file.close(); throw new Error(`HTTP ${res.status}`); }
-      const total = Number(res.headers.get('content-length')) || 0;
-      let received = 0;
-      const stream = Readable.fromWeb(res.body);
-      stream.on('data', (chunk) => {
-        received += chunk.length;
-        if (total) onProgress(Math.min(100, Math.round((received / total) * 100)));
-      });
-      await pipeline(stream, file);
-      onProgress(100);
-      if (sha256) {
-        const actual = await sha256File(dest);
-        if (actual !== sha256) throw new Error(`SHA256 校验失败（期望 ${sha256.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…）`);
+    let attempt = 0;
+    while (true) {
+      attempt += 1;
+      const before = sizeOf();
+      let start = 0;
+      const controller = new AbortController();
+      let idleTimer = setTimeout(() => controller.abort(new Error('下载超时（60s 无数据）')), 60000);
+      const armIdle = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => controller.abort(new Error('下载超时（60s 无数据）')), 60000);
+      };
+      try {
+        const res = await fetch(target, {
+          redirect: 'follow',
+          signal: controller.signal,
+          headers: before > 0 ? { range: `bytes=${before}-` } : {},
+        });
+        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+        // 服务器支持 Range 时续传；返回 200 说明不支持，从头写
+        if (res.status === 206 && before > 0) {
+          start = before;
+          onResume?.(start);
+        }
+        const length = Number(res.headers.get('content-length')) || 0;
+        const total = start + length;
+        let received = start;
+        const file = fs.createWriteStream(dest, { flags: start > 0 ? 'a' : 'w' });
+        const stream = Readable.fromWeb(res.body);
+        stream.on('data', (chunk) => {
+          received += chunk.length;
+          armIdle();
+          if (total) onProgress(Math.min(100, Math.round((received / total) * 100)));
+        });
+        await pipeline(stream, file);
+        clearTimeout(idleTimer);
+        onProgress(100);
+
+        if (sha256) {
+          const actual = await sha256File(dest);
+          if (actual !== sha256) {
+            try { fs.unlinkSync(dest); } catch {}
+            throw new Error(`SHA256 校验失败（期望 ${sha256.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…）`);
+          }
+        }
+        return;
+      } catch (error) {
+        clearTimeout(idleTimer);
+        lastError = error;
+        const msg = String(error?.message ?? '');
+        // 校验失败：内容不对，删掉且别重试（换源也没用）
+        if (/SHA256/.test(msg)) break;
+        const after = sizeOf();
+        const progressed = after > before;
+        // 有进展 → 立刻续传重试（最多 4 次）；完全没进展 → 再试 1 次后换源
+        if (attempt < (progressed ? 4 : 2)) continue;
+        break;
       }
-      return;
-    } catch (error) {
-      lastError = error;
-      try { fs.unlinkSync(dest); } catch {}
     }
   }
   throw lastError ?? new Error('所有下载源均失败');
@@ -217,17 +280,24 @@ export async function installNapCatStep(onLog = noop, onProgress = noop) {
   }
   onLog(`开始下载 NapCat ${NAPCAT.version}（约 34MB，自动走国内镜像）…`);
   fs.mkdirSync(PATHS.napcatDir, { recursive: true });
-  const tmp = path.join(os.tmpdir(), `napcat-ui-${Date.now()}.zip`);
+  // 固定文件名 + 项目内目录：下载中断后再次运行可续传（临时目录可能被系统清理）
+  fs.mkdirSync(PATHS.downloads, { recursive: true });
+  const tmp = path.join(PATHS.downloads, `napcat-${NAPCAT.version}.zip.part`);
+  const zipPath = path.join(PATHS.downloads, `napcat-${NAPCAT.version}.zip`);
   try {
-    await download(NAPCAT.url, tmp, { onProgress, sha256: NAPCAT.sha256 });
+    await downloadFile(NAPCAT.url, tmp, { onProgress, sha256: NAPCAT.sha256, size: NAPCAT.size, onResume: (n) => onLog(`检测到未完成下载，从 ${(n / NAPCAT.size * 100).toFixed(0)}% 续传…`) });
     onLog('下载完成并通过校验，正在解压…');
-    unzip(tmp, PATHS.napcatDir);
+    fs.renameSync(tmp, zipPath);
+    unzip(zipPath, PATHS.napcatDir);
     const nested = path.join(PATHS.napcatDir, 'NapCatShell');
     if (fs.existsSync(path.join(nested, 'napcat.mjs'))) {
       for (const e of fs.readdirSync(nested)) fs.renameSync(path.join(nested, e), path.join(PATHS.napcatDir, e));
       try { fs.rmdirSync(nested); } catch {}
     }
+  } catch (error) {
+    throw error; // 保留 .part，下次续传
   } finally {
+    try { fs.unlinkSync(zipPath); } catch {}
     try { fs.unlinkSync(tmp); } catch {}
   }
   if (!fs.existsSync(marker)) throw new Error('NapCat 解压后缺少 napcat.mjs');
@@ -235,19 +305,31 @@ export async function installNapCatStep(onLog = noop, onProgress = noop) {
 }
 
 /** 下载判断模型（1.7b / 0.6b，版本锁定 + 校验和）。 */
-export async function installModelStep(kind = '1.7b', onLog = noop, onProgress = noop) {
+export async function installModelStep(kind = '1.7b', onLog = noop, onProgress = noop, { force = false } = {}) {
   const src = JUDGE_MODELS[kind] ?? JUDGE_MODELS.large;
   const dest = path.join(PATHS.modelsDir, src.file);
-  if (fs.existsSync(dest) && fs.statSync(dest).size === src.size) {
+  if (!force && fs.existsSync(dest) && fs.statSync(dest).size === src.size) {
     onLog(`模型已存在（大小校验通过）：${src.file}`);
     return dest;
+  }
+  if (force) {
+    stopLocalJudgeServer();
+    await new Promise((r) => setTimeout(r, 600));
+    try { fs.unlinkSync(dest); } catch {}
+    onLog('已选择更换模型，重新下载…');
   }
   fs.mkdirSync(PATHS.modelsDir, { recursive: true });
   onLog(`开始下载判断模型 ${src.file}（约 ${Math.round(src.size / 1048576)}MB）…`);
   const tmp = `${dest}.part`;
-  await download(modelUrl(src), tmp, { onProgress, useMirrors: false, sha256: src.sha256 });
+  await downloadFile(modelUrl(src), tmp, { onProgress, useMirrors: false, sha256: src.sha256, size: src.size, onResume: (n) => onLog(`检测到未完成下载，从 ${(n / src.size * 100).toFixed(0)}% 续传…`) });
   if (fs.statSync(tmp).size !== src.size) throw new Error(`模型大小不符（期望 ${src.size}）`);
   fs.renameSync(tmp, dest);
+  // 只保留当前模型：避免 0.6B/1.7B 同时存在时 start.bat 按"最大"选到旧的那个
+  stopLocalJudgeServer();
+  for (const other of Object.values(JUDGE_MODELS)) {
+    if (other.file === src.file) continue;
+    try { fs.unlinkSync(path.join(PATHS.modelsDir, other.file)); } catch {}
+  }
   onLog(`模型就绪并通过校验：${src.file}`);
   return dest;
 }
@@ -259,12 +341,15 @@ export async function installLlamaStep(onLog = noop, onProgress = noop) {
     return;
   }
   fs.rmSync(PATHS.llamaDir, { recursive: true, force: true });
-  const tmp = path.join(os.tmpdir(), `${LLAMA.asset}-${Date.now()}.zip`);
+  fs.mkdirSync(PATHS.downloads, { recursive: true });
+  const tmp = path.join(PATHS.downloads, `llama-${LLAMA.build}.zip.part`);
+  const zipPath = path.join(PATHS.downloads, `llama-${LLAMA.build}.zip`);
   onLog(`开始下载推理引擎（llama.cpp ${LLAMA.build} CPU 版，约 23MB）…`);
   try {
-    await download(LLAMA.url, tmp, { onProgress, sha256: LLAMA.sha256 });
+    await downloadFile(LLAMA.url, tmp, { onProgress, sha256: LLAMA.sha256, size: LLAMA.size, onResume: (n) => onLog(`检测到未完成下载，从 ${(n / LLAMA.size * 100).toFixed(0)}% 续传…`) });
     onLog('下载完成并通过校验，正在解压…');
-    unzip(tmp, PATHS.llamaDir);
+    fs.renameSync(tmp, zipPath);
+    unzip(zipPath, PATHS.llamaDir);
     const entries = fs.readdirSync(PATHS.llamaDir, { withFileTypes: true });
     const sub = entries.find((e) => e.isDirectory());
     if (sub) {
@@ -272,7 +357,10 @@ export async function installLlamaStep(onLog = noop, onProgress = noop) {
       for (const e of fs.readdirSync(dir)) fs.renameSync(path.join(dir, e), path.join(PATHS.llamaDir, e));
       try { fs.rmdirSync(dir); } catch {}
     }
+  } catch (error) {
+    throw error; // 保留 .part，下次续传
   } finally {
+    try { fs.unlinkSync(zipPath); } catch {}
     try { fs.unlinkSync(tmp); } catch {}
   }
   if (!fs.existsSync(PATHS.llamaServer)) throw new Error('解压后缺少 llama-server.exe');
