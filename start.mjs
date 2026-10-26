@@ -590,18 +590,103 @@ async function startBridge(dshHome) {
   return true;
 }
 
+
+/** 判断模型服务是否在线。 */
+async function judgeHealthy(url) {
+  try {
+    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(1500) });
+    return res.ok;
+  } catch {
+    try {
+      const res = await fetch(`${url}/v1/models`, { signal: AbortSignal.timeout(1500) });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** 等待模型服务起来。 */
+async function waitJudge(url, ms = 30000) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await judgeHealthy(url)) return true;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return false;
+}
+
+/** models/ 目录下第一个 .gguf。 */
+function findFirstGguf(dir) {
+  try {
+    const hit = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.gguf'));
+    return hit ? path.join(dir, hit) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 找 llama-server：项目内置 llama/ → 环境变量 LLAMA_SERVER → PATH。 */
+function findLlamaServer() {
+  const bundled = path.join(ROOT, 'llama', process.platform === 'win32' ? 'llama-server.exe' : 'llama-server');
+  if (fs.existsSync(bundled)) return bundled;
+  if (process.env.LLAMA_SERVER && fs.existsSync(process.env.LLAMA_SERVER)) return process.env.LLAMA_SERVER;
+  const which = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['llama-server'], { encoding: 'utf8' });
+  if (which.status === 0 && which.stdout) return which.stdout.split(/\r?\n/)[0].trim();
+  return null;
+}
+
+/** 接话判断：有本地模型就拉起 llama-server，否则保持规则模式（不影响使用）。 */
+async function ensureJudgeModel() {
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8')); } catch {}
+  const judged = cfg.judge ?? {};
+  if (String(judged.enabled ?? 'auto') === 'off') {
+    console.log('ℹ️ 接话判断：已禁用 → 规则模式');
+    return;
+  }
+  const url = String(judged.url ?? 'http://127.0.0.1:8080').replace(/\/+$/, '');
+  if (await judgeHealthy(url)) {
+    console.log('✅ 接话判断：本地模型服务已在运行');
+    return;
+  }
+  const model = (judged.modelPath && fs.existsSync(judged.modelPath))
+    ? judged.modelPath
+    : findFirstGguf(path.join(ROOT, 'models'));
+  const server = (judged.llamaServer && fs.existsSync(judged.llamaServer))
+    ? judged.llamaServer
+    : findLlamaServer();
+  if (!model || !server) {
+    console.log('ℹ️ 接话判断：规则模式（未找到本地模型/llama-server，可选安装，不影响使用）');
+    return;
+  }
+  const port = Number(new URL(url).port) || 8080;
+  console.log(`⏳ 启动本地判断模型：${path.basename(model)} …`);
+  try {
+    const child = spawn(server, ['-m', model, '-c', '2048', '-ngl', '99', '--jinja', '--host', '127.0.0.1', '--port', String(port)], {
+      cwd: ROOT, detached: true, stdio: 'ignore',
+    });
+    child.unref();
+  } catch (error) {
+    console.log(`⚠️ 启动模型失败：${error?.message ?? error} → 规则模式`);
+    return;
+  }
+  const ok = await waitJudge(url, 30000);
+  console.log(ok ? '✅ 接话判断：本地模型已就绪（约 40~80ms/条）' : '⚠️ 模型启动超时 → 本次先用规则判断');
+}
+
 async function main() {
   divider();
   console.log('  🔌 NimuQDock-dsh · 启动');
   divider();
 
-  console.log('\n[1/6] 检查 Node.js …');
+  console.log('\n[1/7] 检查 Node.js …');
   if (!checkNode()) { rl.close(); return; }
 
-  console.log('\n[2/6] 配置 …');
+  console.log('\n[2/7] 配置 …');
   const { admin, bot } = await ensureConfig();
 
-  console.log('\n[3/6] DeepSeek Harness …');
+  console.log('\n[3/7] DeepSeek Harness …');
   const { dshHome, baseUrl, fatal } = await ensureDsh();
   if (fatal) {
     console.log('\n❌ DeepSeek Harness 安装失败，已停止后续步骤。请检查网络后重试，或手动运行 install.bat。');
@@ -610,13 +695,16 @@ async function main() {
   }
   patchDshBaseUrl(baseUrl);
 
-  console.log('\n[4/6] 安装预设 …');
+  console.log('\n[4/7] 安装预设 …');
   runSetupDsh(dshHome);
 
-  console.log('\n[5/6] NapCat + 机器人上线 …');
+  console.log('\n[5/7] 判断模型（可选）…');
+  await ensureJudgeModel();
+
+  console.log('\n[6/7] NapCat + 机器人上线 …');
   await ensureNapCat(bot);
 
-  console.log('\n[6/6] 启动桥接 …');
+  console.log('\n[7/7] 启动桥接 …');
   await startBridge(dshHome);
 
   console.log('\n✅ 完成！');

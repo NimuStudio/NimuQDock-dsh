@@ -161,6 +161,34 @@ npm install
 > 想两边同时用，给机器人单独准备一份 QQ（把现有 QQ 安装目录整个复制一份即可），然后在 `config.json` 里设置
 > `"napcat": { "qqPath": "D:\\QQ-bot\\QQ.exe" }` —— `start.bat` 会优先用这个路径，你自己的 QQ 不受影响。
 
+
+### 接话判断：规则 / 本地模型（可选）
+
+agent 模式下「这条消息该不该接」有两种判断方式，桥接会自动选择：
+
+| 方式 | 条件 | 说明 |
+|---|---|---|
+| **规则**（默认） | 未安装模型 | 基于 @/引用/第二人称/问句/冷却/连续接话等信号打分 |
+| **本地模型** | 检测到 llama-server + GGUF | 小模型判断语义（是否在叫它），上下文信号仍由规则兜底 |
+
+- 模型：[Qwen3-0.6B Q4_K_M](https://www.modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF)（约 379 MB，Apache-2.0）
+- 推理：[llama.cpp](https://github.com/ggml-org/llama.cpp) 的 `llama-server`（发行包自带 CPU 版，约 23 MB）
+- 安装：`npm run fetch-judge`（或双击发行包里的脚本；模型放进 `models/`，推理放进 `llama/`）
+- 自动回退：模型没装、启动超时、或输出异常时，**自动退回规则**，聊天不受影响
+- chat 模式：不经过判断，所有消息原样交给 DSH
+
+`config.json` 相关配置：
+
+```json
+"judge": {
+  "enabled": "auto",          // auto | on | off
+  "url": "http://127.0.0.1:8080",
+  "modelPath": "",            // 留空自动用 models/ 下的第一个 .gguf
+  "llamaServer": "",          // 留空自动用 llama/llama-server.exe；有 N 卡可指向自己的 CUDA 版
+  "timeoutMs": 2500
+}
+```
+
 ### ③ 填写 config.json
 
 ```bash

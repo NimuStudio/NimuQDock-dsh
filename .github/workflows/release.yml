@@ -65,6 +65,11 @@ jobs:
           ls "${GITHUB_WORKSPACE}/node/node.exe"
           echo "portable node ready"
 
+      # 接话判断模型 + CPU 版 llama.cpp（合并进发行包，用户下载即用）
+      - name: Fetch judge model (GGUF) and llama.cpp CPU build
+        run: node scripts/fetch-judge-model.mjs
+        timeout-minutes: 30
+
       - name: Build zip (UTF-8 filenames)
         run: node scripts/make-release-zip.mjs "${{ steps.ver.outputs.version }}" "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-win-x64.zip"
 

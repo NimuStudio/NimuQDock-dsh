@@ -79,5 +79,12 @@
     },
     "noActionLimit": 3
   },
-  "dshCheckIntervalMs": 5000
+  "dshCheckIntervalMs": 5000,
+  "judge": {
+    "enabled": "auto",
+    "url": "http://127.0.0.1:8080",
+    "modelPath": "",
+    "llamaServer": "",
+    "timeoutMs": 2500
+  }
 }

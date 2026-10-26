@@ -49,7 +49,7 @@ export class Router {
    * persona 为 agent 模式依赖（main.js 装配）；chat 模式可缺省。
    * mode 覆盖 state/mode.json（测试用，不落盘）。
    */
-  constructor({ api, bot, cfg, sessions, sender, log, persona, mode }) {
+  constructor({ api, bot, cfg, sessions, sender, log, persona, mode, judge }) {
     this.api = api;
     this.bot = bot;
     this.cfg = cfg;
@@ -63,6 +63,7 @@ export class Router {
     this.memberNameCache = new Map(); // `${groupId}:${userId}` -> { name, at }
     this.knownAgentTokens = new Set(); // agent 模式会话令牌（M4；Sender 审计用）
     this.persona = persona ?? null; // agent 模式：状态/记忆/令牌（main.js 装配）
+    this.judge = judge ?? null;     // agent 模式：双路判断的模型侧（可选）
     this.unread = new Map();        // key -> Array<未读消息>（agent 模式）
     this.readSeqs = new Map();      // key -> lastReadSeq（mark_read 水位）
     this.noActionCounts = new Map(); // key -> 连续无行动唤醒次数（agent 模式防卡死）
@@ -582,18 +583,46 @@ export class Router {
     const nowMs = Date.now();
     const lastTo = this.lastReplyUser.get(key);
     const continuing = !!(lastTo && String(lastTo.userId) === String(msg.userId) && nowMs - lastTo.at < 240000 && msg.kind !== 'private');
-    const { verdict, reason } = computeScore({
-      attention,
-      interest,
-      energy: st.energy,
-      mood: st.mood,
-      lastReplyAt: st.stats?.lastReplyAt ?? 0,
-      presence: st.presence,
-      continuing,
-      consecutive: this.replyStreak.get(key) ?? 0,
-      now: nowMs,
-    }, this.cfg);
-    this.log(`[agent] ${key} 评分 attention=${attention.toFixed(2)} interest=${interest.toFixed(2)}${continuing ? ' [延续]' : ''} streak=${this.replyStreak.get(key) ?? 0} → ${verdict}（${reason}）`);
+
+    // 双路判断：模型可用时由模型判断语义（只看最新消息），失败/未启用时回退规则。
+    // directed（@/引用/私聊）仍走规则——那是确定性信号，没必要问模型。
+    let modelVerdict = null;
+    if (this.judge && !directed) {
+      modelVerdict = await this.judge.judge(textContent).catch(() => null);
+    }
+    let verdict;
+    let reason;
+    if (modelVerdict) {
+      // 安全阀 1：刚发过言 5 秒内不连发（模型说要接也压住）
+      // 安全阀 2：模型说 YES 时，规则关注度太低（既没问句也没人称/名字）→ 不接。
+      //   0.6B 偶发误判（如「你们真有意思」），这层门槛把误判挡掉；
+      //   而「看不出来是你自己吗」(0.72)、「你觉得呢」(0.6) 等正常指向都能通过。
+      const ruleSupports = attention >= 0.3;
+      if (modelVerdict.reply && st.stats?.lastReplyAt && nowMs - st.stats.lastReplyAt < 5000) {
+        verdict = 'skip';
+        reason = 'burst-guard';
+      } else if (modelVerdict.reply && !ruleSupports) {
+        verdict = 'skip';
+        reason = 'model-yes-but-low-attention';
+      } else {
+        verdict = modelVerdict.reply ? 'wake' : 'skip';
+        reason = modelVerdict.reply ? 'model-yes' : 'model-no';
+      }
+    } else {
+      ({ verdict, reason } = computeScore({
+        attention,
+        interest,
+        energy: st.energy,
+        mood: st.mood,
+        lastReplyAt: st.stats?.lastReplyAt ?? 0,
+        presence: st.presence,
+        continuing,
+        consecutive: this.replyStreak.get(key) ?? 0,
+        now: nowMs,
+      }, this.cfg));
+    }
+    const judgeTag = modelVerdict ? ` model=${modelVerdict.reply ? 'YES' : 'NO'}` : '';
+    this.log(`[agent] ${key} 评分 attention=${attention.toFixed(2)} interest=${interest.toFixed(2)}${continuing ? ' [延续]' : ''} streak=${this.replyStreak.get(key) ?? 0}${judgeTag} → ${verdict}（${reason}）`);
 
     if (verdict !== 'wake') return;
     // 5) 唤醒投递（触发消息的图片直通进 prompt，AI 打开上下文即可看到，不依赖工具调用）

@@ -7,7 +7,10 @@
 <link rel="stylesheet" href="ysti-glass.css">
 <style>
   /* ── 控制台专用补充样式（基于 Nimu Glass UI 组件体系） ── */
-  body{background:linear-gradient(135deg,#b0c8f0 0%,#f0d8c0 25%,#b8d8f0 50%,#d8c0f0 75%,#c0d0f0 100%)!important;background-attachment:fixed!important}
+  /* 品牌背景：薄荷 / 薰衣草 / 粉（取自工作室官网 ysti.com.cn 的玻璃拟态体系） */
+  body{background-color:#f4f2f6!important;background-image:radial-gradient(1100px 760px at 6% -6%,rgba(203,236,189,.70),transparent 62%),radial-gradient(980px 700px at 96% 2%,rgba(249,192,208,.62),transparent 60%),radial-gradient(900px 860px at 70% 104%,rgba(180,140,205,.42),transparent 66%)!important;background-attachment:fixed!important}
+  body.light-mode{background-color:#faf9fb!important;background-image:radial-gradient(900px 600px at 8% -10%,rgba(203,236,189,.35),transparent 60%),radial-gradient(900px 600px at 100% 0%,rgba(249,192,208,.30),transparent 60%)!important}
+  body.dark-mode{background-color:#14161a!important;background-image:radial-gradient(900px 600px at 6% -8%,rgba(85,143,66,.22),transparent 60%),radial-gradient(900px 640px at 98% 2%,rgba(180,140,205,.20),transparent 62%)!important}
   html{background:transparent}
   .app-container{display:flex;flex-direction:column;height:100vh;overflow:hidden}
   .topbar{background:rgba(255,255,255,.32);backdrop-filter:blur(50px) saturate(1.8);-webkit-backdrop-filter:blur(50px) saturate(1.8);border:1px solid rgba(255,255,255,.5);border-radius:20px;margin:12px 12px 0 12px;box-shadow:0 8px 32px rgba(0,0,0,.04);z-index:100}
@@ -125,6 +128,24 @@
   .section-header-icon{transition:transform .25s var(--spring),box-shadow .3s ease}
   .section-header-icon:hover{transform:scale(1.06);box-shadow:0 4px 14px rgba(180,140,205,.18)}
   .toast{top:80px}
+
+  /* ── 三主题表面覆盖（玻璃体系：深色用低透明白，浅色用纯白） ── */
+  body.light-mode .topbar,body.light-mode .sidebar,body.light-mode .main-content{background:#fff!important;border-color:rgba(0,0,0,.06)!important;box-shadow:0 8px 32px rgba(0,0,0,.05)!important}
+  body.light-mode .order-card,body.light-mode .persona-card,body.light-mode .row-item{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.06)!important}
+  body.light-mode .game-btn{background:transparent!important;border-color:transparent!important;color:rgba(44,36,22,.55)!important}
+  body.light-mode .game-btn.active{background:rgba(180,140,205,.14)!important;color:#7d4f9c!important;border-color:rgba(180,140,205,.25)!important}
+  body.dark-mode .topbar,body.dark-mode .sidebar,body.dark-mode .main-content{background:rgba(255,255,255,.06)!important;border-color:rgba(255,255,255,.12)!important;box-shadow:0 8px 32px rgba(0,0,0,.25)!important}
+  body.dark-mode .order-card,body.dark-mode .persona-card,body.dark-mode .row-item{background:rgba(255,255,255,.06)!important;border-color:rgba(255,255,255,.12)!important}
+  body.dark-mode .game-btn{background:rgba(255,255,255,.05)!important;border-color:rgba(255,255,255,.10)!important;color:#b6ada0!important}
+  body.dark-mode .game-btn:hover{background:rgba(255,255,255,.10)!important}
+  body.dark-mode .game-btn.active{background:rgba(200,178,224,.18)!important;border-color:rgba(200,178,224,.35)!important;color:#e8dcf5!important}
+  body.dark-mode .section-header-icon{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.14)!important}
+  body.dark-mode .status-pill{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.14)!important;color:#e7e1d6!important}
+  body.dark-mode .sub-tab{background:rgba(255,255,255,.06)!important;border-color:rgba(255,255,255,.14)!important;color:#b6ada0!important}
+  body.dark-mode .log-area{background:rgba(0,0,0,.35)!important;border-color:rgba(255,255,255,.10)!important;color:#f4f1ea!important}
+  /* 品牌渐变字标（取官网按钮渐变） */
+  .logo-text{background:linear-gradient(135deg,#b48ccd,#eb9cb6 55%,#558f42);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800}
+
 </style>
 </head>
 <body>
@@ -146,7 +167,7 @@
 <div class="app-container" id="app" style="display:none">
   <div class="topbar">
     <div class="topbar-left">
-      <span class="topbar-logo">🐳 NimuQDock-dsh</span>
+      <span class="topbar-logo">🐳 <span class="logo-text">NimuQDock-dsh</span></span>
     </div>
     <div class="topbar-right" style="display:flex;align-items:center;gap:10px">
       <span class="status-pill mode" id="bMode">模式 -</span>

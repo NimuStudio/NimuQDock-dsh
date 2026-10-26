@@ -11,3 +11,5 @@ state/
 NapCatShell/
 napcat*.exe
 *.dll
+models/
+llama/

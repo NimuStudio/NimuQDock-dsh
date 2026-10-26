@@ -19,6 +19,7 @@ import { NodeApiClient, unwrap } from './transport/dsh-client.js';
 import { DshV2ApiClient } from './transport/dsh-client-v2.js';
 import { createDshAuth, resolveDshHome } from './transport/dsh-auth.js';
 import { SessionManager } from './core/session-manager.js';
+import { ReplyJudge } from './persona/reply-judge.js';
 import { Router } from './core/router.js';
 import { Sender } from './core/sender.js';
 import { startPump } from './core/pump.js';
@@ -67,9 +68,18 @@ async function main() {
   const personaState = new PersonaStateStore({ stateDir: personaDir, cfg, getPersona: (key) => personaForKey(key, cfg), log });
   const personaMemory = new MemoryStore({ stateDir: personaDir, cfg, log });
   const personaTokens = new TokenStore({ stateDir: personaDir, log });
+  // 接话判断：模型可用时用模型，否则规则（chat 模式不经过这里）
+  const judge = new ReplyJudge({ cfg, log, botName: () => bot.nickname || '' });
+  judge.available().then((ok) => {
+    if (String(cfg.judge?.enabled ?? 'auto') === 'off') log('接话判断：规则模式（模型已禁用）');
+    else if (ok) log('接话判断：本地模型已就绪');
+    else log('接话判断：规则模式（未检测到本地模型，可选安装）');
+  }).catch(() => {});
+
   const router = new Router({
     api, bot, cfg, sessions, sender, log,
     persona: { state: personaState, memory: personaMemory, tokens: personaTokens },
+    judge,
   });
 
   // 运行状态快照（控制台 /api/status 使用）
