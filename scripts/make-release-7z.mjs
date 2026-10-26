@@ -36,7 +36,7 @@ const SLIM = process.argv.includes('--slim');
 const EXCLUDE_TOP_DIRS = new Set([
   '.git', '.github', 'state', 'dist', 'docs', 'assets', 'tests', 'scripts',
   // 安全：运行时/本地目录绝不进包（.dsh 含凭据；NapCatShell 含 QQ 登录数据与本地号码）
-  '.dsh', 'NapCatShell', 'dsh-app', 'pnpm-tool', '_backup', '_probe',
+  '.dsh', 'NapCatShell', 'dsh-app', 'pnpm-tool', '_backup', '_probe', 'dataset',
   ...(SLIM ? ['models', 'llama'] : []),
 ]);
 const EXCLUDE_FILES = new Set(['config.json', '.env', '.env.local', '.env.production']);

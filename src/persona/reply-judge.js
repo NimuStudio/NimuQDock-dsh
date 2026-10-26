@@ -80,7 +80,9 @@ export class ReplyJudge {
       // 某些版本没有 /health，退回 /v1/models
       try {
         const res = await fetch(`${this.baseUrl}/v1/models`, { signal: AbortSignal.timeout(1500) });
-        this.healthy = res.ok;
+        const json = await res.json().catch(() => null);
+        // 必须像 OpenAI 兼容的模型列表（有 data 数组），避免把任意本地 HTTP 服务误判成 llama-server
+        this.healthy = Boolean(json && Array.isArray(json.data) && json.data.length > 0);
       } catch {
         this.healthy = false;
       }

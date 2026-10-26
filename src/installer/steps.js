@@ -147,9 +147,11 @@ export async function detect() {
 }
 
 /** 流式下载，onProgress(百分比|null)。 */
-async function download(url, dest, onProgress = noop) {
+async function download(url, dest, onProgress = noop, useMirrors = true) {
+  // 只有 GitHub 资源才走 gh-proxy/ghfast；魔搭等其它源直连（前缀加速反而多一次失败）
+  const chain = useMirrors && /github\.com|githubusercontent\.com/i.test(url) ? MIRRORS : [(u) => u];
   let lastError = null;
-  for (const mirror of MIRRORS) {
+  for (const mirror of chain) {
     const target = mirror(url);
     try {
       const res = await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(1800000) });
@@ -235,7 +237,7 @@ export async function installModelStep(kind = '1.7b', onLog = noop, onProgress =
   const url = `https://www.modelscope.cn/models/${src.repo}/resolve/master/${src.file}`;
   onLog(`开始下载判断模型 ${src.file}（约 ${Math.round(src.minBytes / 1048576)}MB）…`);
   const tmp = `${dest}.part`;
-  await download(url, tmp, onProgress);
+  await download(url, tmp, onProgress, false);
   const size = fs.statSync(tmp).size;
   if (size < src.minBytes) throw new Error(`模型文件不完整（${size} bytes）`);
   fs.renameSync(tmp, dest);

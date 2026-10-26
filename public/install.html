@@ -155,6 +155,7 @@ function setState(el, text, cls) {
 
 async function detect() {
   const res = await fetch('/api/detect');
+  if (res.status === 401) { $('hint').textContent = '请通过安装器窗口里打开的链接访问（需要 token）'; return; }
   state = await res.json();
   const { dsh, napcat, qq, model, llama } = state;
 

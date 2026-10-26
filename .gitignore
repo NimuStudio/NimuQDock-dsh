@@ -13,3 +13,4 @@ napcat*.exe
 *.dll
 models/
 llama/
+dataset/

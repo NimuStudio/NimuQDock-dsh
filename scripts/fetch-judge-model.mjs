@@ -43,9 +43,11 @@ const MIRRORS = [
 
 const log = (msg) => console.log(`[fetch-judge] ${msg}`);
 
-async function download(url, dest) {
+async function download(url, dest, useMirrors = true) {
+  // 只有 GitHub 资源走镜像；魔搭（模型）直连
+  const chain = useMirrors && /github\.com|githubusercontent\.com/i.test(url) ? MIRRORS : [(u) => u];
   let lastError = null;
-  for (const mirror of MIRRORS) {
+  for (const mirror of chain) {
     const target = mirror(url);
     try {
       log(`下载 ${target.slice(0, 90)}…`);
@@ -91,7 +93,7 @@ async function fetchModel(force) {
     return dest;
   }
   const tmp = `${dest}.part`;
-  await download(MODEL_URL, tmp);
+  await download(MODEL_URL, tmp, false);
   const size = fs.statSync(tmp).size;
   if (size < MODEL_MIN_BYTES) throw new Error(`模型文件不完整（${size} bytes）`);
   fs.renameSync(tmp, dest);

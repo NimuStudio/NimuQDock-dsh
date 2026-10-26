@@ -22,7 +22,7 @@ const EXCLUDE_TOP_DIRS = new Set([
   //  - NapCatShell：QQ 登录数据 + 本地 onebot 配置（含机器人 QQ 号）
   //  - dsh-app / pnpm-tool：本机安装的组件，体积大且与机器相关
   //  - _backup / _probe：维护者本地目录（备份、探针脚本）
-  '.dsh', 'NapCatShell', 'dsh-app', 'pnpm-tool', '_backup', '_probe',
+  '.dsh', 'NapCatShell', 'dsh-app', 'pnpm-tool', '_backup', '_probe', 'dataset',
 ]);
 const EXCLUDE_FILES = new Set(['config.json']);
 const EXCLUDE_EXT = new Set(['.log', '.tmp']);

@@ -13,7 +13,7 @@ const MAX_BYTES = 5 * 1024 * 1024; // 超过 5MB 自动轮转一份 .1
 /**
  * 追加一条判断决策。
  * @param {string} file 目标文件（通常 <state>/judge-decisions.jsonl）
- * @param {{key?: string, text: string, reply: boolean, source: 'model'|'rules',
+ * @param {{text: string, reply: boolean, source: 'model'|'rules',
  *          reason?: string, attention?: number, modelSaid?: boolean|null}} row
  */
 export function recordDecision(file, row) {
@@ -24,7 +24,6 @@ export function recordDecision(file, row) {
     } catch {}
     const line = JSON.stringify({
       at: new Date().toISOString(),
-      conv: row.key ?? '',
       text: redactSensitiveText(String(row.text ?? '').slice(0, 400)),
       reply: Boolean(row.reply),
       source: row.source,
