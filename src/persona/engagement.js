@@ -12,6 +12,11 @@
 // 其余 score ≥ threshold 唤醒，diving 模式阈值 ×1.5。
 import { containsAny, QUESTION_MARKERS } from './lexicon.js';
 
+/** 「你自己 / 您本人」这类把对方本人称作"你"的说法 → 明确在对 ta 说话（无 @ 也算）。 */
+const SELF_ADDRESS = /你自己|您自己|你本人|您本人/;
+/** 一般第二人称。 */
+const SECOND_PERSON = /你|您/;
+
 const DEFAULT_ENGAGEMENT = {
   wAttention: 2.5,
   wInterest: 1.8,
@@ -26,24 +31,33 @@ const DEFAULT_ENGAGEMENT = {
  * 被点名程度（0~1）。
  * @param {string} text 消息文本
  * @param {{directed: boolean, aliases: string[], wakeKeywords: string[],
- *          toOthers?: boolean}} ctx
+ *          toOthers?: boolean, recentBotTurn?: boolean}} ctx
  *          toOthers：本条消息明显在 @/引用「别人」（不是机器人）——里面的"你"
  *          大概率指对方，第二人称提问不加权，避免 A 问 B 时机器人凑热闹
+ *          recentBotTurn：机器人刚在本群说过话/发过图——此时的第二人称多半是在跟它说话
  */
-export function computeAttention(text, { directed = false, aliases = [], wakeKeywords = [], toOthers = false } = {}) {
+export function computeAttention(text, { directed = false, aliases = [], wakeKeywords = [], toOthers = false, recentBotTurn = false } = {}) {
   // 剥离引用标注（[引用 某人：原文]）：被引用的原文不该参与"谁在叫我"的判断
   const s = String(text ?? '').replace(/\[引用 [^\]]*\]/g, '');
   // directed：真正被点名（@/引用/私聊）→ 必回
   if (directed) return 1.0;
   // wakeKeywords：管理员配置的显式唤醒词 → 强指向（仍必回）
   if (containsAny(s, wakeKeywords ?? [])) return 0.9;
+  // 第二人称直指（真人聊天里最常见的「找你」方式，无 @ 也算）：
+  // 「看不出来是**你自己**吗」「**你**刚才说的那个」——把人称作"你/你自己"就是在对 ta 说话。
+  // 但消息在 @/引用别人时，"你"多半指对方 → 不加权。
+  if (!toOthers && SELF_ADDRESS.test(s)) return recentBotTurn ? 0.85 : 0.72;
   // aliases：提到名字只是参与信号（如「@小明 小鲸鱼是啥」——@的是别人，提名字≠被点名），
   // 不触发 addressed 必回，仅提高参与评分
   if (containsAny(s, aliases ?? [])) return 0.6;
-  // 第二人称直接提问（「你为什么…」「你是不是…」「你是谁」「你在干嘛」等，无 @ 但在直接问机器人）：
+  // 第二人称 + 问句（「你觉得呢」「你刚才说的是真的吗」）：无 @ 但在直接问机器人
+  if (!toOthers && SECOND_PERSON.test(s) && containsAny(s, QUESTION_MARKERS)) {
+    return recentBotTurn ? 0.7 : 0.6;
+  }
+  // 第二人称 + 动作词（「你看这个」「你说呢」等，无问号）：
   // 真人对话里对方刚被你回过话、接着不带 @ 追问很常见，不给够权重就会被迫句句 @。
   // 但若消息在 @/引用别人，则"你"多半指对方 → 不加权（防止 A↔B 互聊时机器人凑热闹）。
-  if (!toOthers && containsAny(s, QUESTION_MARKERS) && /你[^。！？!?\n]{0,3}(?:为什么|为啥|怎么|是不是|凭什么|是谁|是啥|行吗|可以吗|在|干嘛|在哪|去哪|觉得|认为|喜欢|讨厌|想|会|能|敢|知道|认识|看|听|说|有|要|玩|吃|去)/.test(s)) {
+  if (!toOthers && /你[^。！？!?\n]{0,3}(?:为什么|为啥|怎么|是不是|凭什么|是谁|是啥|行吗|可以吗|在|干嘛|在哪|去哪|觉得|认为|喜欢|讨厌|想|会|能|敢|知道|认识|看|听|说|有|要|玩|吃|去)/.test(s)) {
     return 0.55;
   }
   if (containsAny(s, QUESTION_MARKERS)) return 0.35;

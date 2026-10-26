@@ -556,11 +556,14 @@ export class Router {
       (seg) => (seg.type === 'at' && seg.data?.qq != null && String(seg.data.qq) !== '0' && String(seg.data.qq) !== String(msg.selfId))
         || (seg.type === 'reply' && !quoteTargetIsSelf),
     );
+    // 机器人刚在本会话说过话（5 分钟内）→ 对方紧接着用的第二人称多半是在跟它说
+    const recentBotTurn = Boolean(st.stats?.lastReplyAt && Date.now() - st.stats.lastReplyAt < 5 * 60 * 1000);
     const attention = computeAttention(textContent, {
       directed,
       aliases: personaDef.aliases,
       wakeKeywords: this.cfg.social?.wakeKeywords ?? [],
       toOthers,
+      recentBotTurn,
     });
     const interest = computeInterest(textContent, {
       topics: memory.topicKeywords(key),

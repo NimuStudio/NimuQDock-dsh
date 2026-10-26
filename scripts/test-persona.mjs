@@ -181,6 +181,12 @@ import('../src/persona/memory.js').then(async ({ MemoryStore, extractGrams }) =>
   check('attention 唤醒词=0.9', computeAttention('机器人过来', { aliases: [], wakeKeywords: ['机器人'] }) === 0.9);
   check('attention 问句=0.35', computeAttention('这个怎么用', { aliases: [], wakeKeywords: [] }) === 0.35);
   check('attention 普通=0.05', computeAttention('今天天气不错', { aliases: [], wakeKeywords: [] }) === 0.05);
+  // 第二人称直指（无 @）：真人聊天里最常见「找你」的方式
+  check('attention 你自己=0.72', computeAttention('看不出来是你自己吗', { aliases: [], wakeKeywords: [] }) === 0.72);
+  check('attention 你自己+刚说过话=0.85', computeAttention('看不出来是你自己吗', { aliases: [], wakeKeywords: [], recentBotTurn: true }) === 0.85);
+  check('attention 你+问句=0.6', computeAttention('你觉得呢', { aliases: [], wakeKeywords: [] }) === 0.6);
+  check('attention @别人时的你不加权', computeAttention('@小明 你觉得呢', { aliases: [], wakeKeywords: [], toOthers: true }) < 0.5);
+  check('attention 你自己也遵守 @别人规则', computeAttention('@小明 你自己去吧', { aliases: [], wakeKeywords: [], toOthers: true }) < 0.5);
 
   check('interest 命中', computeInterest('原神抽卡', { topics: ['原神'], interests: [], memories: [] }) >= 0.5);
   check('interest 无关=0', computeInterest('吃饭了吗', { topics: ['原神'], interests: [], memories: [] }) === 0);
