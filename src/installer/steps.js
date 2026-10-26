@@ -113,39 +113,103 @@ export function detectQQ() {
   return null;
 }
 
+/** 判断目录是否像一个 NimuQDock 项目（有 src/main.js + package.json）。 */
+function looksLikeProject(dir) {
+  try {
+    return fs.existsSync(path.join(dir, 'src', 'main.js')) && fs.existsSync(path.join(dir, 'package.json'));
+  } catch { return false; }
+}
+
+/** 在常见位置找已有项目（安装目录、用户目录、盘符下一层）。返回去重后的目录列表。 */
+export function findExistingProjects() {
+  const found = new Set();
+  const add = (dir) => {
+    try { if (looksLikeProject(dir)) found.add(path.resolve(dir)); } catch {}
+  };
+  // 当前安装目录 + 常见用户目录
+  add(ROOT);
+  const home = os.homedir();
+  for (const base of [home, process.env.LOCALAPPDATA, process.env.APPDATA, process.env.ProgramFiles]) {
+    if (!base) continue;
+    for (const name of ['NimuQDock-dsh', 'napcat-bridge', 'NimuQDock']) add(path.join(base, name));
+  }
+  // 盘符根目录：X:\<dir> 与 X:\<dir>\napcat-bridge
+  for (const drive of ['C:', 'D:', 'E:', 'F:']) {
+    let entries = [];
+    try { entries = fs.readdirSync(drive + '\\'); } catch { continue; }
+    for (const name of entries) {
+      const p1 = path.join(drive + '\\', name);
+      try { if (!fs.statSync(p1).isDirectory()) continue; } catch { continue; }
+      for (const candidate of ['NimuQDock-dsh', 'napcat-bridge', 'NimuQDock']) add(path.join(p1, candidate));
+    }
+  }
+  return [...found];
+}
+
 /** 汇总本机状态，供安装 UI 自动勾选。 */
 export async function detect() {
   const dshReachable = await probePort(3080);
   const dsh = dshReachable ? await probeDsh('http://127.0.0.1:3080') : { usable: false };
   const localDsh = fs.existsSync(PATHS.dshBin);
-  const napcatDir = fs.existsSync(path.join(PATHS.napcatDir, 'napcat.mjs'));
-  const napcatRunning = (await probePort(3001)) || (await probePort(3005));
   const qq = detectQQ();
-  const models = [];
-  try {
-    for (const f of fs.readdirSync(PATHS.modelsDir)) {
-      if (!/\.gguf$/i.test(f)) continue;
-      models.push({ file: f, mb: Math.round(fs.statSync(path.join(PATHS.modelsDir, f)).size / 1048576) });
-    }
-  } catch {}
+
+  const napcatRunning = (await probePort(3001)) || (await probePort(3005));
+  const bridgeRunning = await probePort(3100);
+  const judgeRunning = (await probePort(8080)) && (await (async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8080/v1/models', { signal: AbortSignal.timeout(1200) });
+      const json = await res.json().catch(() => null);
+      return Boolean(json && Array.isArray(json.data) && json.data.length > 0);
+    } catch { return false; }
+  })());
+
+  // 扫描已有项目，并汇总它们的组件（NapCat / 模型 / 推理引擎）
+  const projectDirs = findExistingProjects();
+  const projects = projectDirs.map((dir) => {
+    const napcat = fs.existsSync(path.join(dir, 'NapCatShell', 'napcat.mjs'));
+    let models = [];
+    try {
+      models = fs.readdirSync(path.join(dir, 'models'))
+        .filter((f) => /\.gguf$/i.test(f))
+        .map((file) => ({ file, mb: Math.round(fs.statSync(path.join(dir, 'models', file)).size / 1048576) }));
+    } catch {}
+    const llamaBuiltin = fs.existsSync(path.join(dir, 'llama', 'llama-server.exe'));
+    let configLlama = '';
+    try {
+      const cfg = JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8'));
+      configLlama = String(cfg?.judge?.llamaServer ?? '');
+    } catch {}
+    const llamaExternal = Boolean(configLlama && fs.existsSync(configLlama));
+    return { dir, napcat, models, llama: llamaBuiltin || llamaExternal, llamaPath: llamaBuiltin ? path.join(dir, 'llama', 'llama-server.exe') : configLlama, running: bridgeRunning && dir === ROOT };
+  });
+
+  const modelFromProjects = projects.flatMap((p) => p.models.map((m) => ({ ...m, dir: p.dir })));
+  const llamaFromProjects = projects.find((p) => p.llama);
+  const napcatFromProjects = projects.find((p) => p.napcat);
+
   return {
     dsh: { usable: Boolean(dsh.usable), protocol: dsh.protocol ?? null, localInstall: localDsh, port: 3080 },
-    napcat: { installed: napcatDir, running: Boolean(napcatRunning), version: NAPCAT.version },
+    napcat: {
+      installed: Boolean(napcatFromProjects) || napcatRunning || fs.existsSync(path.join(PATHS.napcatDir, 'napcat.mjs')),
+      running: Boolean(napcatRunning),
+      version: NAPCAT.version,
+      dir: napcatFromProjects?.dir ?? '',
+    },
     qq: { found: Boolean(qq), path: qq ?? '' },
-    model: { installed: models.length > 0, models },
-    llama: { installed: fs.existsSync(PATHS.llamaServer) },
+    model: {
+      installed: modelFromProjects.length > 0 || judgeRunning,
+      models: modelFromProjects.length ? modelFromProjects : [],
+      serving: Boolean(judgeRunning),
+    },
+    llama: {
+      installed: Boolean(llamaFromProjects) || judgeRunning,
+      running: Boolean(judgeRunning),
+      path: llamaFromProjects?.llamaPath ?? '',
+    },
+    projects: projects.map(({ dir, napcat, models, llama, running }) => ({ dir, napcat, models: models.length, llama, running })),
+    bridgeRunning,
     root: ROOT,
   };
-}
-
-
-/** 停掉正在为「本目录 models/」服务的 llama-server（更换模型前必须停，否则 .gguf 被占用删不掉）。 */
-function stopLocalJudgeServer() {
-  try {
-    const dir = PATHS.modelsDir.replace(/'/g, "''");
-    const ps = `Get-CimInstance Win32_Process -Filter \"Name='llama-server.exe'\" | Where-Object { $_.CommandLine -like '*${dir}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
-    spawnSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', timeout: 15000 });
-  } catch {}
 }
 
 /** 计算文件 SHA256（流式，避免整文件读入内存）。 */

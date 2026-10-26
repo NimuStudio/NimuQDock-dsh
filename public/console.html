@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NimuQDock-dsh 控制台</title>
-<link rel="stylesheet" href="ysti-glass.css">
+<link rel="stylesheet" href="nimu-glass.css">
 <style>
   /* ── 控制台专用补充样式（基于 Nimu Glass UI 组件体系） ── */
   /* 品牌背景：一条斜向的薄荷→粉→薰衣草柔和洗色（整体有色，玻璃面板才透得出来） */
@@ -16,7 +16,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NimuQDock-dsh 控制台</title>
-<link rel="stylesheet" href="ysti-glass.css">
+<link rel="stylesheet" href="nimu-glass.css">
 <style>
   /* ── 控制台专用补充样式（基于 Nimu Glass UI 组件体系） ── */
   /* 品牌背景：薄荷 / 薰衣草 / 粉（取自工作室官网 ysti.com.cn 的玻璃拟态体系） */
@@ -493,10 +493,10 @@ function escJs(s) {
 }
 
 // ── 主题（三主题循环：glass → light → dark） ──
-var theme = localStorage.getItem('ysti_theme') || 'glass';
+var theme = localStorage.getItem('nimu_theme') || 'glass';
 function applyTheme(t) {
   document.body.className = t === 'light' ? 'light-mode' : t === 'dark' ? 'dark-mode' : '';
-  localStorage.setItem('ysti_theme', t);
+  localStorage.setItem('nimu_theme', t);
   theme = t;
 }
 function cycleTheme() { applyTheme(theme === 'glass' ? 'light' : theme === 'light' ? 'dark' : 'glass'); }

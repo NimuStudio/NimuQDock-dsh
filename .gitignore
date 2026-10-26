@@ -14,3 +14,4 @@ napcat*.exe
 models/
 llama/
 dataset/
+dist/

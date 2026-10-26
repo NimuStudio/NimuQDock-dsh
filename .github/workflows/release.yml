@@ -73,13 +73,15 @@ jobs:
       - name: Build zip (UTF-8 filenames)
         run: node scripts/make-release-zip.mjs "${{ steps.ver.outputs.version }}" "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-win-x64.zip"
 
-      - name: Build 7z archive (UTF-8 filenames, for SFX exe)
-        run: node scripts/make-release-7z.mjs "${{ steps.ver.outputs.version }}" "dist/app.7z" --slim
-
-      - name: Build exe (7-Zip SFX)
+      - name: Install NSIS
         run: |
-          cat scripts/sfx/7z.sfx scripts/sfx/sfx-config.txt "dist/app.7z" \
-            > "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-setup.exe"
+          sudo apt-get update
+          sudo apt-get install -y nsis
+          makensis -VERSION
+
+      - name: Build installer (NSIS native wizard)
+        run: |
+          node scripts/make-installer-nsis.mjs "${{ steps.ver.outputs.version }}" dist
           # 固定文件名副本：给用户一个不会随版本变化的下载直链
           cp "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-setup.exe" "dist/NimuQDock-dsh-latest-setup.exe"
           ls -la dist/
