@@ -3,16 +3,19 @@
 // 设计：
 //   - detect() 只探测、不修改，供 UI 决定默认勾选；
 //   - installXxx(onLog) 每一步都可单独执行，进度通过回调抛出（UI 用它渲染日志/百分比）；
+//   - 所有下载都用 assets.js 里锁定的版本 + SHA256 校验，镜像篡改会在校验时被发现；
 //   - 失败抛错，由调用方决定是否继续其它组件。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { installDshPortable, DSH_VERSION } from '../dsh-install.js';
 import { createDshAuth } from '../transport/dsh-auth.js';
+import { NAPCAT, LLAMA, JUDGE_MODELS, modelUrl } from './assets.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const PATHS = {
@@ -25,19 +28,11 @@ export const PATHS = {
   llamaServer: path.join(ROOT, 'llama', 'llama-server.exe'),
 };
 
-const NAPCAT_URL = 'https://github.com/NapNeko/NapCatQQ/releases/latest/download/NapCat.Shell.zip';
 const MIRRORS = [
   (u) => `https://gh-proxy.com/${u.replace(/^https:\/\//, '')}`,
   (u) => `https://ghfast.top/${u.replace(/^https:\/\//, '')}`,
   (u) => u,
 ];
-const MODEL_SOURCES = {
-  '1.7b': { repo: 'unsloth/Qwen3-1.7B-GGUF', file: 'Qwen3-1.7B-Q4_K_M.gguf', minBytes: 900 * 1024 * 1024 },
-  '0.6b': { repo: 'unsloth/Qwen3-0.6B-GGUF', file: 'Qwen3-0.6B-Q4_K_M.gguf', minBytes: 300 * 1024 * 1024 },
-};
-const LLAMA_BUILD = 'b11852';
-const LLAMA_ASSET = `llama-${LLAMA_BUILD}-bin-win-cpu-x64.zip`;
-const LLAMA_URL = `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_BUILD}/${LLAMA_ASSET}`;
 
 const noop = () => {};
 
@@ -57,7 +52,8 @@ export async function probePort(port, host = '127.0.0.1', timeoutMs = 1200) {
 
 /** 探测本机 DSH 是否可复用（与 start.mjs 同一套判据，尽量轻量）。 */
 async function probeDsh(baseUrl = 'http://127.0.0.1:3080') {
-  const auth = createDshAuth({ baseUrl, home: path.join(os.homedir(), '.dsh') });
+  const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+  const auth = createDshAuth({ baseUrl, home });
   const cookie = auth.cookieHeader();
   const call = async (method, args) => {
     const res = await fetch(`${baseUrl}/api/${method}`, {
@@ -118,7 +114,7 @@ export function detectQQ() {
 
 /** 汇总本机状态，供安装 UI 自动勾选。 */
 export async function detect() {
-  const [dshReachable] = await Promise.all([probePort(3080)]);
+  const dshReachable = await probePort(3080);
   const dsh = dshReachable ? await probeDsh('http://127.0.0.1:3080') : { usable: false };
   const localDsh = fs.existsSync(PATHS.dshBin);
   const napcatDir = fs.existsSync(path.join(PATHS.napcatDir, 'napcat.mjs'));
@@ -132,13 +128,8 @@ export async function detect() {
     }
   } catch {}
   return {
-    dsh: {
-      usable: Boolean(dsh.usable),
-      protocol: dsh.protocol ?? null,
-      localInstall: localDsh,
-      port: 3080,
-    },
-    napcat: { installed: napcatDir, running: Boolean(napcatRunning) },
+    dsh: { usable: Boolean(dsh.usable), protocol: dsh.protocol ?? null, localInstall: localDsh, port: 3080 },
+    napcat: { installed: napcatDir, running: Boolean(napcatRunning), version: NAPCAT.version },
     qq: { found: Boolean(qq), path: qq ?? '' },
     model: { installed: models.length > 0, models },
     llama: { installed: fs.existsSync(PATHS.llamaServer) },
@@ -146,16 +137,30 @@ export async function detect() {
   };
 }
 
-/** 流式下载，onProgress(百分比|null)。 */
-async function download(url, dest, onProgress = noop, useMirrors = true) {
+/** 计算文件 SHA256（流式，避免整文件读入内存）。 */
+export async function sha256File(file) {
+  const hash = crypto.createHash('sha256');
+  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
+  return hash.digest('hex');
+}
+
+/**
+ * 下载并校验。
+ * @param {string} url
+ * @param {string} dest
+ * @param {{onProgress?: Function, useMirrors?: boolean, sha256?: string}} opts
+ */
+async function download(url, dest, { onProgress = noop, useMirrors = true, sha256 = '' } = {}) {
   // 只有 GitHub 资源才走 gh-proxy/ghfast；魔搭等其它源直连（前缀加速反而多一次失败）
-  const chain = useMirrors && /github\.com|githubusercontent\.com/i.test(url) ? MIRRORS : [(u) => u];
+  const github = /github\.com|githubusercontent\.com/i.test(url);
+  const chain = useMirrors && github ? MIRRORS : [(u) => u];
   let lastError = null;
   for (const mirror of chain) {
     const target = mirror(url);
     try {
+      const file = fs.createWriteStream(dest);
       const res = await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(1800000) });
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok || !res.body) { file.close(); throw new Error(`HTTP ${res.status}`); }
       const total = Number(res.headers.get('content-length')) || 0;
       let received = 0;
       const stream = Readable.fromWeb(res.body);
@@ -163,9 +168,13 @@ async function download(url, dest, onProgress = noop, useMirrors = true) {
         received += chunk.length;
         if (total) onProgress(Math.min(100, Math.round((received / total) * 100)));
       });
-      await pipeline(stream, fs.createWriteStream(dest));
+      await pipeline(stream, file);
       onProgress(100);
-      return total;
+      if (sha256) {
+        const actual = await sha256File(dest);
+        if (actual !== sha256) throw new Error(`SHA256 校验失败（期望 ${sha256.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…）`);
+      }
+      return;
     } catch (error) {
       lastError = error;
       try { fs.unlinkSync(dest); } catch {}
@@ -199,19 +208,19 @@ export async function installDshStep(onLog = noop) {
   onLog('DeepSeek Harness 安装完成');
 }
 
-/** 安装 NapCat（下载 + 解压到 NapCatShell/）。 */
+/** 安装 NapCat（版本锁定 + 校验和）。 */
 export async function installNapCatStep(onLog = noop, onProgress = noop) {
   const marker = path.join(PATHS.napcatDir, 'napcat.mjs');
   if (fs.existsSync(marker)) {
     onLog('NapCat 已存在，跳过');
     return;
   }
-  onLog('开始下载 NapCat Shell（约 28MB，自动走国内镜像）…');
+  onLog(`开始下载 NapCat ${NAPCAT.version}（约 34MB，自动走国内镜像）…`);
   fs.mkdirSync(PATHS.napcatDir, { recursive: true });
   const tmp = path.join(os.tmpdir(), `napcat-ui-${Date.now()}.zip`);
   try {
-    await download(NAPCAT_URL, tmp, onProgress);
-    onLog('下载完成，正在解压…');
+    await download(NAPCAT.url, tmp, { onProgress, sha256: NAPCAT.sha256 });
+    onLog('下载完成并通过校验，正在解压…');
     unzip(tmp, PATHS.napcatDir);
     const nested = path.join(PATHS.napcatDir, 'NapCatShell');
     if (fs.existsSync(path.join(nested, 'napcat.mjs'))) {
@@ -225,40 +234,37 @@ export async function installNapCatStep(onLog = noop, onProgress = noop) {
   onLog('NapCat 安装完成（首次启动时填 QQ 号并扫码登录）');
 }
 
-/** 下载判断模型（1.7b / 0.6b）。 */
+/** 下载判断模型（1.7b / 0.6b，版本锁定 + 校验和）。 */
 export async function installModelStep(kind = '1.7b', onLog = noop, onProgress = noop) {
-  const src = MODEL_SOURCES[kind] ?? MODEL_SOURCES['1.7b'];
+  const src = JUDGE_MODELS[kind] ?? JUDGE_MODELS.large;
   const dest = path.join(PATHS.modelsDir, src.file);
-  if (fs.existsSync(dest) && fs.statSync(dest).size >= src.minBytes) {
-    onLog(`模型已存在：${src.file}`);
+  if (fs.existsSync(dest) && fs.statSync(dest).size === src.size) {
+    onLog(`模型已存在（大小校验通过）：${src.file}`);
     return dest;
   }
   fs.mkdirSync(PATHS.modelsDir, { recursive: true });
-  const url = `https://www.modelscope.cn/models/${src.repo}/resolve/master/${src.file}`;
-  onLog(`开始下载判断模型 ${src.file}（约 ${Math.round(src.minBytes / 1048576)}MB）…`);
+  onLog(`开始下载判断模型 ${src.file}（约 ${Math.round(src.size / 1048576)}MB）…`);
   const tmp = `${dest}.part`;
-  await download(url, tmp, onProgress, false);
-  const size = fs.statSync(tmp).size;
-  if (size < src.minBytes) throw new Error(`模型文件不完整（${size} bytes）`);
+  await download(modelUrl(src), tmp, { onProgress, useMirrors: false, sha256: src.sha256 });
+  if (fs.statSync(tmp).size !== src.size) throw new Error(`模型大小不符（期望 ${src.size}）`);
   fs.renameSync(tmp, dest);
-  onLog(`模型就绪：${src.file}`);
+  onLog(`模型就绪并通过校验：${src.file}`);
   return dest;
 }
 
-/** 下载 CPU 版 llama-server（判断模型的推理引擎）。 */
+/** 下载 CPU 版 llama-server（版本锁定 + 校验和）。 */
 export async function installLlamaStep(onLog = noop, onProgress = noop) {
   if (fs.existsSync(PATHS.llamaServer)) {
     onLog('推理引擎已存在，跳过');
     return;
   }
   fs.rmSync(PATHS.llamaDir, { recursive: true, force: true });
-  const tmp = path.join(os.tmpdir(), `${LLAMA_ASSET}-${Date.now()}.zip`);
-  onLog('开始下载推理引擎（llama.cpp CPU 版，约 23MB）…');
+  const tmp = path.join(os.tmpdir(), `${LLAMA.asset}-${Date.now()}.zip`);
+  onLog(`开始下载推理引擎（llama.cpp ${LLAMA.build} CPU 版，约 23MB）…`);
   try {
-    await download(LLAMA_URL, tmp, onProgress);
-    onLog('下载完成，正在解压…');
+    await download(LLAMA.url, tmp, { onProgress, sha256: LLAMA.sha256 });
+    onLog('下载完成并通过校验，正在解压…');
     unzip(tmp, PATHS.llamaDir);
-    // zip 里可能有一层子目录，摊平
     const entries = fs.readdirSync(PATHS.llamaDir, { withFileTypes: true });
     const sub = entries.find((e) => e.isDirectory());
     if (sub) {
