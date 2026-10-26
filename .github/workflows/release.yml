@@ -72,8 +72,9 @@ jobs:
           set -o pipefail
           node scripts/fetch-judge-model.mjs --small 2>&1 | tee /tmp/fetch.log
           if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            MSG=$(grep -E "失败|ERROR|Error" /tmp/fetch.log | tail -2 | tr '\n' ' ' | cut -c1-120)
-            gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            SHA=$(git rev-parse HEAD)
+            MSG=$(tail -6 /tmp/fetch.log | tr '\n' ' ' | cut -c1-120)
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/$SHA" \
               -f state=failure -f context=fetch-judge -f description="$MSG" || true
             exit 1
           fi
