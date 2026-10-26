@@ -35,7 +35,7 @@ function stopProjectProcesses(projectDir) {
     const esc = String(projectDir).replace(/'/g, "''");
     const modelsEsc = String(path.join(projectDir, 'models')).replace(/'/g, "''");
     const cmd = `$procs = Get-CimInstance Win32_Process | Where-Object {
-      $_.Name -notin @('powershell.exe','pwsh.exe','conhost.exe') -and $_.ProcessId -ne ${process.pid} -and ($_.CommandLine -notmatch 'uninstall\.mjs') -and (
+      $_.Name -notin @('powershell.exe','pwsh.exe','conhost.exe','uninstall.exe','Au_.exe') -and $_.ProcessId -ne ${process.pid} -and ($_.CommandLine -notmatch 'uninstall\.mjs') -and (
         ($_.ExecutablePath -and $_.ExecutablePath -like "*${esc}*") -or
         ($_.Name -eq 'node.exe' -and $_.CommandLine -match '(^|[\\\\s"])main\\.js') -or
         ($_.Name -eq 'node.exe' -and $_.CommandLine -match 'napcat\\.mjs') -or
@@ -116,16 +116,25 @@ async function main() {
   console.log('   这会把我们装进去的【项目 + 便携 DSH + NapCat】一起删掉。');
   console.log('   不会动你本机自己的 DSH / NapCat（它们不在这个文件夹里）。');
 
-  const confirm = await ask('\n确认删除整个文件夹？此操作不可恢复（y/N）：');
+  const autoYes = process.argv.includes('--yes');
+  const confirm = autoYes
+    ? 'y'
+    : await ask('\n确认删除整个文件夹？此操作不可恢复（y/N）：');
   if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') {
     console.log('已取消。');
     rl.close();
     process.exit(0);
   }
 
+  const stopOnly = process.argv.includes('--stop-only');
   console.log('\n[1/3] 停止本项目相关进程 …');
   stopProjectProcesses(projectDir);
   await new Promise((r) => setTimeout(r, 1200));
+  if (stopOnly) {
+    console.log('✅ 已停止相关进程（仅停止，不删除）');
+    rl.close();
+    process.exit(0);
+  }
 
   console.log('\n[2/3] 删除文件夹 …');
   try { process.chdir('C:\\'); } catch {}

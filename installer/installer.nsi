@@ -26,7 +26,7 @@ Name "${APP_NAME} ${APP_VERSION}"
 !endif
 OutFile "${OUTFILE}"
 InstallDir "C:\NimuQDock-dsh"
-InstallDirRegKey HKLM "${UNINST_KEY}" "InstallLocation"
+InstallDirRegKey HKCU "${UNINST_KEY}" "InstallLocation"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 SetCompressorDictSize 64
@@ -37,7 +37,6 @@ XPStyle on
 !define MUI_WELCOMEPAGE_TITLE "欢迎安装 ${APP_NAME}"
 !define MUI_WELCOMEPAGE_TEXT "把 DeepSeek Harness 的 AI 停靠进 QQ。$\r$\n$\r$\n安装器会自动检测你电脑里已有的组件：已装好的会置灰跳过，没装的默认勾选。$\r$\n$\r$\n所有内容都安装到一个文件夹里，卸载时删除该文件夹即可。"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\start.bat"
-!define MUI_FINISHPAGE_RUN_TEXT "安装完成后启动 ${APP_NAME}"
 !define MUI_FINISHPAGE_SHOWREADME ""
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE ComponentsLeave
 
@@ -47,6 +46,7 @@ XPStyle on
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
+!define MUI_UNCONFIRMPAGE_TEXT_TOP "卸载前请先关闭项目窗口（桥接 / NapCat / 控制台），否则文件被占用会删不掉。"
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 
@@ -57,22 +57,25 @@ Var DetectProject
 Var DetectFlags
 
 Section "程序本体（必需）" SEC_CORE
+  FileClose $9
   SectionIn RO
+  FileClose $9
   SetOutPath "$INSTDIR"
   File /r "${PAYLOAD}${SEP}*"
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
   CreateShortCut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\start.bat"
   WriteUninstaller "$INSTDIR\uninstall.exe"
-  WriteRegStr HKLM "${UNINST_KEY}" "DisplayName" "${APP_NAME}"
-  WriteRegStr HKLM "${UNINST_KEY}" "DisplayVersion" "${APP_VERSION}"
-  WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKLM "${UNINST_KEY}" "UninstallString" "$INSTDIR\uninstall.exe"
-  WriteRegStr HKLM "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\start.bat"
-  WriteRegDWORD HKLM "${UNINST_KEY}" "NoModify" 1
-  WriteRegDWORD HKLM "${UNINST_KEY}" "NoRepair" 1
+  WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "${APP_NAME}"
+  WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${APP_VERSION}"
+  WriteRegStr HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+  WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" "$INSTDIR\uninstall.exe"
+  WriteRegStr HKCU "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\start.bat"
+  WriteRegDWORD HKCU "${UNINST_KEY}" "NoModify" 1
+  WriteRegDWORD HKCU "${UNINST_KEY}" "NoRepair" 1
 SectionEnd
 
 Section "DeepSeek Harness（约 400MB）" SEC_DSH
+  FileClose $9
   DetailPrint "正在安装 DeepSeek Harness（首次约 1~2 分钟）…"
   nsExec::ExecToLog '"$INSTDIR\node\node.exe" "$INSTDIR\scripts\nsis-install-items.mjs" --dsh'
   Pop $0
@@ -82,6 +85,7 @@ Section "DeepSeek Harness（约 400MB）" SEC_DSH
 SectionEnd
 
 Section "NapCat（QQ 接入，约 34MB）" SEC_NAPCAT
+  FileClose $9
   DetailPrint "正在安装 NapCat…"
   nsExec::ExecToLog '"$INSTDIR\node\node.exe" "$INSTDIR\scripts\nsis-install-items.mjs" --napcat'
   Pop $0
@@ -91,6 +95,7 @@ Section "NapCat（QQ 接入，约 34MB）" SEC_NAPCAT
 SectionEnd
 
 Section "判断模型 1.7B（约 1.1GB，更准）" SEC_M17
+  FileClose $9
   DetailPrint "正在下载判断模型 1.7B…"
   nsExec::ExecToLog '"$INSTDIR\node\node.exe" "$INSTDIR\scripts\nsis-install-items.mjs" --model=large'
   Pop $0
@@ -100,6 +105,7 @@ Section "判断模型 1.7B（约 1.1GB，更准）" SEC_M17
 SectionEnd
 
 Section "判断模型 0.6B（约 380MB，轻量）" SEC_M06
+  FileClose $9
   DetailPrint "正在下载判断模型 0.6B…"
   nsExec::ExecToLog '"$INSTDIR\node\node.exe" "$INSTDIR\scripts\nsis-install-items.mjs" --model=small'
   Pop $0
@@ -109,6 +115,7 @@ Section "判断模型 0.6B（约 380MB，轻量）" SEC_M06
 SectionEnd
 
 Section "推理引擎 llama.cpp（约 23MB）" SEC_LLAMA
+  FileClose $9
   DetailPrint "正在安装推理引擎…"
   nsExec::ExecToLog '"$INSTDIR\node\node.exe" "$INSTDIR\scripts\nsis-install-items.mjs" --llama'
   Pop $0
@@ -178,27 +185,30 @@ Function .onInit
   SectionSetFlags ${SEC_LLAMA} ${SF_SELECTED}
 
   IntOp $0 $DetectFlags & 1
-  ${If} $0 == 1
+  ${If} $0 != 0
     SectionSetFlags ${SEC_DSH} 0
     SectionSetFlags ${SEC_DSH} ${SF_RO}
   ${EndIf}
   IntOp $0 $DetectFlags & 2
-  ${If} $0 == 1
+  ${If} $0 != 0
     SectionSetFlags ${SEC_NAPCAT} 0
     SectionSetFlags ${SEC_NAPCAT} ${SF_RO}
   ${EndIf}
   IntOp $0 $DetectFlags & 4
-  ${If} $0 == 1
+  ${If} $0 != 0
     SectionSetFlags ${SEC_M06} 0
     SectionSetFlags ${SEC_M06} ${SF_RO}
     SectionSetFlags ${SEC_M17} 0
     SectionSetFlags ${SEC_M17} ${SF_RO}
   ${EndIf}
   IntOp $0 $DetectFlags & 8
-  ${If} $0 == 1
+  ${If} $0 != 0
     SectionSetFlags ${SEC_LLAMA} 0
     SectionSetFlags ${SEC_LLAMA} ${SF_RO}
   ${EndIf}
+  SectionGetFlags ${SEC_NAPCAT} $0
+  SectionGetFlags ${SEC_DSH} $0
+  FileClose $9
 FunctionEnd
 
 ; 组件页离开时保证模型只选一个
@@ -227,15 +237,17 @@ FunctionEnd
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ; ---------- 卸载 ----------
+Function un.onInit
+  InitPluginsDir
+FunctionEnd
+
 Section "Uninstall"
   Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
   RMDir "$SMPROGRAMS\${APP_NAME}"
-  DeleteRegKey HKLM "${UNINST_KEY}"
-  ; 停掉可能还在跑的桥接 / NapCat，避免文件占用
+  DeleteRegKey HKCU "${UNINST_KEY}"
+  ; 先停掉 NapCat 的 QQ 注入进程（不会影响普通 QQ）
   nsExec::Exec 'cmd /c taskkill /F /IM NapCatWinBootMain.exe >nul 2>&1'
-  FileOpen $0 "$PLUGINSDIR\kill.ps1" w
-  FileWrite $0 'Get-CimInstance Win32_Process | Where-Object { $$_.Name -notin @("powershell.exe","conhost.exe") -and ($$_.CommandLine -match "main\.js|napcat\.mjs" -or $$_.ExecutablePath -like "*$INSTDIR*") } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }'
-  FileClose $0
-  nsExec::Exec 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\kill.ps1"'
+  Sleep 500
   RMDir /r "$INSTDIR"
+  nsExec::Exec 'cmd /c rmdir /s /q "$INSTDIR"'
 SectionEnd

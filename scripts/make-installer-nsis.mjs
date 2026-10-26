@@ -16,7 +16,7 @@ const payload = path.join(outDir, 'nsis-payload');
 
 const ROOT_FILES = [
   'package.json', 'package-lock.json', 'config.example.json',
-  'start.bat', 'start.mjs', 'restart.bat', 'install-model.bat',
+  'start.bat', 'start.mjs', 'restart.bat', 'install-model.bat', 'uninstall.mjs', 'uninstall.bat',
   'README.md', 'README.en.md', 'LICENSE', 'CHANGELOG.md',
 ];
 const TOP_DIRS = ['src', 'public', 'plugins', 'dsh', 'roles', 'node_modules'];
