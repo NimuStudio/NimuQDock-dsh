@@ -248,10 +248,12 @@ export async function downloadFile(url, dest, { onProgress = noop, useMirrors = 
 
 function unzip(zipFile, destDir) {
   fs.mkdirSync(destDir, { recursive: true });
-  const esc = (s) => String(s).replace(/'/g, "''");
-  const r = spawnSync('powershell', ['-NoProfile', '-Command',
-    `Expand-Archive -LiteralPath '${esc(zipFile)}' -DestinationPath '${esc(destDir)}' -Force`], { encoding: 'utf8' });
-  if (r.status !== 0) throw new Error(`解压失败：${(r.stderr || '').slice(0, 200)}`);
+  // Windows 用 PowerShell；Linux/macOS（CI）用 unzip
+  const r = process.platform === 'win32'
+    ? spawnSync('powershell', ['-NoProfile', '-Command',
+        `Expand-Archive -LiteralPath '${String(zipFile).replace(/'/g, "''")}' -DestinationPath '${String(destDir).replace(/'/g, "''")}' -Force`], { encoding: 'utf8' })
+    : spawnSync('unzip', ['-oq', zipFile, '-d', destDir], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`解压失败：${(r.stderr || r.stdout || '').slice(0, 200)}`);
 }
 
 /** 安装便携 DSH。 */

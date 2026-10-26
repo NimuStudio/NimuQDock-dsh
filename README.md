@@ -24,9 +24,9 @@
 
 | 方式 | 链接 | 说明 |
 |---|---|---|
-| **exe（图形安装器）** | [GitHub Releases](https://github.com/NimuStudio/NimuQDock-dsh/releases/latest) | 自动检测本机组件，勾选要装的 DSH / NapCat / 判断模型 |
+| **exe（图形安装器，约 30 MB）** | [GitHub Releases](https://github.com/NimuStudio/NimuQDock-dsh/releases/latest) | 自动检测本机组件，勾选要装的 DSH / NapCat / 判断模型 |
 | **国内加速**（推荐） | [gh-proxy 直链](https://gh-proxy.com/https://github.com/NimuStudio/NimuQDock-dsh/releases/latest/download/NimuQDock-dsh-latest-setup.exe) | 固定文件名，始终指向最新版 |
-| **zip 完整离线包** | Releases 页面的 Assets | 内置 0.6B 模型与推理引擎，适合网络不好 / 开箱即用 |
+| **zip 完整离线包** | Releases 页面的 Assets | 内置 0.6B 模型与推理引擎，解压即用，适合网络不好 |
 
 > 安装器下载 NapCat、推理引擎、判断模型时会自动走国内镜像；只有 exe 本身需要走上面的加速链接。
 > 安装内容都在安装目录内，卸载删目录即可。
@@ -176,13 +176,17 @@ npm install
 
 ### 安装方式（exe 图形安装器）
 
-发行包的 `exe` 是一个**图形安装器**：
+发行包的 `exe` 是一个**图形安装器（约 30 MB）**：
+
 1. 运行后选择安装目录 → 自动检测本机已有的 DSH / NapCat / QQ / 模型
 2. 已装好的组件会置灰跳过，其余**默认勾选**
 3. 勾选你需要的组件（DSH / NapCat / 判断模型 1.7B 或 0.6B / 推理引擎）→ 一键下载，进度实时显示
 4. 装完可直接点「启动」，或在目录里双击 `start.bat`
 
-> `zip` 是离线完整包（内置 0.6B 模型与推理引擎），适合网络不好或想开箱即用的场景。
+安装器会**断点续传**（网络中断后重跑从断点继续），并对每个下载做 **SHA256 校验**；
+所有资源版本固定，镜像被篡改会自动发现并换源。想更换已装模型，在安装器里重新勾选模型即可（0.6B ↔ 1.7B）。
+
+> `zip` 是离线完整包（内置 0.6B 模型与推理引擎，约 440 MB），解压后也能运行 `install-ui.bat` 打开同一个安装器。
 
 ### 接话判断：规则 / 本地模型（可选）
 
@@ -197,6 +201,7 @@ agent 模式下「这条消息该不该接」有两种判断方式，桥接会�
   - 轻量替代：`npm run fetch-judge -- --small` 换成 0.6B（约 379 MB，CPU 也能跑）
 - 推理：[llama.cpp](https://github.com/ggml-org/llama.cpp) 的 `llama-server`（发行包自带 CPU 版，约 23 MB）
 - 安装：`npm run fetch-judge`（默认 1.7B；加 `-- --small` 换 0.6B；模型放 `models/`，推理放 `llama/`）
+  - 发行包内置的是 0.6B；想要更准，双击 `install-model.bat` 升级到 1.7B（约 1.1 GB）
 - 自动回退：模型没装、启动超时、或输出异常时，**自动退回规则**，聊天不受影响
 - chat 模式：不经过判断，所有消息原样交给 DSH
 
