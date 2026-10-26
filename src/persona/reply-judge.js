@@ -12,7 +12,7 @@
 //   显式规则 + 同格式示例 → 10/10；抽象指令或纯多轮 few-shot → 全部答 YES。
 
 /** 判断器系统提示词（实测最稳的写法：硬规则 + 同格式示例，输出 YES/NO）。 */
-function systemPrompt(botName) {
+export function judgeSystemPrompt(botName) {
   const name = (typeof botName === 'function' ? botName() : botName) || 'dsh';
   return [
     `你是 QQ 群聊机器人「${name}」的接话分类器。`,
@@ -99,7 +99,7 @@ export class ReplyJudge {
     const body = {
       model: this.cfg?.judge?.model ?? 'local',
       messages: [
-        { role: 'system', content: systemPrompt(this.botName) },
+        { role: 'system', content: judgeSystemPrompt(this.botName) },
         { role: 'user', content: `消息：${String(text ?? '').slice(0, 300)} 输出：` },
       ],
       temperature: 0,

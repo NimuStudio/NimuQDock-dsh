@@ -189,6 +189,19 @@ agent 模式下「这条消息该不该接」有两种判断方式，桥接会�
 }
 ```
 
+
+#### 训练自己的判断器（可选，进阶）
+
+桥接会把每次判断写进 `state/judge-decisions.jsonl`（只记消息文本，已脱敏）。积累一段时间后：
+
+```bash
+npm run export-judge     # 导出 dataset/judge-train.jsonl（正负均衡、去重）
+npm run train-judge      # LoRA 微调 Qwen3-0.6B（需要 Python + torch/peft/datasets）
+```
+
+训练产物需要合并 adapter 并转成 GGUF 才能给 llama.cpp 用（脚本头部有完整步骤）。
+没有 GPU 也能用：llama.cpp 的 CPU 版随包提供，只是判断稍慢（约 100~200ms/条）。
+
 ### ③ 填写 config.json
 
 ```bash

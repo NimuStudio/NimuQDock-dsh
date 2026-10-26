@@ -18,6 +18,8 @@ import { loadMode, saveMode, readRoleState, writeRoleState } from '../state.js';
 import { appendActivity } from '../log.js';
 import { classifyMood } from '../persona/lexicon.js';
 import { computeAttention, computeInterest, computeScore, detectShutdownRequest } from '../persona/engagement.js';
+import { recordDecision } from '../persona/judge-dataset.js';
+import { STATE_DIR } from '../state.js';
 import { buildWakePrompt } from '../persona/inject.js';
 import { loadPersona } from '../persona/definition.js';
 
@@ -623,6 +625,17 @@ export class Router {
     }
     const judgeTag = modelVerdict ? ` model=${modelVerdict.reply ? 'YES' : 'NO'}` : '';
     this.log(`[agent] ${key} 评分 attention=${attention.toFixed(2)} interest=${interest.toFixed(2)}${continuing ? ' [延续]' : ''} streak=${this.replyStreak.get(key) ?? 0}${judgeTag} → ${verdict}（${reason}）`);
+    try {
+      recordDecision(path.join(STATE_DIR, 'judge-decisions.jsonl'), {
+        key,
+        text: textContent,
+        reply: verdict === 'wake',
+        source: modelVerdict ? 'model' : 'rules',
+        modelSaid: modelVerdict ? modelVerdict.reply : null,
+        reason,
+        attention,
+      });
+    } catch {}
 
     if (verdict !== 'wake') return;
     // 5) 唤醒投递（触发消息的图片直通进 prompt，AI 打开上下文即可看到，不依赖工具调用）

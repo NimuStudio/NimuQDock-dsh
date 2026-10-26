@@ -2,6 +2,12 @@
 
 本文件按版本记录 NimuQDock-dsh 的功能与修复，方便追踪项目演进。
 
+## v0.5.1
+
+- 修复：发行包里漏了模型拉取脚本，删掉模型后无法重新下载——现在可以直接重跑
+- 新增：判断决策日志（state/judge-decisions.jsonl，已脱敏）+ `npm run export-judge` 导出训练集
+- 新增：`npm run train-judge`（LoRA 微调脚本，需 Python + torch/peft；产物转 GGUF 后即可替换模型）
+
 ## v0.5.0
 
 - 新增：agent 模式的「该不该接」支持本地小模型（Qwen3-0.6B，llama.cpp 推理）——

@@ -61,6 +61,9 @@ walk(ROOT, '', files);
 // scripts 目录整体被排除了，这里单独把 DSH 端预设安装脚本放行（运行时拉取 preset 到 ~/.dsh 用）
 const setupDsh = path.join(ROOT, 'scripts', 'setup-dsh.mjs');
 if (fs.existsSync(setupDsh)) files.push({ abs: setupDsh, rel: 'scripts/setup-dsh.mjs' });
+// 判断模型拉取脚本放行：用户删了模型/想更新时，发行包里可以直接重跑
+const fetchJudge = path.join(ROOT, 'scripts', 'fetch-judge-model.mjs');
+if (fs.existsSync(fetchJudge)) files.push({ abs: fetchJudge, rel: 'scripts/fetch-judge-model.mjs' });
 console.log(`[make-release-zip] 打包 ${files.length} 个文件（tag=${tag}）`);
 
 // 输出目录必须存在，否则 createWriteStream 异步抛 ENOENT 崩溃
