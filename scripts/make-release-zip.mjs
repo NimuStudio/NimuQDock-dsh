@@ -17,6 +17,12 @@ if (!tag || !out) { console.error('usage: node scripts/make-release-zip.mjs <tag
 // 按名删会把它们删成残废（实测 npm 的 walk-up-path 依赖 dist/cjs 被删 → npm 崩）。
 const EXCLUDE_TOP_DIRS = new Set([
   '.git', '.github', 'state', 'dist', 'docs', 'assets', 'tests', 'scripts',
+  // 安全：这些是「运行时/本地」目录，绝不能进发行包
+  //  - .dsh：便携 DSH 的 home，含 .credentials.yaml（API key / 会话密钥）
+  //  - NapCatShell：QQ 登录数据 + 本地 onebot 配置（含机器人 QQ 号）
+  //  - dsh-app / pnpm-tool：本机安装的组件，体积大且与机器相关
+  //  - _backup / _probe：维护者本地目录（备份、探针脚本）
+  '.dsh', 'NapCatShell', 'dsh-app', 'pnpm-tool', '_backup', '_probe',
 ]);
 const EXCLUDE_FILES = new Set(['config.json']);
 const EXCLUDE_EXT = new Set(['.log', '.tmp']);

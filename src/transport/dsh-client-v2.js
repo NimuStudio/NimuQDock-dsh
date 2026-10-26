@@ -158,6 +158,16 @@ export class DshV2ApiClient {
     };
   }
 
+  /**
+   * 设置命名空间（0.2 的 settings 服务）：插件条目自己的 Config 会投影成命名空间。
+   * 桥接用它读取「运行模式」开关（插件 qq-mode-console 的 config.mode）。
+   */
+  get settings() {
+    return {
+      describe: () => this.call('settings/describe', {}),
+    };
+  }
+
   /** 0.2 的审批/提问走 $events 瀑布协议，当前未实现（QQ 侧会提示不支持）。 */
   async respond() {
     throw new Error('当前 DSH 版本（0.2.x）的审批应答尚未支持');
@@ -182,9 +192,12 @@ export class DshV2ApiClient {
     const followed = new Set();
     const reported = new Set(); // 已上报过的流错误（去重）
     let counter = 0;
+    // 每次连接独立的关闭标志：断线重连时不能沿用上一轮的 true，
+    // 否则重连后 follow() 全部被跳过、再也收不到会话事件
+    let closed = false;
 
     const follow = (sessionId) => {
-      if (!sessionId || followed.has(sessionId) || this.closed) return;
+      if (!sessionId || closed || followed.has(sessionId)) return;
       followed.add(sessionId);
       const streamId = `s${++counter}`;
       streams.set(streamId, sessionId);
@@ -200,6 +213,7 @@ export class DshV2ApiClient {
       try { follow(sessionId); } catch {}
     };
     this.mux = { follow };
+    this.muxSocket = socket;
 
     socket.addEventListener('open', () => {
       onOpen?.();
@@ -237,16 +251,21 @@ export class DshV2ApiClient {
       if (value.type === 'assistant-stream') return; // assistant/message 已带完整文本，避免重复累加
       if (value.type === 'approval-asked') return;   // 0.2 审批走 $events，未实现
     });
-    socket.addEventListener('close', () => {
-      this.mux = null;
-      this.onSessionCreated = null;
+    const markClosed = () => {
+      closed = true;
+      // 只有「当前这条」socket 关闭时才清理实例级回调，避免旧连接的 close 覆盖新连接
+      if (this.muxSocket === socket) {
+        this.mux = null;
+        this.muxSocket = null;
+        this.onSessionCreated = null;
+      }
       queue.end();
-    });
-    socket.addEventListener('error', () => queue.end());
+    };
+    socket.addEventListener('close', markClosed);
+    socket.addEventListener('error', markClosed);
     const handleAbort = () => {
-      this.closed = true;
       try { socket.close(); } catch {}
-      queue.end();
+      markClosed();
     };
     if (signal) signal.addEventListener('abort', handleAbort, { once: true });
     try {

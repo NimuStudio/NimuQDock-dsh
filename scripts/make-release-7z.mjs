@@ -33,6 +33,8 @@ function find7za() {
 // 按名删会把它们删成残废（实测 npm 的 walk-up-path 依赖 dist/cjs 被删 → npm 崩）。
 const EXCLUDE_TOP_DIRS = new Set([
   '.git', '.github', 'state', 'dist', 'docs', 'assets', 'tests', 'scripts',
+  // 安全：运行时/本地目录绝不进包（.dsh 含凭据；NapCatShell 含 QQ 登录数据与本地号码）
+  '.dsh', 'NapCatShell', 'dsh-app', 'pnpm-tool', '_backup', '_probe',
 ]);
 const EXCLUDE_FILES = new Set(['config.json', '.env', '.env.local', '.env.production']);
 const EXCLUDE_EXT = new Set(['.log', '.tmp']);

@@ -16,11 +16,16 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { NodeApiClient, unwrap } from '../src/transport/dsh-client.js';
 import { createTurnCollector } from '../src/core/turn-collector.js';
+import { DshV2ApiClient } from '../src/transport/dsh-client-v2.js';
+import { createDshAuth } from '../src/transport/dsh-auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const baseUrl = String(process.env.DSH_URL ?? 'http://127.0.0.1:3080').replace(/\/+$/, '');
-const api = new NodeApiClient(baseUrl, 180000);
+// 两代协议自适应：先按 0.2 探测，失败再退回 0.1（与桥接 main.js 同一套判断）
+const auth = createDshAuth({ baseUrl, home: process.env.DSH_HOME ?? path.join(os.homedir(), '.dsh') });
+const v2 = new DshV2ApiClient({ baseUrl, auth });
+const api = (await v2.supports()) ? v2 : new NodeApiClient(baseUrl, 180000, auth);
 
 async function main() {
   // 1) 探活
@@ -61,10 +66,16 @@ async function main() {
   const dir = path.join(ROOT, 'state', 'self-test');
   fs.mkdirSync(dir, { recursive: true });
   let workspaceId = null;
+  const isV2 = api === v2;
   try {
-    const wsValue = unwrap(await api.workspace.create({ path: dir }), 'workspace.create');
-    workspaceId = wsValue.workspace.workspaceId;
-    const value = unwrap(await api.sessions.create({ workspaceId }), 'session.create');
+    // 0.2 的会话直接用 cwd 建（没有 0.1 的 workspaceId 注册表）；0.1 仍走工作区
+    let createArgs = { cwd: dir };
+    if (!isV2) {
+      const wsValue = unwrap(await api.workspace.create({ path: dir }), 'workspace.create');
+      workspaceId = wsValue.workspace.workspaceId;
+      createArgs = { workspaceId };
+    }
+    const value = unwrap(await api.sessions.create(createArgs), 'session.create');
     sessionId = value.sessionId;
     console.log(`[self-test] ✅ 测试会话创建：${sessionId}`);
   } catch (error) {

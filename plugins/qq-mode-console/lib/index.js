@@ -50,12 +50,26 @@ export const NapcatModeSchema = z.object({
     .description('桥接运行模式：chat = 文本自动转发；agent = 仿真群友（人格引擎）'),
 });
 
-export function apply(ctx) {
+// DSH 0.2 起 settings 服务不再提供 register()：设置项改为由「插件自己的 Config」
+// 投影成设置命名空间（dsh-config-editor 读取每个条目的 Config schema）。
+// 这里刻意不给 mode 设默认值：undefined = 跟随桥接控制台，只有用户显式选择了才写 mode.json。
+// 0.1 仍走下面的 settings.register() 路径（两代都可用）。
+export const Config = z.object({
+  mode: z.union([z.const('chat'), z.const('agent')]).volatile()
+    .description('运行模式：chat = 文本自动转发到 QQ；agent = 仿真群友（人格引擎）。留空则跟随桥接控制台（127.0.0.1:3100）。'),
+});
+
+export function apply(ctx, config) {
   writeDiag(`apply called, settings=${typeof ctx.settings}`);
+  // 0.2 路径：插件 Config 里显式设置了 mode 才写（启动时默认值不会覆盖用户已有选择）
+  if (config && (config.mode === 'chat' || config.mode === 'agent')) {
+    writeDiag(`config.mode = ${config.mode} → 写入 mode.json`);
+    writeModeFile(config.mode);
+  }
 
   const settings = ctx.settings;
   if (!settings || typeof settings.register !== 'function') {
-    writeDiag('settings service unavailable');
+    writeDiag('settings.register 不可用（DSH 0.2 走插件 Config）');
     return;
   }
   try {

@@ -12,7 +12,7 @@
    - 向导会自动：检查 Node / 生成 config.json / **自动安装并启动 DeepSeek Harness**（锁版本）/ **自动下载解压 NapCat**（国内镜像加速）
 4. 安装 QQ 客户端（[im.qq.com](https://im.qq.com)），用机器人 QQ 号扫码登录 NapCat
 5. 打开 NapCat WebUI `http://127.0.0.1:6099/webui`（默认口令 `napcat`）→ 网络配置 → 新建：
-   - **HTTP 服务端** `127.0.0.1:3000`（消息格式 `array`）
+   - **HTTP 服务端** `127.0.0.1:3005`（消息格式 `array`；默认 3000，被占用时自动改用 3005 并写回 config.json）
    - **WebSocket 服务端** `127.0.0.1:3001`（消息格式 `array`）
 6. 编辑 `config.json`（见下方「配置样例」）
 7. 双击 `start.bat` 启动 → 浏览器自动打开 Web 控制台

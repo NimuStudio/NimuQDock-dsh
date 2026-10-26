@@ -73,6 +73,7 @@ async function main() {
   });
 
   // 运行状态快照（控制台 /api/status 使用）
+  let v2Checked = false; // 补探测只做一次
   const runtime = { dshOnline: false, napcatConnected: false, startedAt: new Date().toISOString() };
   const getStatus = () => ({
     mode: router.getMode(),
@@ -123,6 +124,18 @@ async function main() {
       await api.sessions.list({}, AbortSignal.timeout(cfg.dshCheckIntervalMs ?? 5000));
       if (!runtime.dshOnline) {
         log(`DSH 已连接：${cfg.dsh.baseUrl}`);
+        if (isV2) {
+          // 0.2 的审批/提问走 $events 瀑布协议，当前版本未实现；提前说明，避免用户以为是卡住
+          log('提示：当前 DSH 版本（0.2.x）的审批/提问暂不支持，agent 模式如遇审批请到 DSH 网页处理。');
+        } else if (!v2Checked) {
+          // 启动时 DSH 可能还没起来 → 当时按 0.1 选了客户端；DSH 上线后补探测一次，避免"静默用错协议"
+          v2Checked = true;
+          const supported = await apiV2.supports().catch(() => false);
+          if (supported) {
+            log('⚠️ 检测到新版 DSH（0.2.x），但桥接以 0.1 协议启动（启动时 DSH 还没就绪）。');
+            log('   → 请运行 restart.bat 重启桥接（或等 DSH 先启动后再跑 start.bat）。');
+          }
+        }
         router.setDshOnline(true);
         // DSH 首次上线时校验配置模型：模型不在目录里会导致会话静默退回默认模型
         // （图片识别/参数全部按别的模型走）。这里不仅告警，还直接自愈成 DSH 的默认模型并写回配置。
@@ -173,14 +186,26 @@ async function main() {
 
   log('桥接已启动。按 Ctrl+C 退出。');
 
-  // 外部模式开关：DSH 设置页「napcat-mode」卡（插件 qq-mode-console）会写 state/mode.json。
-  // 轮询该文件，与内存模式不一致时切换（桥接控制台仍是权威管理面）。
-  const modePoll = setInterval(() => {
+  // 外部模式开关（桥接控制台仍是权威管理面）：
+  //  - DSH 0.1：设置页「napcat-mode」卡写 state/mode.json
+  //  - DSH 0.2：插件 Config 的 mode 落进 profile 补丁，直接读 settings/describe
+  async function readExternalMode() {
+    if (isV2) {
+      try {
+        const value = unwrap(await apiV2.settings.describe(), 'settings.describe');
+        const ns = (value?.namespaces ?? []).find((row) => row.ns === 'qq-mode-console');
+        const mode = ns?.value?.mode;
+        if (mode === 'chat' || mode === 'agent') return mode;
+      } catch {}
+    }
+    return loadMode();
+  }
+  const modePoll = setInterval(async () => {
     try {
-      const external = loadMode();
+      const external = await readExternalMode();
       if (external !== router.getMode()) {
         log(`检测到外部模式切换：${external}`);
-        router.setMode(external).catch((e) => log('外部模式切换失败:', e?.message ?? e));
+        await router.setMode(external).catch((e) => log('外部模式切换失败:', e?.message ?? e));
       }
     } catch {}
   }, 10000);

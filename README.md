@@ -59,7 +59,7 @@ flowchart TB
 
     G -->|群消息| NC
     P -->|私聊消息| NC
-    NC <-->|WS 3001 事件 / HTTP 3000 动作| R
+    NC <-->|WS 3001(默认) 事件 / HTTP 3000(默认) 动作| R
     PE -.人格状态与评分.-> R
     CON -.管理 / 远程指令.-> R
     R <-->|prompt / 事件流| DSH
@@ -149,9 +149,11 @@ npm install
 1. 下载 NapCat 并按官方教程把它接入你的 QQ 账号（扫码登录，会要求已安装 QQ 客户端）。
 2. 打开 NapCat WebUI：`http://127.0.0.1:6099/webui`（默认口令 `napcat`）。
 3. 进入 **网络配置**，新建两个连接，**消息格式都选 `array`**：
-   - **HTTP 服务端**：`127.0.0.1:3000`
+   - **HTTP 服务端**：`127.0.0.1:3005`（端口可自定义；用 `start.bat` 自动安装时，若 3000 被别的程序占用会自动改用 3005 并写进 `config.json`）
    - **WebSocket 服务端**：`127.0.0.1:3001`
 4. 如果在 WebUI 里设置了 accessToken，记下来，下一步填进 `config.json`；两边都留空也可以，但必须一致。
+
+> 用 `start.bat` 自动安装时不用手动做这一步：桥接会生成 `onebot11_<QQ号>.json` 并自动避开被占用的端口，实际端口以 `config.json` 的 `napcat.wsUrl`/`httpUrl` 为准。
 
 生成的 OneBot11 配置在 NapCat 目录的 `config/onebot11_<QQ号>.json`。
 
@@ -168,7 +170,7 @@ copy config.example.json config.json
 | `dsh.baseUrl` | DSH Web 服务地址，默认 `http://127.0.0.1:3080` |
 | `dsh.provider` / `dsh.model` / `dsh.reasoningEffort` | 模型供应商 / 模型名 / 推理强度（`off`/`low`/`high`/`max`）；若你的 DSH 没有示例中的模型，改成 DSH 设置页里可用的即可。**回复慢就调低推理强度**（`low` 比 `max` 快 30%~45%，闲聊足够） |
 | `napcat.wsUrl` | NapCat WebSocket 服务端地址，默认 `ws://127.0.0.1:3001` |
-| `napcat.httpUrl` | NapCat HTTP 服务端地址，默认 `http://127.0.0.1:3000`（**别填成 WS 端口**） |
+| `napcat.httpUrl` | NapCat HTTP 服务端地址，默认 `http://127.0.0.1:3000`；自动安装时若 3000 被占用会改用空闲端口并写回这里（**别填成 WS 端口**） |
 | `napcat.accessToken` | 与 WebUI 里设置的 accessToken 一致，未配置留空 |
 | `ownerQQ` | 管理员 QQ 号（agent 模式的私聊唤醒、管理操作等） |
 | `agentPreset` | chat 模式使用的 DSH agent preset，默认 `qq-chat` |

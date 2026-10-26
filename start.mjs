@@ -185,12 +185,17 @@ async function ensureApiKey(dshHome) {
   }
 }
 
-/** 探测本机 3080 的 DSH 能否被本项目复用。
+/** 探测本机 DSH 能否被本项目复用。
  * 判据是「能力」而不是版本号：session.list 能正常返回，说明 API 形状与鉴权都对；
  * 再看模型目录里有没有识图模型。新版 DSH 的 /api 要求浏览器会话 cookie，
- * 这里用 ~/.dsh 里持久化的 secret 自签 cookie；老版本（0.1.1）不需要 cookie 也能过。 */
+ * 这里用 ~/.dsh 里持久化的 secret 自签 cookie；老版本（0.1.1）不需要 cookie 也能过。
+ * 探测地址优先取 config.json 的 dsh.baseUrl（用户可能改过端口），默认 3080。 */
 async function probeLocalDsh() {
-  const baseUrl = 'http://127.0.0.1:3080';
+  let baseUrl = 'http://127.0.0.1:3080';
+  try {
+    const saved = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
+    if (typeof saved?.dsh?.baseUrl === 'string' && saved.dsh.baseUrl) baseUrl = saved.dsh.baseUrl;
+  } catch {}
   const auth = createDshAuth({ baseUrl, home: path.join(os.homedir(), '.dsh') });
   const cookie = auth.cookieHeader();
   const call = async (method, args) => {
@@ -287,18 +292,29 @@ async function launchPortableDsh(port) {
 
 /** 决定用哪个 DSH：3080 在跑且 API 可用→复用；否则用便携版（3080 被占则起 3081）。
  *  返回 { reused, dshHome, baseUrl }。 */
+/** config.json 里保存的 DSH 地址（用户可能改过端口），默认 3080。 */
+function savedDshBaseUrl() {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
+    if (typeof cfg?.dsh?.baseUrl === 'string' && cfg.dsh.baseUrl) return cfg.dsh.baseUrl.replace(/\/+$/, '');
+  } catch {}
+  return 'http://127.0.0.1:3080';
+}
+
 async function ensureDsh() {
-  if (await probePort(3080)) {
+  const baseUrl = savedDshBaseUrl();
+  const port = Number(new URL(baseUrl).port) || 3080;
+  if (await probePort(port)) {
     const info = await probeLocalDsh();
     if (info.usable) {
-      console.log(`✅ 复用本机 DeepSeek Harness（http://127.0.0.1:3080${info.hasVision ? '，含识图' : '，⚠️ 无识图模型'}）`);
-      return { reused: true, dshHome: path.join(os.homedir(), '.dsh'), baseUrl: 'http://127.0.0.1:3080' };
+      console.log(`✅ 复用本机 DeepSeek Harness（${baseUrl}${info.hasVision ? '，含识图' : '，⚠️ 无识图模型'}）`);
+      return { reused: true, dshHome: path.join(os.homedir(), '.dsh'), baseUrl };
     }
-    console.log(`⚠️ 本机 3080 的 DSH 无法复用（${info.reason}）`);
+    console.log(`⚠️ 本机 ${baseUrl} 的 DSH 无法复用（${info.reason}）`);
     console.log('   → 改用本目录便携版在 3081 另起一份（不会动你现有的 DSH）');
     return await launchPortableDsh(3081);
   }
-  return await launchPortableDsh(3080);
+  return await launchPortableDsh(port);
 }
 
 async function downloadFile(url, dest, timeoutMs = 600000) {

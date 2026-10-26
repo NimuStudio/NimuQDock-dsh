@@ -56,7 +56,11 @@ function checkNode() {
  * secret 自签 cookie；老版本（0.1.1）不需要 cookie 也能过。
  */
 async function probeLocalDsh() {
-  const baseUrl = 'http://127.0.0.1:3080';
+  let baseUrl = 'http://127.0.0.1:3080';
+  try {
+    const saved = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
+    if (typeof saved?.dsh?.baseUrl === 'string' && saved.dsh.baseUrl) baseUrl = saved.dsh.baseUrl;
+  } catch {}
   const auth = createDshAuth({ baseUrl, home: path.join(os.homedir(), '.dsh') });
   const cookie = auth.cookieHeader();
   const call = async (method, args) => {
@@ -210,8 +214,37 @@ async function main() {
   await ensureNapCat();
 
   console.log('\n✅ 安装完成！');
-  console.log('  · 接下来双击 start.bat：填写管理员QQ + 机器人QQ，扫码登录即可上线。');
-  console.log('  · 本项目、DSH（便携）、NapCat 都已装进本目录，卸载只需删除本目录。');
+  console.log('  · 本项目、DSH（便携）、NapCat 都已装进本目录，卸载只需删除本目录（uninstall.bat）。');
+
+  // 装完直接接着启动：exe 的 SFX 只跑到这里，用户不必再去找 start.bat
+  let go = false;
+  if (process.stdin.isTTY) {
+    try {
+      const readline = await import('node:readline/promises');
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const answer = (await rl.question('现在启动 NimuQDock-dsh？[Y/n] ')).trim().toLowerCase();
+      rl.close();
+      go = answer === '' || answer === 'y' || answer === 'yes';
+    } catch {
+      go = false;
+    }
+  } else {
+    // 非交互（例如被脚本调用）：默认继续启动，与 exe 的"装完即可用"预期一致
+    go = true;
+  }
+  if (go) {
+    const bat = path.join(ROOT, 'start.bat');
+    if (fs.existsSync(bat)) {
+      const { spawn } = await import('node:child_process');
+      const child = spawn('cmd.exe', ['/c', bat], { cwd: ROOT, detached: true, stdio: 'ignore' });
+      child.unref();
+      console.log('🚀 已启动 start.bat（在新窗口里填写 QQ / 扫码登录）。');
+    } else {
+      console.log('未找到 start.bat，请检查安装目录是否完整。');
+    }
+  } else {
+    console.log('  · 之后双击 start.bat 即可启动：填写管理员QQ + 机器人QQ，扫码登录即可上线。');
+  }
 }
 
 main().catch((error) => {
