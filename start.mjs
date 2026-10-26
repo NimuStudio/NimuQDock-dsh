@@ -24,6 +24,9 @@ const DSH_WORKDIR = path.join(DSH_HOME, 'workdir');
 // DSH 便携安装在独立前缀（不动项目自身的 node_modules，避免 npm reconciliation 污染既有依赖）
 const DSH_PREFIX = path.join(ROOT, 'dsh-app');
 const DSH_BIN = path.join(DSH_PREFIX, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
+// 本次运行选定的 NapCat 端口（3000 常被别的程序占用，运行时会自动让开）
+let napcatHttpPort = 3000;
+let napcatWsPort = 3001;
 const NAPCAT_URL = 'https://github.com/NapNeko/NapCatQQ/releases/latest/download/NapCat.Shell.zip';
 const divider = () => console.log('─'.repeat(52));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -83,7 +86,7 @@ async function ensureConfig() {
   }
   const hasOwner = Boolean(existing?.ownerQQ);
   let admin = existing?.ownerQQ || '';
-  let bot = '';
+  let bot = existing?.botQQ || '';
   if (!hasOwner) {
     console.log('\n  首次使用，需要两个 QQ 号：');
     admin = await ask('① 你的QQ号（管理员/你自己）');
@@ -117,6 +120,7 @@ async function ensureConfig() {
   } catch (error) {
     console.log(`❌ 写入 config.json 失败：${error?.message ?? error}`);
   }
+  if (bot) { try { const cur = JSON.parse(fs.readFileSync(cfg, 'utf8')); cur.botQQ = bot; fs.writeFileSync(cfg, JSON.stringify(cur, null, 2) + '\n', 'utf8'); } catch {} }
   return { admin, bot };
 }
 
@@ -342,18 +346,28 @@ function detectQQ() {
       }
     } catch {}
   }
+  // 兜底：扫各盘根目录里名字含 QQ 的文件夹（例如 D:\\QQ体验版），QQ 可以装在任何位置
+  for (const drive of ['C:', 'D:', 'E:', 'F:']) {
+    try {
+      for (const entry of fs.readdirSync(drive + '\\')) {
+        if (!/qq/i.test(entry)) continue;
+        const qq = path.join(drive + '\\', entry, 'QQ.exe');
+        if (fs.existsSync(qq)) return qq;
+      }
+    } catch {}
+  }
   return null;
 }
 
-function oneBot11Config() {
+function oneBot11Config(httpPort = napcatHttpPort, wsPort = napcatWsPort) {
   return {
     network: {
       httpServers: [
-        { enable: true, name: 'HTTP', host: '127.0.0.1', port: 3000, enableCors: true, enableWebsocket: false, messagePostFormat: 'array', token: '', debug: false },
+        { enable: true, name: 'HTTP', host: '127.0.0.1', port: httpPort, enableCors: true, enableWebsocket: false, messagePostFormat: 'array', token: '', debug: false },
       ],
       httpSseServers: [], httpClients: [],
       websocketServers: [
-        { enable: true, name: 'WebSocket', host: '127.0.0.1', port: 3001, reportSelfMessage: false, enableForcePushEvent: true, messagePostFormat: 'array', token: '', debug: false, heartInterval: 30000 },
+        { enable: true, name: 'WebSocket', host: '127.0.0.1', port: wsPort, reportSelfMessage: false, enableForcePushEvent: true, messagePostFormat: 'array', token: '', debug: false, heartInterval: 30000 },
       ],
       websocketClients: [], plugins: [],
     },
@@ -365,10 +379,19 @@ function oneBot11Config() {
   };
 }
 
+/** 端口被占用时依次尝试候选端口，都忙则返回首选（让 NapCat 自己报错）。 */
+async function pickPort(preferred, candidates) {
+  if (!(await probePort(preferred))) return preferred;
+  for (const candidate of candidates) {
+    if (!(await probePort(candidate))) return candidate;
+  }
+  return preferred;
+}
+
 async function waitOneBot(seconds = 180) {
   const deadline = Date.now() + seconds * 1000;
   while (Date.now() < deadline) {
-    if (await probePort(3001) || await probePort(3000)) return true;
+    if (await probePort(napcatWsPort)) return true;
     await sleep(2000);
   }
   return false;
@@ -376,9 +399,30 @@ async function waitOneBot(seconds = 180) {
 
 /** 准备并启动 NapCat：下载(缺失时) → 写 onebot11 配置 → launcher-user.bat <机器人> 扫码 → 等端口。 */
 async function ensureNapCat(bot) {
-  if ((await probePort(3001)) || (await probePort(3000))) {
-    console.log('✅ NapCat 已就绪（OneBot WS 3001 / HTTP 3000）');
+  // 只认 OneBot WS 端口：HTTP 3000 经常被用户其它程序占用（本机就是），用它判断会误判“已就绪”
+  const cfgPath = path.join(ROOT, 'config.json');
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8')); } catch {}
+  const portOf = (url, fallback) => { try { return Number(new URL(url).port) || fallback; } catch { return fallback; } };
+  const wantHttp = portOf(cfg.napcat?.httpUrl, 3000);
+  const wantWs = portOf(cfg.napcat?.wsUrl, 3001);
+  if (await probePort(wantWs)) {
+    napcatHttpPort = wantHttp;
+    napcatWsPort = wantWs;
+    console.log(`✅ NapCat 已就绪（OneBot WS ${napcatWsPort} / HTTP ${napcatHttpPort}）`);
     return true;
+  }
+  // 端口自适应：优先沿用 config.json 里的端口，被别的程序占用时自动让开
+  napcatHttpPort = await pickPort(wantHttp, [3005, 3006, 3007, 3008]);
+  napcatWsPort = await pickPort(wantWs, [3011, 3012, 3013, 3014]);
+  if (napcatHttpPort !== wantHttp || napcatWsPort !== wantWs) {
+    try {
+      cfg.napcat = { ...(cfg.napcat ?? {}), httpUrl: `http://127.0.0.1:${napcatHttpPort}`, wsUrl: `ws://127.0.0.1:${napcatWsPort}` };
+      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
+      console.log(`ℹ️ 端口 ${wantHttp}/${wantWs} 被占用 → 改用 HTTP ${napcatHttpPort} / WS ${napcatWsPort}（已写入 config.json）`);
+    } catch (error) {
+      console.log(`⚠️ 写入端口设置失败：${error?.message ?? error}`);
+    }
   }
   const qq = detectQQ();
   if (!qq) {
@@ -415,11 +459,14 @@ async function ensureNapCat(bot) {
   if (bot) {
     const cfgDir = path.join(napcatDir, 'config');
     const cfgFile = path.join(cfgDir, `onebot11_${bot}.json`);
-    if (!fs.existsSync(cfgFile)) {
+    const want = JSON.stringify(oneBot11Config(), null, 2) + '\n';
+    let existing = '';
+    try { existing = fs.readFileSync(cfgFile, 'utf8'); } catch {}
+    if (existing !== want) {
       try {
         fs.mkdirSync(cfgDir, { recursive: true });
-        fs.writeFileSync(cfgFile, JSON.stringify(oneBot11Config(), null, 2) + '\n', 'utf8');
-        console.log(`✅ 已写入 OneBot 配置 onebot11_${bot}.json（HTTP 3000 / WS 3001）`);
+        fs.writeFileSync(cfgFile, want, 'utf8');
+        console.log(`✅ 已写入 OneBot 配置 onebot11_${bot}.json（HTTP ${napcatHttpPort} / WS ${napcatWsPort}）`);
       } catch (error) {
         console.log(`⚠️ 写入 OneBot 配置失败：${error?.message ?? error}`);
       }
@@ -474,7 +521,7 @@ async function ensureNapCat(bot) {
   if (!bot) return true;
   console.log('⏳ 等待机器人上线（若弹出 QQ 窗口请扫码登录机器人账号；最多 3 分钟）…');
   const up = await waitOneBot(180);
-  if (up) { console.log('✅ 机器人已上线（WS 3001 / HTTP 3000）'); return true; }
+  if (up) { console.log(`✅ 机器人已上线（WS ${napcatWsPort} / HTTP ${napcatHttpPort}）`); return true; }
   console.log('⚠️ 等待机器人上线超时。请在 QQ 窗口扫码登录机器人账号，登录后桥接会自动重连。');
   return false;
 }
