@@ -17,7 +17,7 @@ import { ROOT } from '../config.js';
 import { loadMode, saveMode, readRoleState, writeRoleState } from '../state.js';
 import { appendActivity } from '../log.js';
 import { classifyMood } from '../persona/lexicon.js';
-import { computeAttention, computeInterest, computeScore } from '../persona/engagement.js';
+import { computeAttention, computeInterest, computeScore, detectShutdownRequest } from '../persona/engagement.js';
 import { buildWakePrompt } from '../persona/inject.js';
 import { loadPersona } from '../persona/definition.js';
 
@@ -71,6 +71,7 @@ export class Router {
     this.newMsgEmitter = new EventEmitter(); // 'new' 事件（/agent/v1/wait 长轮询用）
     this.autoSeqs = new Map(); // key -> 自增序号（message_seq 缺失时的未读水位兜底）
     this.lastReplyUser = new Map();   // key -> { userId, at }：机器人最后一次真正发言的对象（对话延续判定）
+    this.replyStreak = new Map();     // key -> 连续接话轮数（非被点名触发时累加，被点名时归 1）：防止没话硬接
     this.wakePendingUser = new Map(); // key -> { userId, at }：本轮唤醒由谁触发（回话成功后转正）
   }
 
@@ -556,6 +557,13 @@ export class Router {
       (seg) => (seg.type === 'at' && seg.data?.qq != null && String(seg.data.qq) !== '0' && String(seg.data.qq) !== String(msg.selfId))
         || (seg.type === 'reply' && !quoteTargetIsSelf),
     );
+    // 被要求「关掉 / 闭嘴」→ 真的安静（暂停 30 分钟），不要争辩或继续搭话
+    if (detectShutdownRequest(textContent, { toOthers })) {
+      const until = Date.now() + 30 * 60 * 1000;
+      state.setPresence(key, { mode: 'paused', until });
+      this.log(`[agent] ${key} 收到关闭请求（${textContent.slice(0, 40)}）→ 暂停 30 分钟`);
+      return;
+    }
     // 机器人刚在本会话说过话（5 分钟内）→ 对方紧接着用的第二人称多半是在跟它说
     const recentBotTurn = Boolean(st.stats?.lastReplyAt && Date.now() - st.stats.lastReplyAt < 5 * 60 * 1000);
     const attention = computeAttention(textContent, {
@@ -570,7 +578,7 @@ export class Router {
       interests: personaDef.interests,
       memories: memory.query(key, textContent, msg.userId),
     });
-    // 对话延续：机器人刚回过这个人，且对方在 4 分钟内又开口 → 视为对话中（哪怕没有 @/问句）
+    // 对话延续：机器人刚回过这个人，且对方在 4 分钟内又开口
     const nowMs = Date.now();
     const lastTo = this.lastReplyUser.get(key);
     const continuing = !!(lastTo && String(lastTo.userId) === String(msg.userId) && nowMs - lastTo.at < 240000 && msg.kind !== 'private');
@@ -582,9 +590,10 @@ export class Router {
       lastReplyAt: st.stats?.lastReplyAt ?? 0,
       presence: st.presence,
       continuing,
+      consecutive: this.replyStreak.get(key) ?? 0,
       now: nowMs,
     }, this.cfg);
-    this.log(`[agent] ${key} 评分 attention=${attention.toFixed(2)} interest=${interest.toFixed(2)}${continuing ? ' [延续]' : ''} → ${verdict}（${reason}）`);
+    this.log(`[agent] ${key} 评分 attention=${attention.toFixed(2)} interest=${interest.toFixed(2)}${continuing ? ' [延续]' : ''} streak=${this.replyStreak.get(key) ?? 0} → ${verdict}（${reason}）`);
 
     if (verdict !== 'wake') return;
     // 5) 唤醒投递（触发消息的图片直通进 prompt，AI 打开上下文即可看到，不依赖工具调用）
@@ -592,6 +601,7 @@ export class Router {
       reason,
       triggerMsg: { textContent, plainContent, userId: msg.userId },
       imageParts,
+      triggerAttention: attention,
     });
   }
 
@@ -620,7 +630,7 @@ export class Router {
   }
 
   /** 唤醒投递：组装 prompt → ensureSession → sessions.prompt。imageParts 为触发消息的图片（直通）。 */
-  async wakeUp(key, { reason = 'score', triggerMsg = null, imageParts = [] } = {}) {
+  async wakeUp(key, { reason = 'score', triggerMsg = null, imageParts = [], triggerAttention = 0 } = {}) {
     const { state, memory, tokens } = this.persona;
     const personaDef = state.safePersona(key);
     if (!personaDef) return;
@@ -646,7 +656,7 @@ export class Router {
     this.log(`[agent] 唤醒投递 (${key})：${reason}`);
     // 记录本轮唤醒由谁触发：若回话成功，用于「对话延续」判定（对方不用再 @ 也能接话）
     if (triggerMsg?.userId != null) {
-      this.wakePendingUser.set(key, { userId: String(triggerMsg.userId), at: Date.now() });
+      this.wakePendingUser.set(key, { userId: String(triggerMsg.userId), at: Date.now(), attention: Number(triggerAttention ?? 0) });
     }
     // 触发消息的图片直通：文本 prompt + 图片 parts（vision 模型直接看，不依赖工具）
     const parts = [{ type: 'text', text: promptText }];
@@ -717,6 +727,11 @@ export class Router {
     const pending = this.wakePendingUser.get(key);
     if (pending) {
       if (replied) this.lastReplyUser.set(key, { userId: pending.userId, at: Date.now() });
+      if (replied) {
+        // 被点名/引用（关注度≥0.6）触发的发言算「一轮对话」；否则是主动接话，累计连续接话数
+        const trig = Number(pending.attention ?? 0);
+        this.replyStreak.set(key, trig >= 0.6 ? 1 : (this.replyStreak.get(key) ?? 0) + 1);
+      }
       this.wakePendingUser.delete(key);
     }
     if (replied) {

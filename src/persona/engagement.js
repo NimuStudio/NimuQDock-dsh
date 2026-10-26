@@ -16,6 +16,20 @@ import { containsAny, QUESTION_MARKERS } from './lexicon.js';
 const SELF_ADDRESS = /你自己|您自己|你本人|您本人/;
 /** 一般第二人称。 */
 const SECOND_PERSON = /你|您/;
+/** 让机器人闭嘴/关掉的说法：被要求闭嘴时应该真的安静，而不是争辩。 */
+const SHUTDOWN_RE = /(把|让|给)?\s*(这个|那个)?\s*(ai|机器人|bot|它|她)\s*(关|停|闭嘴|安静|下线|下了)|(闭嘴|别说了|别回了|别吵了|安静点|滚吧|关了吧)/i;
+
+/**
+ * 这条消息是不是在要求「把机器人关了 / 闭嘴」。
+ * 被 @/引用别人时多半是在跟别人说（例如 A 让 B 闭嘴），返回 false。
+ * @param {string} text 消息文本
+ * @param {{toOthers?: boolean}} [ctx]
+ * @returns {boolean}
+ */
+export function detectShutdownRequest(text, { toOthers = false } = {}) {
+  if (toOthers) return false;
+  return SHUTDOWN_RE.test(String(text ?? ''));
+}
 
 const DEFAULT_ENGAGEMENT = {
   wAttention: 2.5,
@@ -83,7 +97,7 @@ export function computeInterest(text, { topics = [], interests = [], memories = 
 
 /**
  * 参与意愿评分与决策。
- * @param {{attention: number, interest: number, energy: number, mood: number,
+ * @param {{attention: number, interest: number, energy: number, mood: number, consecutive?: number,
  *          lastReplyAt: number, presence?: {mode: string, until?: number},
  *          continuing?: boolean, now?: number, noise?: number}} input
  *          continuing：同一个人刚被机器人回过话、马上又开口（对话延续）——
@@ -116,17 +130,27 @@ export function computeScore(input, cfg) {
     return { score: 1, verdict: 'wake', reason: 'addressed' };
   }
 
-  // 对话延续：机器人刚回过这个人，他马上又开口（哪怕只是"现在明明是下午"这种接话），
-  // 视为在对话中 → 最低按 0.5 参与分唤醒看一眼（是否真回由模型决定），并越过冷却。
-  const effAttention = continuing ? Math.max(attention, 0.5) : attention;
+  // 最低关注门槛：既没被 @/引用，也不是在问它（纯陈述）→ 不插话。
+  // 否则「精力+话题兴趣+随机扰动」会把每句闲聊都推过阈值，变成没话硬接。
+  if (attention < 0.25 && !continuing) {
+    return { score: 0, verdict: 'skip', reason: 'not-addressed' };
+  }
 
-  // 硬冷却：刚说过话不立即再插嘴——但有人明显在问/找你/延续对话时（effAttention≥0.45）
-  // 解除冷却，否则「你回他一句→他立刻接话(没@)」会被冷却卡死，逼得人句句 @。
-  if (effAttention < 0.45 && lastReplyAt > 0 && now - lastReplyAt < e.cooldownMs) {
+  // 连续接话上限：已经连着回了 N 轮（且都不是被点名）就别再没话硬接——
+  // 真人不会对同一个人的每句话都回应；要它继续，得有人明确叫它（@/引用/第二人称/名字）。
+  const consecutive = Number(input.consecutive ?? 0);
+  if (consecutive >= 2 && attention < 0.6) {
+    return { score: 0, verdict: 'skip', reason: 'consecutive-cap' };
+  }
+
+  // 硬冷却：刚说过话不立即再插嘴；但明显在问/找它（attention≥0.45）时放行。
+  if (attention < 0.45 && lastReplyAt > 0 && now - lastReplyAt < e.cooldownMs) {
     return { score: 0, verdict: 'skip', reason: 'cooldown' };
   }
 
-  const score = e.wAttention * effAttention
+  // 对话延续只给小的加成（0.35），不再把 attention 强行抬到 0.5——那会让它对每句话都接。
+  const score = e.wAttention * attention
+    + (continuing ? 0.15 : 0)
     + e.wInterest * interest
     + e.wEnergy * Math.max(0, Math.min(1, energy))
     + e.wMood * (mood - 0.5)
@@ -137,7 +161,7 @@ export function computeScore(input, cfg) {
     : e.threshold;
 
   if (score >= threshold) {
-    return { score, verdict: 'wake', reason: continuing && effAttention === 0.5 ? 'continuing' : 'score' };
+    return { score, verdict: 'wake', reason: 'score' };
   }
   return { score, verdict: 'skip', reason: 'below-threshold' };
 }

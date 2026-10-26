@@ -173,7 +173,7 @@ import('../src/persona/memory.js').then(async ({ MemoryStore, extractGrams }) =>
   check('过期未用记忆被清理', !mem.query('group:1', '旧话题').some((e) => e.id === old.id));
 
   console.log('── 6. 参与意愿评分 ──');
-  const { computeAttention, computeInterest, computeScore } = await import('../src/persona/engagement.js');
+  const { computeAttention, computeInterest, computeScore, detectShutdownRequest } = await import('../src/persona/engagement.js');
   const eCfg = { social: { engagement: { wAttention: 2.5, wInterest: 1.5, wEnergy: 1.0, wMood: 0.8, wNoise: 0.6, threshold: 2.0, cooldownMs: 45000 }, defaultPersona: 'full' } };
 
   check('attention 被点名=1', computeAttention('在吗', { directed: true }) === 1.0);
@@ -195,11 +195,24 @@ import('../src/persona/memory.js').then(async ({ MemoryStore, extractGrams }) =>
   const r1 = computeScore({ attention: 1.0, interest: 0, energy: 0.5, mood: 0.5, lastReplyAt: 0 }, eCfg);
   check('被点名强制唤醒', r1.verdict === 'wake' && r1.reason === 'addressed');
 
+  // 没话硬接：纯陈述不插话；连续接话到上限后必须被叫才继续
+  const rStmt = computeScore({ attention: 0.05, interest: 1.0, energy: 1.0, mood: 0.5, lastReplyAt: 0, noise: 0.9 }, eCfg);
+  check('纯陈述不插话', rStmt.verdict === 'skip' && rStmt.reason === 'not-addressed');
+  const rCap = computeScore({ attention: 0.35, interest: 1.0, energy: 1.0, mood: 0.5, lastReplyAt: 0, noise: 0.5, consecutive: 2 }, eCfg);
+  check('连续接话上限', rCap.verdict === 'skip' && rCap.reason === 'consecutive-cap');
+  const rAddressedCap = computeScore({ attention: 0.95, interest: 0, energy: 0.5, mood: 0.5, lastReplyAt: 0, consecutive: 5 }, eCfg);
+  check('被点名不受连续上限影响', rAddressedCap.verdict === 'wake');
+
+  // 被要求关闭：识别"把ai关了/闭嘴"，但 @ 别人时不算
+  check('关闭请求识别', detectShutdownRequest('能不能把这个ai关了') === true);
+  check('关闭请求不受别人对话影响', detectShutdownRequest('别说了', { toOthers: true }) === false);
+
   // 高分唤醒 / 低分潜水
   const r2 = computeScore({ attention: 0.35, interest: 1.0, energy: 1.0, mood: 0.8, lastReplyAt: 0, noise: 0.5 }, eCfg);
   check('高分唤醒', r2.verdict === 'wake');
   const r3 = computeScore({ attention: 0.05, interest: 0, energy: 0.3, mood: 0.3, lastReplyAt: 0, noise: 0.1 }, eCfg);
-  check('低分潜水', r3.verdict === 'skip' && r3.reason === 'below-threshold');
+  // 纯陈述现在会先在「最低关注门槛」被拦下（not-addressed），断言只要求结果是潜水
+  check('低分潜水', r3.verdict === 'skip' && ['below-threshold', 'not-addressed'].includes(r3.reason));
 
   // 硬冷却（未点名时生效；被点名优先于冷却）
   const r4 = computeScore({ attention: 0.35, interest: 0, energy: 0.5, mood: 0.5, lastReplyAt: Date.now() - 1000 }, eCfg);
