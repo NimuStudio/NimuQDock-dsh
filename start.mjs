@@ -616,11 +616,14 @@ async function waitJudge(url, ms = 30000) {
   return false;
 }
 
-/** models/ 目录下第一个 .gguf。 */
+/** models/ 目录下挑一个 .gguf：多个时选最大的（通常参数更多、判断更准）。 */
 function findFirstGguf(dir) {
   try {
-    const hit = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.gguf'));
-    return hit ? path.join(dir, hit) : null;
+    const hits = fs.readdirSync(dir)
+      .filter((f) => f.toLowerCase().endsWith('.gguf'))
+      .map((f) => ({ f, size: fs.statSync(path.join(dir, f)).size }))
+      .sort((a, b) => b.size - a.size);
+    return hits.length ? path.join(dir, hits[0].f) : null;
   } catch {
     return null;
   }
@@ -650,8 +653,12 @@ async function ensureJudgeModel() {
     console.log('✅ 接话判断：本地模型服务已在运行');
     return;
   }
-  const model = (judged.modelPath && fs.existsSync(judged.modelPath))
-    ? judged.modelPath
+  // modelPath 允许写相对路径（相对项目根），便于发行包配置
+  const configuredModel = judged.modelPath
+    ? (path.isAbsolute(judged.modelPath) ? judged.modelPath : path.join(ROOT, judged.modelPath))
+    : '';
+  const model = (configuredModel && fs.existsSync(configuredModel))
+    ? configuredModel
     : findFirstGguf(path.join(ROOT, 'models'));
   const server = (judged.llamaServer && fs.existsSync(judged.llamaServer))
     ? judged.llamaServer

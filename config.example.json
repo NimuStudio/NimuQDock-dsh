@@ -83,7 +83,7 @@
   "judge": {
     "enabled": "auto",
     "url": "http://127.0.0.1:8080",
-    "modelPath": "",
+    "modelPath": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "llamaServer": "",
     "timeoutMs": 2500
   }

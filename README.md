@@ -171,9 +171,10 @@ agent 模式下「这条消息该不该接」有两种判断方式，桥接会�
 | **规则**（默认） | 未安装模型 | 基于 @/引用/第二人称/问句/冷却/连续接话等信号打分 |
 | **本地模型** | 检测到 llama-server + GGUF | 小模型判断语义（是否在叫它），上下文信号仍由规则兜底 |
 
-- 模型：[Qwen3-0.6B Q4_K_M](https://www.modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF)（约 379 MB，Apache-2.0）
+- 模型：[Qwen3-1.7B Q4_K_M](https://www.modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF)（约 1.1 GB，Apache-2.0；实测 20/20，判断约 200ms/条）
+  - 轻量替代：`npm run fetch-judge -- --small` 换成 0.6B（约 379 MB，CPU 也能跑）
 - 推理：[llama.cpp](https://github.com/ggml-org/llama.cpp) 的 `llama-server`（发行包自带 CPU 版，约 23 MB）
-- 安装：`npm run fetch-judge`（或双击发行包里的脚本；模型放进 `models/`，推理放进 `llama/`）
+- 安装：`npm run fetch-judge`（默认 1.7B；加 `-- --small` 换 0.6B；模型放 `models/`，推理放 `llama/`）
 - 自动回退：模型没装、启动超时、或输出异常时，**自动退回规则**，聊天不受影响
 - chat 模式：不经过判断，所有消息原样交给 DSH
 
