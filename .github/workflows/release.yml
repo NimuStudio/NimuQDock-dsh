@@ -97,10 +97,21 @@ jobs:
 
       - name: Build installer (NSIS native wizard)
         run: |
-          node scripts/make-installer-nsis.mjs "${{ steps.ver.outputs.version }}" dist
+          set +e
+          node scripts/make-installer-nsis.mjs "${{ steps.ver.outputs.version }}" dist 2>&1 | tee /tmp/nsis.log
+          RC=${PIPESTATUS[0]}
+          set -e
+          if [ "$RC" -ne 0 ]; then
+            SHA=$(git rev-parse HEAD)
+            MSG=$(tail -8 /tmp/nsis.log | tr '\n' ' ' | cut -c1-130)
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/$SHA" -f state=failure -f context=nsis -f description="$MSG" || true
+            exit 1
+          fi
           # 固定文件名副本：给用户一个不会随版本变化的下载直链
           cp "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-setup.exe" "dist/NimuQDock-dsh-latest-setup.exe"
           ls -la dist/
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Attest build provenance (来源证明)
         uses: actions/attest-build-provenance@v1
