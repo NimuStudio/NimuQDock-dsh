@@ -20,12 +20,13 @@ const MODELS_DIR = path.join(ROOT, 'models');
 const LLAMA_DIR = path.join(ROOT, 'llama');
 
 // 锁版本，避免上游更新导致行为漂移
+// 默认 1.7B（判断更准）；--small 用 0.6B（约 379MB，CPU 也能跑；发行包内置这个）
+const pickSize = process.argv.includes('--small') ? 'small' : 'large';
 const MODEL_REPO = pickSize === 'small' ? 'unsloth/Qwen3-0.6B-GGUF' : 'unsloth/Qwen3-1.7B-GGUF';
 const MODEL_FILE_BY_SIZE = {
-  large: 'Qwen3-1.7B-Q4_K_M.gguf', // 默认：判断更准（约 1.1GB）
-  small: 'Qwen3-0.6B-Q4_K_M.gguf', // 轻量：CPU 也能跑（约 379MB）
+  large: 'Qwen3-1.7B-Q4_K_M.gguf',
+  small: 'Qwen3-0.6B-Q4_K_M.gguf',
 };
-const pickSize = process.argv.includes('--small') ? 'small' : 'large';
 const MODEL_FILE = MODEL_FILE_BY_SIZE[pickSize];
 const MODEL_URL = `https://www.modelscope.cn/models/${MODEL_REPO}/resolve/master/${MODEL_FILE}`;
 const MODEL_MIN_BYTES = 300 * 1024 * 1024; // 小于这个值视为下载失败/被截断

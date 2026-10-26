@@ -43,7 +43,7 @@ const ROOT_ALLOW = new Set([
   'package.json', 'package-lock.json', 'config.example.json',
   'README.md', 'README.en.md', 'LICENSE',
   'install.bat', 'install.mjs', 'uninstall.bat', 'uninstall.mjs',
-  'start.bat', 'start.mjs', 'restart.bat',
+  'start.bat', 'start.mjs', 'restart.bat', 'install-model.bat',
 ]);
 
 function walk(dir, base, list) {

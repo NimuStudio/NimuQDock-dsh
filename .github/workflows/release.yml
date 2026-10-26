@@ -67,7 +67,7 @@ jobs:
 
       # 接话判断模型 + CPU 版 llama.cpp（合并进发行包，用户下载即用）
       - name: Fetch judge model (GGUF) and llama.cpp CPU build
-        run: node scripts/fetch-judge-model.mjs
+        run: node scripts/fetch-judge-model.mjs --small
         timeout-minutes: 30
 
       - name: Build zip (UTF-8 filenames)
