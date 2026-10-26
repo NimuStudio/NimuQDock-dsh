@@ -185,6 +185,63 @@
   .btn-accept:active,.login-btn:active{transform:scale(.97)}
   .btn-accept.active{background:linear-gradient(135deg,#c8b2e0,#f9c0d0 55%,#cbecbd)!important;box-shadow:0 0 0 3px rgba(180,140,205,.22)!important}
 
+
+  /* ── 统一按钮体系（覆盖历史遗留的绿/灰/杂色，三主题一致） ── */
+  .btn-accept,.btn-cancel,.sub-tab,.chip,.login-btn,.glass-dd-trigger,.icon-btn{
+    font-family:inherit;font-weight:600;cursor:pointer;
+    transition:background .22s ease,border-color .22s ease,color .22s ease,box-shadow .22s ease,transform .22s ease,filter .22s ease;
+  }
+  /* 主操作：品牌渐变（薰衣草→粉→薄荷） */
+  .btn-accept,.login-btn{
+    background:linear-gradient(135deg,#dcc2ec,#f9c0d0 55%,#d3ebc6)!important;
+    color:#43304f!important;border:1px solid rgba(255,255,255,.6)!important;font-weight:700!important;
+    box-shadow:0 4px 14px rgba(180,140,205,.28);
+  }
+  .btn-accept:hover,.login-btn:hover{
+    background:linear-gradient(135deg,#dcc2ec,#f9c0d0 55%,#d3ebc6)!important;
+    filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 6px 18px rgba(180,140,205,.34);
+  }
+  .btn-accept:active,.login-btn:active{transform:scale(.97);filter:brightness(.98)}
+  /* 选中态：统一紫色 tint（模式/标签/子页签共用） */
+  .btn-accept.active,.sub-tab.active,.chip.cur{
+    background:rgba(180,140,205,.22)!important;border-color:rgba(180,140,205,.55)!important;
+    color:#5c3f73!important;font-weight:700!important;box-shadow:0 0 0 3px rgba(180,140,205,.16);
+  }
+  /* 次要操作：玻璃白 */
+  .btn-cancel,.sub-tab,.glass-dd-trigger{
+    background:rgba(255,255,255,.42)!important;border:1px solid rgba(255,255,255,.62)!important;color:var(--text)!important;
+  }
+  .btn-cancel:hover,.sub-tab:hover,.glass-dd-trigger:hover{
+    background:rgba(255,255,255,.62)!important;border-color:rgba(180,140,205,.45)!important;
+  }
+  /* 危险操作：统一玫红 */
+  .btn-cancel.danger{
+    background:rgba(196,85,77,.10)!important;border-color:rgba(196,85,77,.28)!important;color:#b8455f!important;
+  }
+  .btn-cancel.danger:hover{background:rgba(196,85,77,.18)!important;border-color:rgba(196,85,77,.45)!important}
+  /* 图标按钮：统一尺寸与玻璃底 */
+  .icon-btn{
+    width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:10px;
+    background:rgba(255,255,255,.42);border:1px solid rgba(255,255,255,.62);color:var(--text);
+  }
+  .icon-btn:hover{background:rgba(255,255,255,.62);border-color:rgba(180,140,205,.45)}
+  .game-btn{border-radius:12px!important}
+  /* 深色主题 */
+  body.dark-mode .btn-accept,body.dark-mode .login-btn{color:#241f18!important;border-color:rgba(255,255,255,.25)!important;box-shadow:0 4px 16px rgba(0,0,0,.35)}
+  body.dark-mode .btn-cancel,body.dark-mode .sub-tab,body.dark-mode .glass-dd-trigger,body.dark-mode .icon-btn{
+    background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.16)!important;color:#f4f1ea!important;
+  }
+  body.dark-mode .btn-cancel:hover,body.dark-mode .sub-tab:hover,body.dark-mode .icon-btn:hover{background:rgba(255,255,255,.14)!important}
+  body.dark-mode .btn-cancel.danger{background:rgba(196,85,77,.18)!important;border-color:rgba(196,85,77,.4)!important;color:#f0a8c2!important}
+  body.dark-mode .btn-accept.active,body.dark-mode .sub-tab.active,body.dark-mode .chip.cur{
+    background:rgba(200,178,224,.22)!important;border-color:rgba(200,178,224,.5)!important;color:#e8dcf5!important;
+  }
+  /* 浅色主题 */
+  body.light-mode .btn-cancel,body.light-mode .sub-tab,body.light-mode .glass-dd-trigger,body.light-mode .icon-btn{
+    background:#fff!important;border-color:rgba(0,0,0,.08)!important;color:var(--text)!important;
+  }
+  body.light-mode .chip{background:#fff;border-color:rgba(0,0,0,.08)}
+
 </style>
 </head>
 <body>
