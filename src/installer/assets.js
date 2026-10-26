@@ -46,3 +46,8 @@ export const JUDGE_MODELS = {
 export function modelUrl(model) {
   return `https://www.modelscope.cn/models/${model.repo}/resolve/${model.revision}/${model.file}`;
 }
+
+/** HuggingFace 备用地址（海外 CI 用）：内容用同一个 SHA256 校验。 */
+export function hfUrl(model) {
+  return `https://huggingface.co/${model.repo}/resolve/main/${model.file}`;
+}

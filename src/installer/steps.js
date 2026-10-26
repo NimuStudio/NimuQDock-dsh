@@ -15,7 +15,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { installDshPortable, DSH_VERSION } from '../dsh-install.js';
 import { createDshAuth } from '../transport/dsh-auth.js';
-import { NAPCAT, LLAMA, JUDGE_MODELS, modelUrl } from './assets.js';
+import { NAPCAT, LLAMA, JUDGE_MODELS, modelUrl, hfUrl } from './assets.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const PATHS = {
@@ -312,12 +312,24 @@ export async function downloadFile(url, dest, { onProgress = noop, useMirrors = 
 
 function unzip(zipFile, destDir) {
   fs.mkdirSync(destDir, { recursive: true });
-  // Windows 用 PowerShell；Linux/macOS（CI）用 unzip
-  const r = process.platform === 'win32'
-    ? spawnSync('powershell', ['-NoProfile', '-Command',
-        `Expand-Archive -LiteralPath '${String(zipFile).replace(/'/g, "''")}' -DestinationPath '${String(destDir).replace(/'/g, "''")}' -Force`], { encoding: 'utf8' })
-    : spawnSync('unzip', ['-oq', zipFile, '-d', destDir], { encoding: 'utf8' });
-  if (r.status !== 0) throw new Error(`解压失败：${(r.stderr || r.stdout || '').slice(0, 200)}`);
+  // 依次尝试：tar（Windows 10+ / Linux 都有）→ PowerShell → unzip
+  const attempts = process.platform === 'win32'
+    ? [
+        ['tar', ['-xf', zipFile, '-C', destDir]],
+        ['powershell', ['-NoProfile', '-Command',
+          `Expand-Archive -LiteralPath '${String(zipFile).replace(/'/g, "''")}' -DestinationPath '${String(destDir).replace(/'/g, "''")}' -Force`]],
+      ]
+    : [
+        ['tar', ['-xf', zipFile, '-C', destDir]],
+        ['unzip', ['-oq', zipFile, '-d', destDir]],
+      ];
+  let lastError = null;
+  for (const [cmd, args] of attempts) {
+    const r = spawnSync(cmd, args, { encoding: 'utf8' });
+    if (r.status === 0) return;
+    lastError = r;
+  }
+  throw new Error(`解压失败：${(lastError?.stderr || lastError?.stdout || '').slice(0, 200)}`);
 }
 
 /** 安装便携 DSH。 */
@@ -387,7 +399,20 @@ export async function installModelStep(kind = '1.7b', onLog = noop, onProgress =
   fs.mkdirSync(PATHS.modelsDir, { recursive: true });
   onLog(`开始下载判断模型 ${src.file}（约 ${Math.round(src.size / 1048576)}MB）…`);
   const tmp = `${dest}.part`;
-  await downloadFile(modelUrl(src), tmp, { onProgress, useMirrors: false, sha256: src.sha256, size: src.size, onResume: (n) => onLog(`检测到未完成下载，从 ${(n / src.size * 100).toFixed(0)}% 续传…`) });
+  let lastError = null;
+  for (const url of [modelUrl(src), hfUrl(src)]) {
+    try {
+      onLog(`下载源：${new URL(url).host}`);
+      await downloadFile(url, tmp, { onProgress, useMirrors: false, sha256: src.sha256, size: src.size, onResume: (n) => onLog(`检测到未完成下载，从 ${(n / src.size * 100).toFixed(0)}% 续传…`) });
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+      onLog(`该源失败：${error?.message ?? error}`);
+      try { fs.unlinkSync(tmp); } catch {}
+    }
+  }
+  if (lastError) throw lastError;
   if (fs.statSync(tmp).size !== src.size) throw new Error(`模型大小不符（期望 ${src.size}）`);
   fs.renameSync(tmp, dest);
   // 只保留当前模型：避免 0.6B/1.7B 同时存在时 start.bat 按"最大"选到旧的那个

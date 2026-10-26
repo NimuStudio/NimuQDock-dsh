@@ -17,6 +17,7 @@ permissions:
   contents: write
   id-token: write
   attestations: write
+  statuses: write
 
 jobs:
   build-release:
@@ -67,8 +68,18 @@ jobs:
 
       # 接话判断模型 + CPU 版 llama.cpp（合并进发行包，用户下载即用）
       - name: Fetch judge model (GGUF) and llama.cpp CPU build
-        run: node scripts/fetch-judge-model.mjs --small
+        run: |
+          set -o pipefail
+          node scripts/fetch-judge-model.mjs --small 2>&1 | tee /tmp/fetch.log
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            MSG=$(grep -E "失败|ERROR|Error" /tmp/fetch.log | tail -2 | tr '\n' ' ' | cut -c1-120)
+            gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+              -f state=failure -f context=fetch-judge -f description="$MSG" || true
+            exit 1
+          fi
         timeout-minutes: 30
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Build zip (UTF-8 filenames)
         run: node scripts/make-release-zip.mjs "${{ steps.ver.outputs.version }}" "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-win-x64.zip"
