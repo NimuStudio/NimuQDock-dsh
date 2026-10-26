@@ -103,8 +103,10 @@ jobs:
           set -e
           if [ "$RC" -ne 0 ]; then
             SHA=$(git rev-parse HEAD)
-            MSG=$(tail -8 /tmp/nsis.log | tr '\n' ' ' | cut -c1-130)
-            gh api "repos/${GITHUB_REPOSITORY}/statuses/$SHA" -f state=failure -f context=nsis -f description="$MSG" || true
+            MSG=$(grep -iE "error|abort|no files|cannot|invalid" /tmp/nsis.log | tail -2 | tr '\n' ' ' | cut -c1-130)
+            TAIL=$(tail -2 /tmp/nsis.log | tr '\n' ' ' | cut -c1-130)
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/$SHA" -f state=failure -f context=nsis-err -f description="$MSG" || true
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/$SHA" -f state=failure -f context=nsis-tail -f description="$TAIL" || true
             exit 1
           fi
           # 固定文件名副本：给用户一个不会随版本变化的下载直链
