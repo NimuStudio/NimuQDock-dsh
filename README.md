@@ -11,7 +11,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/NimuStudio/NimuQDock-dsh?style=flat-square&label=Stars&color=b48ccd)](https://github.com/NimuStudio/NimuQDock-dsh)
 [![License](https://img.shields.io/github/license/NimuStudio/NimuQDock-dsh?style=flat-square&label=License&color=b48ccd)](https://github.com/NimuStudio/NimuQDock-dsh/blob/main/LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.13-6aa055?style=flat-square)](https://nodejs.org)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.1.1--rc.2-f6f4f7?style=flat-square&labelColor=2a2430&color=b48ccd)](https://github.com/deepseek-ai/deepseek-harness)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.2-f6f4f7?style=flat-square&labelColor=2a2430&color=b48ccd)](https://github.com/deepseek-ai/deepseek-harness)
 [![NapCat](https://img.shields.io/badge/QQ-NapCat%20OneBot%20v11-6aa055?style=flat-square)](https://github.com/NapNeko/NapCatQQ)
 
 [**中文**](README.md) · [**English**](README.en.md)
@@ -19,6 +19,17 @@
 </div>
 
 ---
+
+## 下载
+
+| 方式 | 链接 | 说明 |
+|---|---|---|
+| **exe（图形安装器）** | [GitHub Releases](https://github.com/NimuStudio/NimuQDock-dsh/releases/latest) | 自动检测本机组件，勾选要装的 DSH / NapCat / 判断模型 |
+| **国内加速**（推荐） | [gh-proxy 直链](https://gh-proxy.com/https://github.com/NimuStudio/NimuQDock-dsh/releases/latest/download/NimuQDock-dsh-latest-setup.exe) | 固定文件名，始终指向最新版 |
+| **zip 完整离线包** | Releases 页面的 Assets | 内置 0.6B 模型与推理引擎，适合网络不好 / 开箱即用 |
+
+> 安装器下载 NapCat、推理引擎、判断模型时会自动走国内镜像；只有 exe 本身需要走上面的加速链接。
+> 安装内容都在安装目录内，卸载删目录即可。
 
 ## 这是什么
 

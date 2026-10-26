@@ -80,6 +80,8 @@ jobs:
         run: |
           cat scripts/sfx/7z.sfx scripts/sfx/sfx-config.txt "dist/app.7z" \
             > "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-setup.exe"
+          # 固定文件名副本：给用户一个不会随版本变化的下载直链
+          cp "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-setup.exe" "dist/NimuQDock-dsh-latest-setup.exe"
           ls -la dist/
 
       - name: Attest build provenance (来源证明)
@@ -102,6 +104,14 @@ jobs:
           if [ ! -s /tmp/release-notes.md ]; then
             echo "本版本暂无独立更新日志条目（详见仓库 CHANGELOG.md）。" > /tmp/release-notes.md
           fi
+          printf '%s\n' \
+            '' '---' '' '### 下载' '' \
+            '- **国内加速（推荐）**：https://gh-proxy.com/https://github.com/NimuStudio/NimuQDock-dsh/releases/latest/download/NimuQDock-dsh-latest-setup.exe' \
+            '- **GitHub 原链**：https://github.com/NimuStudio/NimuQDock-dsh/releases/latest' \
+            '- **zip 完整离线包**：见下方 Assets（内置 0.6B 判断模型，适合网络不好或想开箱即用）' \
+            '' '> `...-latest-setup.exe` 是每次发版自动更新的固定文件名，链接不会过期。' \
+            '> 安装器下载 NapCat / 推理引擎 / 判断模型时也会自动走国内镜像。' \
+            >> /tmp/release-notes.md
           echo "notes 行数: $(wc -l < /tmp/release-notes.md)"
 
       - name: Create or update GitHub Release
@@ -109,12 +119,13 @@ jobs:
           VERSION="${{ steps.ver.outputs.version }}"
           if gh release view "$VERSION" >/dev/null 2>&1; then
             echo "Release $VERSION 已存在，补传 assets + 更新备注…"
-            gh release upload "$VERSION" dist/*.zip dist/*.exe --clobber
+            gh release upload "$VERSION" dist/*.zip dist/*.exe "dist/NimuQDock-dsh-latest-setup.exe" --clobber
             gh release edit "$VERSION" --notes-file /tmp/release-notes.md
           else
             gh release create "$VERSION" \
               "dist/NimuQDock-dsh-$VERSION-win-x64.zip" \
               "dist/NimuQDock-dsh-$VERSION-setup.exe" \
+              "dist/NimuQDock-dsh-latest-setup.exe" \
               --title "NimuQDock-dsh $VERSION" \
               --notes-file /tmp/release-notes.md
           fi
