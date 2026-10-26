@@ -7,18 +7,6 @@
 <link rel="stylesheet" href="nimu-glass.css">
 <style>
   /* ── 控制台专用补充样式（基于 Nimu Glass UI 组件体系） ── */
-  /* 品牌背景：一条斜向的薄荷→粉→薰衣草柔和洗色（整体有色，玻璃面板才透得出来） */
-  body{background-color:#edeef3!important;background-image:linear-gradient(150deg,rgba(203,236,189,.62) 0%,rgba(228,222,238,.55) 38%,rgba(249,192,208,.55) 68%,rgba(180,140,205,.48) 100%)!important;background-attachment:fixed!important}
-  body.light-mode{background-color:#f6f5f8!important;background-image:linear-gradient(150deg,rgba(203,236,189,.35) 0%,rgba(240,238,246,.30) 45%,rgba(249,192,208,.32) 100%)!important}
-  body.dark-mode{background-color:#14161a!important;background-image:linear-gradient(150deg,rgba(85,143,66,.16) 0%,rgba(28,26,34,.60) 45%,rgba(180,140,205,.18) 100%)!important}<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NimuQDock-dsh 控制台</title>
-<link rel="stylesheet" href="nimu-glass.css">
-<style>
-  /* ── 控制台专用补充样式（基于 Nimu Glass UI 组件体系） ── */
   /* 品牌背景：薄荷 / 薰衣草 / 粉（取自工作室官网 ysti.com.cn 的玻璃拟态体系） */
   body{background-color:#f4f2f6!important;background-image:radial-gradient(1100px 760px at 6% -6%,rgba(203,236,189,.70),transparent 62%),radial-gradient(980px 700px at 96% 2%,rgba(249,192,208,.62),transparent 60%),radial-gradient(900px 860px at 70% 104%,rgba(180,140,205,.42),transparent 66%)!important;background-attachment:fixed!important}
   body.light-mode{background-color:#faf9fb!important;background-image:radial-gradient(900px 600px at 8% -10%,rgba(203,236,189,.35),transparent 60%),radial-gradient(900px 600px at 100% 0%,rgba(249,192,208,.30),transparent 60%)!important}
@@ -242,6 +230,68 @@
   }
   body.light-mode .chip{background:#fff;border-color:rgba(0,0,0,.08)}
 
+  body{background-color:#edeef3!important;background-image:linear-gradient(150deg,rgba(203,236,189,.62) 0%,rgba(228,222,238,.55) 38%,rgba(249,192,208,.55) 68%,rgba(180,140,205,.48) 100%)!important;background-attachment:fixed!important}
+  body.light-mode{background-color:#f6f5f8!important;background-image:linear-gradient(150deg,rgba(203,236,189,.35) 0%,rgba(240,238,246,.30) 45%,rgba(249,192,208,.32) 100%)!important}
+  body.dark-mode{background-color:#14161a!important;background-image:linear-gradient(150deg,rgba(85,143,66,.16) 0%,rgba(28,26,34,.60) 45%,rgba(180,140,205,.18) 100%)!important}
+
+  /* ── 设计系统 v2（ui-new skill 审查后的统一规范） ── */
+  :root{
+    --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;
+    --radius-sm:10px;--radius-md:14px;--radius-lg:20px;
+    --ease-spring:cubic-bezier(.34,1.56,.64,1);--ease-standard:cubic-bezier(.2,0,0,1);
+    --dur-1:120ms;--dur-2:200ms;--dur-3:300ms;
+    --text-dim:rgba(44,36,22,.62);--text-secondary:rgba(44,36,22,.72);
+    --ring:0 0 0 3px rgba(180,140,205,.28);
+  }
+  body.dark-mode{--text-dim:rgba(244,241,234,.62);--text-secondary:rgba(244,241,234,.76);--ring:0 0 0 3px rgba(200,178,224,.3)}
+  body.light-mode{--text-dim:#5c5448;--text-secondary:#4a4238}
+
+  /* 排版：清晰的 3 级层级 */
+  .section-title{font-size:clamp(19px,2.2vw,22px);line-height:1.25;letter-spacing:-.02em}
+  .section-subtitle{font-size:13px;line-height:1.5}
+  .card-title{font-size:11.5px;letter-spacing:.06em}
+  body{font-size:14.5px;line-height:1.55}
+
+  /* 可访问性：键盘焦点环 */
+  a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,
+  .chip:focus-visible,.sub-tab:focus-visible,.glass-dd-trigger:focus-visible,.game-btn:focus-visible{
+    outline:2px solid var(--accent);outline-offset:2px;box-shadow:var(--ring);
+  }
+  button:disabled,.btn-accept:disabled,.btn-cancel:disabled,.login-btn:disabled{
+    opacity:.45;cursor:not-allowed;transform:none!important;filter:none!important;box-shadow:none!important;
+  }
+
+  /* 按钮：统一触控高度与内边距 */
+  .btn-accept,.btn-cancel,.login-btn,.glass-dd-trigger,.sub-tab{min-height:38px;padding-inline:18px}
+  .icon-btn{width:38px;height:38px}
+
+  /* 输入：统一 44px 与焦点态 */
+  .glass-input,.glass-select,select{min-height:44px;border-radius:var(--radius-sm)}
+
+  /* 卡片：克制的双层阴影 + 跟随鼠标的高光（与 --near 距离泛光叠加） */
+  .order-card,.persona-card,.row-item,.card{
+    position:relative;overflow:hidden;
+    --mx:50%;--my:50%;
+    background-image:radial-gradient(420px circle at var(--mx) var(--my),rgba(255,255,255,.28),transparent 45%);
+    background-repeat:no-repeat;
+  }
+  .order-card::after,.persona-card::after,.row-item::after,.card::after{
+    content:'';position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+    background:radial-gradient(220px circle at var(--mx) var(--my),rgba(233,156,182,calc(var(--near,0)*.16)),transparent 60%);
+    opacity:calc(var(--near,0));transition:opacity .3s var(--ease-standard);
+  }
+  body.dark-mode .order-card::after,body.dark-mode .persona-card::after,body.dark-mode .row-item::after,body.dark-mode .card::after{
+    background:radial-gradient(220px circle at var(--mx) var(--my),rgba(200,178,224,calc(var(--near,0)*.2)),transparent 60%);
+  }
+
+  /* 卡片网格节奏 */
+  .cards{gap:var(--space-4)}
+  .section-header{margin-bottom:var(--space-5)}
+
+  /* 尊重系统减少动效偏好 */
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  }
 </style>
 </head>
 <body>
@@ -1141,6 +1191,9 @@ setInterval(() => { if (TOKEN) { refreshStatus(); if (!document.getElementById('
       const d = Math.hypot(mx - cx, my - cy);
       const reach = Math.max(r.width, r.height) * 0.75 + 160;
       el.style.setProperty('--near', Math.max(0, Math.min(1, 1 - d / reach)).toFixed(3));
+      // 高光跟随鼠标：卡片内坐标（0~100%）
+      el.style.setProperty('--mx', Math.max(0, Math.min(100, ((mx - r.left) / r.width) * 100)).toFixed(1) + '%');
+      el.style.setProperty('--my', Math.max(0, Math.min(100, ((my - r.top) / r.height) * 100)).toFixed(1) + '%');
     }
   }
   addEventListener('mousemove', (e) => { mx = e.clientX; my = e.clientY; if (!raf) raf = requestAnimationFrame(update); }, { passive: true });
