@@ -145,7 +145,7 @@ export class SessionManager {
     let lastError = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        await unwrap(this.api.sessions.selectModel({
+        await unwrap(await this.api.sessions.selectModel({
           sessionId,
           provider,
           model,

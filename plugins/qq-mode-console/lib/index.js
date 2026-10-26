@@ -40,6 +40,9 @@ function writeModeFile(mode) {
 export const name = 'qq-mode-console';
 export const inject = ['settings'];
 
+// 顶层标记：模块被 DSH 加载时立刻落盘，便于区分「模块没加载」和「apply 没执行」
+writeDiag(`module loaded (pid=${process.pid})`);
+
 export const NAPCAT_MODE_NS = 'napcat-mode';
 
 export const NapcatModeSchema = z.object({
@@ -49,6 +52,7 @@ export const NapcatModeSchema = z.object({
 
 export function apply(ctx) {
   writeDiag(`apply called, settings=${typeof ctx.settings}`);
+
   const settings = ctx.settings;
   if (!settings || typeof settings.register !== 'function') {
     writeDiag('settings service unavailable');

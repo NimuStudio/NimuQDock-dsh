@@ -207,11 +207,71 @@ function tryInstallBundleDeps() {
   }
 }
 
+/**
+ * DSH 0.2 的 bundle 从 **profile 的 node_modules** 解析（0.1 才看 <DSH_HOME>/plugins）。
+ * 因此对已经是 pnpm 项目的 profile（有 node_modules 或 pnpm-workspace.yaml），
+ * 把插件登记为 file: 依赖并安装一次；否则保持 0.1 的 junction 方案即可。
+ */
+function installProfileBundleDependency() {
+  const pkgFile = path.join(PROFILE_DIR, 'package.json');
+  const pluginDir = path.join(REPO, 'plugins', 'qq-mode-console');
+  const looksLike02 = fs.existsSync(path.join(PROFILE_DIR, 'node_modules')) || fs.existsSync(path.join(PROFILE_DIR, 'pnpm-workspace.yaml'));
+  if (!looksLike02) {
+    log('profile 不是 pnpm 工程（DSH 0.1 风格）→ 跳过 profile 依赖安装');
+    return;
+  }
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
+    pkg.dependencies = pkg.dependencies ?? {};
+    // link: 让 pnpm 建符号链接：插件源码更新后无需重装即生效（file: 会复制且不刷新）
+    const spec = `link:${pluginDir.replace(/\\/g, '/')}`;
+    let changed = false;
+    if (pkg.dependencies['qq-mode-console'] !== spec) {
+      pkg.dependencies['qq-mode-console'] = spec;
+      changed = true;
+      log('profile 依赖已登记: qq-mode-console → plugins/qq-mode-console');
+    }
+    // 关键：0.2 只加载 `dsh.profile.bundles` 里列出的 bundle（`dsh.bundles` 是 0.1 的写法）
+    pkg.dsh = pkg.dsh ?? {};
+    pkg.dsh.profile = pkg.dsh.profile ?? {};
+    const profileBundles = Array.isArray(pkg.dsh.profile.bundles) ? pkg.dsh.profile.bundles : [];
+    if (!profileBundles.includes('qq-mode-console')) {
+      pkg.dsh.profile.bundles = [...profileBundles, 'qq-mode-console'];
+      changed = true;
+      log('已把 qq-mode-console 加入 profile.bundles（0.2 的加载列表）');
+    }
+    if (changed) fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+    else log('profile 依赖已登记（跳过）');
+  } catch (error) {
+    log(`登记 profile 依赖失败：${error?.message ?? error}`);
+    return;
+  }
+  // 用仓库自带的 pnpm 工具（installer 会把 pnpm 装到 <repo>/pnpm-tool），否则退回 PATH
+  const localPnpm = path.join(REPO, 'pnpm-tool', 'node_modules', 'pnpm', 'bin', 'pnpm.cjs');
+  let cmd = null;
+  let args = [];
+  if (fs.existsSync(localPnpm)) {
+    cmd = process.execPath;
+    args = [localPnpm, 'install', '--dir', PROFILE_DIR, '--config.node-linker=hoisted'];
+  } else {
+    cmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+    args = ['install', '--dir', PROFILE_DIR, '--config.node-linker=hoisted'];
+  }
+  const res = spawnSync(cmd, args, { encoding: 'utf8', timeout: 300000, shell: process.platform === 'win32' && cmd !== process.execPath });
+  if (res.status === 0) {
+    log('profile 依赖已安装（qq-mode-console）');
+  } else {
+    log(`profile 依赖安装失败（码 ${res.status}）：${(res.stderr || res.stdout || '').trim().slice(0, 300)}`);
+    log('可手动在 profile 目录执行 pnpm install');
+  }
+}
+
 log(`DSH_HOME=${DSH_HOME} profile=${PROFILE}`);
 installPresets();
 ensureCordisPatch();
 ensureProfileManifest();
 installPlugin();
+installProfileBundleDependency();
 writeModeFallback();
 tryInstallBundleDeps();
 log('完成。请重启 DSH 使 preset / MCP / 插件生效。');

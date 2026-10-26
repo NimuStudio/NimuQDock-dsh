@@ -4,6 +4,12 @@
   "description": "NimuQDock-dsh mode console for DeepSeek Harness settings UI (chat / agent)",
   "type": "module",
   "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./restrict-chat": "./lib/restrict-chat.js",
+    "./restrict-agent": "./lib/restrict-agent.js",
+    "./presets": "./lib/presets-entry.js"
+  },
   "license": "MIT",
   "dsh": {
     "bundle": {
@@ -11,6 +17,7 @@
     }
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "yaml": "^2.7.0"
   }
 }

@@ -189,17 +189,38 @@ async function probeLocalDsh() {
   const baseUrl = 'http://127.0.0.1:3080';
   const auth = createDshAuth({ baseUrl, home: path.join(os.homedir(), '.dsh') });
   const cookie = auth.cookieHeader();
-  const call = async (method) => {
+  const call = async (method, args) => {
     const res = await fetch(`${baseUrl}/api/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
-      body: JSON.stringify({ type: 'client-request', rpcId: `start-${method}-${Date.now()}`, method, payload: {} }),
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: `start-${method}-${Date.now()}`,
+        method,
+        // 0.2 要求 payload.args；0.1 直接吃 payload 字段（多一层 args 也无害，0.1 端点多忽略未知键）
+        payload: args === undefined ? {} : { args },
+      }),
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return { ok: false, status: res.status };
     const json = await res.json().catch(() => null);
     return { ok: json?.result?.ok === true, status: res.status, value: json?.result?.value };
   };
+  // 先按 0.2 探测（session/modelCatalog 是 0.2 独有端点），再退回 0.1 的 session.list
+  let modern = null;
+  try {
+    modern = await call('session/modelCatalog', {});
+  } catch {}
+  if (modern?.ok) {
+    let hasVision = false;
+    for (const g of (modern.value?.groups ?? [])) {
+      for (const m of (g?.models ?? [])) {
+        if (`${m?.id ?? ''} ${m?.name ?? ''}`.toLowerCase().includes('vision')) { hasVision = true; break; }
+      }
+      if (hasVision) break;
+    }
+    return { usable: true, protocol: '0.2', hasVision, models: modern.value?.groups ?? [] };
+  }
   let sessions;
   try {
     sessions = await call('session.list');

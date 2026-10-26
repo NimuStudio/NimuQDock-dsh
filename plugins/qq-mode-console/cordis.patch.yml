@@ -2,3 +2,7 @@
     - id: qq-mode-console
       name: qq-mode-console
       config: {}
+    # 0.2 才有 agentPresets 服务；这一行在 0.1 上保持未激活，不影响其它功能
+    - id: qq-presets
+      name: qq-mode-console/presets
+      config: {}
