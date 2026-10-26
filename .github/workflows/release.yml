@@ -82,6 +82,7 @@ jobs:
           fi
           fi
         timeout-minutes: 30
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
 
