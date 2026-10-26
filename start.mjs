@@ -440,12 +440,34 @@ async function ensureNapCat(bot) {
       console.log(`⚠️ 写入端口设置失败：${error?.message ?? error}`);
     }
   }
-  const qq = detectQQ();
+  // QQ 路径：优先 config.json 的 napcat.qqPath（给机器人专用一份 QQ，
+  // 否则 NapCat 注入时会重启 QQ 进程，把你自己正在登录的 QQ 退掉）。
+  const configuredQQ = String(cfg.napcat?.qqPath ?? '').trim();
+  let qq = null;
+  if (configuredQQ) {
+    if (fs.existsSync(configuredQQ)) {
+      qq = configuredQQ;
+      console.log(`✅ 使用配置的机器人 QQ：${qq}`);
+    } else {
+      console.log(`⚠️ 配置的 napcat.qqPath 不存在：${configuredQQ}（改用自动检测）`);
+    }
+  }
+  if (!qq) qq = detectQQ();
   if (!qq) {
     console.log('❌ 未检测到 QQ 客户端。请先安装 QQ（QQNT）后重试：https://im.qq.com/');
     return false;
   }
-  console.log(`✅ 检测到 QQ：${qq}`);
+  if (!configuredQQ) {
+    // NapCat 的注入方式要求重启 QQ 进程，会把你当前登录的 QQ 退出
+    const running = spawnSync('powershell', ['-NoProfile', '-Command',
+      "Get-Process QQ -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Id"], { encoding: 'utf8' });
+    if (running.status === 0 && String(running.stdout ?? '').trim()) {
+      console.log('⚠️ 检测到 QQ 正在运行：启动 NapCat 会重启 QQ 进程，把你当前登录的 QQ 退掉。');
+      console.log('   建议给机器人单独装一份 QQ（复制现有 QQ 目录即可），再在 config.json 里设置');
+      console.log('   "napcat": { "qqPath": "D:\\\\QQ-bot\\\\QQ.exe" }，这样你自己的 QQ 不受影响。');
+    }
+  }
+  console.log(`✅ 使用 QQ：${qq}`);
 
   const napcatDir = path.join(ROOT, 'NapCatShell');
   if (!fs.existsSync(path.join(napcatDir, 'napcat.mjs'))) {

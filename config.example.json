@@ -8,7 +8,8 @@
   "napcat": {
     "wsUrl": "ws://127.0.0.1:3001",
     "httpUrl": "http://127.0.0.1:3000",
-    "accessToken": ""
+    "accessToken": "",
+    "qqPath": ""
   },
   "ownerQQ": "",
   "agentPreset": "qq-chat",
@@ -50,7 +51,7 @@
     "engagement": {
       "wAttention": 2.5,
       "wInterest": 1.8,
-      "wEnergy": 1.0,
+      "wEnergy": 1,
       "wMood": 0.8,
       "wNoise": 0.6,
       "threshold": 1.7,
