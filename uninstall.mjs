@@ -22,25 +22,31 @@ function locateProject() {
   return null;
 }
 
-/** 停止从项目目录启动的进程（桥接 / 便携 DSH / NapCat 及其 cmd 包装）。
- * 关键：用「精确特征」匹配，绝不用 `CommandLine -like "*项目目录*"` 这种宽泛匹配——
- * 否则会连卸载脚本自己（node "<项目目录>\uninstall.mjs"，绝对路径含目录名）和它的 cmd 包装一起杀掉，
- * 导致脚本还没走到删除就死掉、文件夹删不掉。 */
+/** 停止从项目目录启动的进程。
+ * 匹配策略（宁可多杀本项目进程，也不误杀用户自己的东西）：
+ *  1) 可执行文件路径在项目目录内（便携 node / napcat / NapCatWinBootMain）；
+ *  2) node.exe 且命令行是 main.js（桥接）或 napcat.mjs（NapCat）——它们的 cmdline 常是相对路径，
+ *     不能用「命令行包含项目路径」来匹配；
+ *  3) llama-server.exe 且命令行引用了本项目 models/ 里的模型（会 mmap 模型，占住文件）；
+ *  4) 命令行里包含项目目录的其它进程（排除 powershell / cmd / 自身）。
+ * 这样即使桥接是用系统 node + 相对路径启动的，也能停掉。 */
 function stopProjectProcesses(projectDir) {
   try {
     const esc = String(projectDir).replace(/'/g, "''");
+    const modelsEsc = String(path.join(projectDir, 'models')).replace(/'/g, "''");
     const cmd = `$procs = Get-CimInstance Win32_Process | Where-Object {
-      $_.Name -notin @('powershell.exe','pwsh.exe','conhost.exe') -and $_.ProcessId -ne ${process.pid} -and (
-        ($_.CommandLine -match 'src[\\\\/]main\\.js' -and $_.CommandLine -like "*${esc}*") -or
-        ($_.CommandLine -match 'node_modules[\\\\/]@deepseek-ai[\\\\/]dsh' -and $_.CommandLine -like "*${esc}*") -or
-        ($_.CommandLine -match 'napcat\\.mjs|NapCatWinBootMain' -and $_.CommandLine -like "*${esc}*") -or
-        $_.ExecutablePath -like "*${esc}*"
+      $_.Name -notin @('powershell.exe','pwsh.exe','conhost.exe') -and $_.ProcessId -ne ${process.pid} -and ($_.CommandLine -notmatch 'uninstall\.mjs') -and (
+        ($_.ExecutablePath -and $_.ExecutablePath -like "*${esc}*") -or
+        ($_.Name -eq 'node.exe' -and $_.CommandLine -match '(^|[\\\\s"])main\\.js') -or
+        ($_.Name -eq 'node.exe' -and $_.CommandLine -match 'napcat\\.mjs') -or
+        ($_.Name -eq 'llama-server.exe' -and $_.CommandLine -like "*${modelsEsc}*") -or
+        ($_.CommandLine -and $_.CommandLine -like "*${esc}*")
       )
     };
     $all = @($procs);
     if($procs){
       $ids = @($procs | ForEach-Object { $_.ProcessId });
-      $parents = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'cmd.exe' -and $ids -contains $_.ParentProcessId -and $_.CommandLine -match 'launcher-user|restart-napcat|start-napcat' };
+      $parents = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'cmd.exe' -and $ids -contains $_.ParentProcessId -and $_.CommandLine -match 'launcher-user|restart-napcat|start-napcat|napcat-launch' };
       $all = @($procs) + @($parents);
     }
     if($all.Count){ $n=0; $all | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $n++ }; "STOPPED:$n" } else { 'NONE' }`;
@@ -53,14 +59,35 @@ function stopProjectProcesses(projectDir) {
   } catch {}
 }
 
-/** 延迟删除目录（detached PowerShell；路径先写临时文件规避中文路径编码问题）。 */
+/** 把删除交给独立 PowerShell：等本进程退出后循环重试（处理文件占用 / 长路径）。
+ * 结果写到 %TEMP%\nimu-uninstall.log，失败时用户能看到原因。 */
 function deleteLater(dir) {
   try {
-    const tmpList = path.join(os.tmpdir(), `nimu-uninstall-${process.pid}.txt`);
-    fs.writeFileSync(tmpList, String(dir), 'utf8');
-    const tmpEsc = tmpList.replace(/'/g, "''");
-    const ps = `Start-Sleep -Seconds 2; $d=(Get-Content -LiteralPath '${tmpEsc}' -Raw -Encoding UTF8).Trim(); if($d){ for($i=0;$i -lt 30;$i++){ try{ Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction Stop; break }catch{ Start-Sleep -Milliseconds 1000 } } }; Remove-Item -LiteralPath '${tmpEsc}' -Force -ErrorAction SilentlyContinue`;
-    const child = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], {
+    const tmpDir = os.tmpdir();
+    const script = path.join(tmpDir, `nimu-uninstall-${process.pid}.ps1`);
+    const log = path.join(tmpDir, 'nimu-uninstall.log');
+    const esc = (p) => String(p).replace(/'/g, "''");
+    const ps = `$ErrorActionPreference='SilentlyContinue'
+$dir='${esc(dir)}'
+$log='${esc(log)}'
+$empty=Join-Path $env:TEMP ('nimu-empty-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $empty -Force | Out-Null
+"start $(Get-Date -Format s)" | Out-File -LiteralPath $log -Encoding UTF8
+for ($i=0; $i -lt 90; $i++) {
+  if (-not (Test-Path -LiteralPath $dir)) { "removed at attempt $i" | Out-File -LiteralPath $log -Append -Encoding UTF8; break }
+  Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $dir) {
+    # 长路径 / 顽固文件：先 robocopy 镜像空目录，再删
+    robocopy $empty $dir /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+    cmd /c rmdir /s /q "$dir" | Out-Null
+  }
+  if (Test-Path -LiteralPath $dir) { Start-Sleep -Milliseconds 800 } else { "removed at attempt $i" | Out-File -LiteralPath $log -Append -Encoding UTF8; break }
+}
+if (Test-Path -LiteralPath $dir) { "FAILED: still exists" | Out-File -LiteralPath $log -Append -Encoding UTF8 }
+Remove-Item -LiteralPath $empty -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath '${esc(script)}' -Force -ErrorAction SilentlyContinue`;
+    fs.writeFileSync(script, ps, 'utf8');
+    const child = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script], {
       detached: true, stdio: 'ignore', cwd: 'C:\\',
     });
     child.unref();
@@ -111,7 +138,8 @@ async function main() {
     console.log('✅ 文件夹已删除');
   } else {
     deleteLater(projectDir);
-    console.log(`⏳ 正在删除（${projectDir}）…（窗口关闭后自动完成）`);
+    console.log(`⏳ 正在后台删除（${projectDir}）…`);
+    console.log(`   若 1 分钟后文件夹仍在，可查看日志：${path.join(os.tmpdir(), 'nimu-uninstall.log')}`);
   }
 
   console.log('\n[3/3] 清理安装记录 …');

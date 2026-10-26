@@ -24,5 +24,5 @@ if defined TMPD (
         node "%PKG%uninstall.mjs" "%PKG%"
     )
 )
-timeout /t 3 /nobreak >nul
+ping -n 4 127.0.0.1 >nul
 if defined TMPD rmdir /s /q "%TMPD%" >nul 2>&1
