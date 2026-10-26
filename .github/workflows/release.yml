@@ -74,7 +74,7 @@ jobs:
         run: node scripts/make-release-zip.mjs "${{ steps.ver.outputs.version }}" "dist/NimuQDock-dsh-${{ steps.ver.outputs.version }}-win-x64.zip"
 
       - name: Build 7z archive (UTF-8 filenames, for SFX exe)
-        run: node scripts/make-release-7z.mjs "${{ steps.ver.outputs.version }}" "dist/app.7z"
+        run: node scripts/make-release-7z.mjs "${{ steps.ver.outputs.version }}" "dist/app.7z" --slim
 
       - name: Build exe (7-Zip SFX)
         run: |

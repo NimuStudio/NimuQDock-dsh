@@ -31,10 +31,13 @@ function find7za() {
 // 注意：以下仓库级目录只在【仓库根一级】排除。绝不能在全树按名字排除——
 // node_modules（含内置便携 node 的 npm）里有大量依赖把代码放在 dist/ 目录，
 // 按名删会把它们删成残废（实测 npm 的 walk-up-path 依赖 dist/cjs 被删 → npm 崩）。
+// --slim：安装器模式（exe 用）——不打包模型/推理引擎，由安装 UI 按用户勾选下载
+const SLIM = process.argv.includes('--slim');
 const EXCLUDE_TOP_DIRS = new Set([
   '.git', '.github', 'state', 'dist', 'docs', 'assets', 'tests', 'scripts',
   // 安全：运行时/本地目录绝不进包（.dsh 含凭据；NapCatShell 含 QQ 登录数据与本地号码）
   '.dsh', 'NapCatShell', 'dsh-app', 'pnpm-tool', '_backup', '_probe',
+  ...(SLIM ? ['models', 'llama'] : []),
 ]);
 const EXCLUDE_FILES = new Set(['config.json', '.env', '.env.local', '.env.production']);
 const EXCLUDE_EXT = new Set(['.log', '.tmp']);
@@ -43,7 +46,7 @@ const ROOT_ALLOW = new Set([
   'package.json', 'package-lock.json', 'config.example.json',
   'README.md', 'README.en.md', 'LICENSE',
   'install.bat', 'install.mjs', 'uninstall.bat', 'uninstall.mjs',
-  'start.bat', 'start.mjs', 'restart.bat', 'install-model.bat',
+  'start.bat', 'start.mjs', 'restart.bat', 'install-model.bat', 'install-ui.bat', 'install-ui.mjs',
 ]);
 
 function walk(dir, base, list) {

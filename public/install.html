@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NimuQDock-dsh · 安装</title>
+<link rel="stylesheet" href="ysti-glass.css">
+<style>
+  :root{
+    --accent:#b48ccd;--accent2:#f9c0d0;--text:#241f18;--text-dim:rgba(44,36,22,.55);
+    --radius:20px;--radius-sm:14px;--radius-pill:100px;
+    --grad:linear-gradient(135deg,#dcc2ec,#f9c0d0 55%,#d3ebc6);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    color:var(--text);
+    background-color:#edeef3!important;
+    background-image:linear-gradient(150deg,rgba(203,236,189,.62) 0%,rgba(228,222,238,.55) 38%,rgba(249,192,208,.55) 68%,rgba(180,140,205,.48) 100%)!important;
+    background-attachment:fixed;display:flex;justify-content:center;padding:40px 20px 60px;
+  }
+  .wrap{width:100%;max-width:860px}
+  .brand{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  .brand h1{font-size:26px;margin:0;letter-spacing:-.02em;
+    background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800}
+  .brand .tag{font-size:12px;padding:4px 10px;border-radius:var(--radius-pill);background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.7);color:var(--text-dim)}
+  .sub{color:var(--text-dim);font-size:14px;margin:0 0 22px;line-height:1.6}
+
+  .glass{background:rgba(255,255,255,.42);border:1px solid rgba(255,255,255,.62);border-radius:var(--radius);
+    backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);
+    box-shadow:0 8px 32px rgba(0,0,0,.05),inset 0 1px 0 rgba(255,255,255,.6)}
+  .panel{padding:20px 22px;margin-bottom:16px}
+  .panel h2{font-size:15px;margin:0 0 14px;letter-spacing:.02em;color:var(--text-dim);font-weight:700;text-transform:uppercase}
+
+  .item{display:flex;gap:14px;padding:14px 16px;border-radius:var(--radius-sm);
+    background:rgba(255,255,255,.32);border:1px solid rgba(255,255,255,.5);margin-bottom:10px;
+    transition:box-shadow .25s ease,border-color .25s ease,transform .25s ease}
+  .item:hover{transform:translateY(-2px);border-color:rgba(180,140,205,.5);
+    box-shadow:0 8px 24px rgba(0,0,0,.05),0 0 24px rgba(226,138,194,.22)}
+  .item .icon{width:38px;height:38px;flex:0 0 38px;display:flex;align-items:center;justify-content:center;
+    border-radius:12px;background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.7);font-size:19px}
+  .item .body{flex:1;min-width:0}
+  .item .title{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .item .desc{font-size:12.5px;color:var(--text-dim);margin-top:3px;line-height:1.55}
+  .item .state{font-size:11.5px;padding:2px 9px;border-radius:99px;border:1px solid rgba(0,0,0,.06);background:rgba(0,0,0,.04)}
+  .state.ok{background:rgba(85,143,66,.14);border-color:rgba(85,143,66,.25);color:#3f6b32}
+  .state.warn{background:rgba(180,140,205,.16);border-color:rgba(180,140,205,.3);color:#6b4b85}
+  .item input[type=checkbox]{width:20px;height:20px;accent-color:#b48ccd;margin-top:9px;flex:0 0 20px;cursor:pointer}
+  .item.disabled{opacity:.62}
+  .item.disabled input{display:none}
+
+  .model-opts{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .opt{border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.45);border-radius:var(--radius-pill);
+    padding:7px 14px;font-size:13px;cursor:pointer;transition:all .2s ease;display:flex;align-items:center;gap:7px}
+  .opt:hover{border-color:rgba(180,140,205,.5)}
+  .opt.on{background:rgba(180,140,205,.22);border-color:rgba(180,140,205,.55);font-weight:700;color:#5c3f73}
+  .opt input{accent-color:#b48ccd}
+
+  .actions{display:flex;gap:10px;align-items:center;margin-top:6px}
+  button{border:none;cursor:pointer;font-family:inherit;border-radius:12px;font-size:14px;font-weight:700;padding:11px 22px;transition:all .22s ease}
+  .primary{background:var(--grad);color:#43304f;border:1px solid rgba(255,255,255,.6);box-shadow:0 6px 18px rgba(180,140,205,.3)}
+  .primary:hover{filter:brightness(1.05);transform:translateY(-1px)}
+  .primary:active{transform:scale(.98)}
+  .primary:disabled{opacity:.5;cursor:not-allowed;transform:none;filter:none}
+  .ghost{background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.7);color:var(--text)}
+  .ghost:hover{background:rgba(255,255,255,.7)}
+
+  .progress{height:6px;border-radius:99px;background:rgba(0,0,0,.06);overflow:hidden;margin-top:10px;display:none}
+  .progress.show{display:block}
+  .progress > i{display:block;height:100%;width:0;border-radius:99px;background:var(--grad);transition:width .3s ease}
+  .log{margin-top:12px;background:rgba(0,0,0,.04);border:1px solid rgba(0,0,0,.06);border-radius:var(--radius-sm);
+    padding:12px 14px;font-size:12px;line-height:1.7;font-family:ui-monospace,Consolas,monospace;
+    max-height:260px;overflow:auto;white-space:pre-wrap;display:none}
+  .log.show{display:block}
+  .done{display:none;margin-top:12px;padding:14px 16px;border-radius:var(--radius-sm);
+    background:rgba(85,143,66,.12);border:1px solid rgba(85,143,66,.25);font-size:13.5px}
+  .done.show{display:block}
+  .footer{color:var(--text-dim);font-size:12px;text-align:center;margin-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <h1>🐳 NimuQDock-dsh</h1>
+    <span class="tag">安装器</span>
+  </div>
+  <p class="sub">把 DeepSeek Harness 的 AI 停靠进 QQ。下面会自动检测你电脑里已有的组件——<b>已经装好的不会重复下载</b>，勾选你需要的即可。</p>
+
+  <div class="glass panel">
+    <h2>组件</h2>
+
+    <label class="item" id="row-dsh">
+      <input type="checkbox" id="cb-dsh">
+      <div class="icon">🧠</div>
+      <div class="body">
+        <div class="title">DeepSeek Harness <span class="state" id="st-dsh">检测中…</span></div>
+        <div class="desc">AI 引擎本体（便携版，约 1~2 分钟）。如果检测到你已在本机运行 DSH，会直接复用，不重复安装。</div>
+      </div>
+    </label>
+
+    <label class="item" id="row-napcat">
+      <input type="checkbox" id="cb-napcat">
+      <div class="icon">🐧</div>
+      <div class="body">
+        <div class="title">NapCat（QQ 接入） <span class="state" id="st-napcat">检测中…</span></div>
+        <div class="desc">把 QQ 变成 OneBot 接口（约 28MB）。需要先安装 QQ 客户端；首次启动时扫码登录机器人号。</div>
+      </div>
+    </label>
+
+    <label class="item" id="row-model">
+      <input type="checkbox" id="cb-model">
+      <div class="icon">🎯</div>
+      <div class="body">
+        <div class="title">接话判断模型（可选） <span class="state" id="st-model">检测中…</span></div>
+        <div class="desc">让机器人更懂「这句该不该接」。不装也能用（规则判断），装了更自然。</div>
+        <div class="model-opts" id="model-opts">
+          <label class="opt on"><input type="radio" name="mk" value="1.7b" checked> 1.7B · 推荐（1.1GB，更准）</label>
+          <label class="opt"><input type="radio" name="mk" value="0.6b"> 0.6B · 轻量（379MB，CPU 也能跑）</label>
+        </div>
+      </div>
+    </label>
+
+    <label class="item" id="row-llama">
+      <input type="checkbox" id="cb-llama">
+      <div class="icon">⚙️</div>
+      <div class="body">
+        <div class="title">推理引擎 <span class="state" id="st-llama">检测中…</span></div>
+        <div class="desc">运行判断模型所需的 llama.cpp（CPU 版，约 23MB）。勾选模型时会自动带上。</div>
+      </div>
+    </label>
+
+    <div class="actions">
+      <button class="primary" id="btn-install">开始安装</button>
+      <span class="footer" style="margin:0" id="hint"></span>
+    </div>
+    <div class="progress" id="prog"><i></i></div>
+    <div class="log" id="log"></div>
+    <div class="done" id="done">
+      安装完成 ✅ 现在可以启动项目了。
+      <div style="margin-top:10px"><button class="primary" id="btn-launch">启动 NimuQDock-dsh</button></div>
+    </div>
+  </div>
+
+  <p class="footer">安装内容都放在本目录内，卸载时删除目录即可 · Nimu Studio</p>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let state = null;
+
+function setState(el, text, cls) {
+  el.textContent = text;
+  el.className = 'state' + (cls ? ' ' + cls : '');
+}
+
+async function detect() {
+  const res = await fetch('/api/detect');
+  state = await res.json();
+  const { dsh, napcat, qq, model, llama } = state;
+
+  if (dsh.usable) { setState($('st-dsh'), '已运行 · 复用', 'ok'); $('row-dsh').classList.add('disabled'); $('cb-dsh').disabled = true; $('cb-dsh').checked = false; }
+  else if (dsh.localInstall) { setState($('st-dsh'), '已安装', 'ok'); $('row-dsh').classList.add('disabled'); $('cb-dsh').disabled = true; $('cb-dsh').checked = false; }
+  else { setState($('st-dsh'), '未安装', 'warn'); $('cb-dsh').checked = true; }
+
+  if (napcat.installed) { setState($('st-napcat'), '已安装', 'ok'); $('row-napcat').classList.add('disabled'); $('cb-napcat').disabled = true; $('cb-napcat').checked = false; }
+  else { setState($('st-napcat'), '未安装', 'warn'); $('cb-napcat').checked = true; }
+
+  if (llama.installed) { setState($('st-llama'), '已安装', 'ok'); $('row-llama').classList.add('disabled'); $('cb-llama').disabled = true; $('cb-llama').checked = false; }
+  else { setState($('st-llama'), '未安装', 'warn'); $('cb-llama').checked = true; }
+
+  if (model.installed) { setState($('st-model'), '已安装 · ' + model.models.map(m => m.file.replace('Qwen3-', '').replace('-Q4_K_M.gguf', '')).join(' / '), 'ok'); $('row-model').classList.add('disabled'); $('cb-model').disabled = true; $('cb-model').checked = false; }
+  else { setState($('st-model'), '未安装', 'warn'); $('cb-model').checked = true; }
+
+  if (!qq.found) $('hint').textContent = '⚠️ 没检测到 QQ 客户端，NapCat 需要它才能登录';
+  else $('hint').textContent = '已检测到 QQ：' + qq.path;
+}
+
+$('cb-model').addEventListener('change', (e) => {
+  if (e.target.checked) $('cb-llama').checked = true;
+  $('model-opts').style.display = e.target.checked ? 'flex' : 'none';
+});
+document.querySelectorAll('input[name=mk]').forEach((r) => r.addEventListener('change', () => {
+  document.querySelectorAll('.opt').forEach((o) => o.classList.toggle('on', o.contains(r) && r.checked));
+}));
+document.querySelectorAll('.opt').forEach((o) => o.addEventListener('click', () => {
+  const r = o.querySelector('input'); if (!r) return;
+  r.checked = true;
+  document.querySelectorAll('.opt').forEach((x) => x.classList.toggle('on', x === o));
+}));
+
+$('btn-install').addEventListener('click', async () => {
+  const items = [];
+  if ($('cb-dsh').checked) items.push('dsh');
+  if ($('cb-napcat').checked) items.push('napcat');
+  if ($('cb-model').checked) { items.push('model'); items.push('llama'); }
+  if (!items.length) { $('hint').textContent = '没有需要安装的组件（都装好了）'; return; }
+  $('btn-install').disabled = true;
+  $('prog').classList.add('show');
+  $('log').classList.add('show');
+  $('log').textContent = '';
+  $('done').classList.remove('show');
+  const modelKind = (document.querySelector('input[name=mk]:checked') || {}).value || '1.7b';
+  const res = await fetch('/api/install', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items, modelKind }) });
+  const { id } = await res.json();
+  let lastLogs = 0;
+  const timer = setInterval(async () => {
+    const job = await (await fetch('/api/job/' + id)).json();
+    for (const line of job.logs.slice(lastLogs)) $('log').textContent += line.text + '\n';
+    lastLogs = job.logs.length;
+    $('log').scrollTop = $('log').scrollHeight;
+    const pcts = Object.values(job.progress || {});
+    const bar = $('prog').firstElementChild;
+    if (pcts.length) bar.style.width = Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) + '%';
+    if (job.done) {
+      clearInterval(timer);
+      bar.style.width = '100%';
+      $('btn-install').disabled = false;
+      if (job.error) { $('hint').textContent = '安装出错：' + job.error; }
+      else { $('done').classList.add('show'); }
+    }
+  }, 700);
+});
+
+$('btn-launch').addEventListener('click', async () => { await fetch('/api/launch', { method: 'POST' }); $('hint').textContent = '已启动，请查看新打开的控制台窗口'; });
+
+detect().catch((e) => { $('hint').textContent = '检测失败：' + e.message; });
+</script>
+</body>
+</html>
