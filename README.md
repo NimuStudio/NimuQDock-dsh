@@ -56,24 +56,25 @@ NimuQDock-dsh 把 DeepSeek Harness 的 agent 请进 QQ 群和私聊：群里有�
 
 ```mermaid
 flowchart TB
-    subgraph QQ_SIDE["QQ 侧"]
+    subgraph QQ["QQ 侧"]
         G["QQ 群"]
         P["QQ 私聊"]
     end
-    NC["NapCat（OneBot v11）"]
+    NC["NapCat OneBot v11"]
     subgraph BRIDGE["NimuQDock-dsh 桥接"]
         R["消息路由 / 会话管理"]
-        PE["人格引擎<br/>心情·精力·记忆·参与评分"]
+        PE["人格引擎：心情 精力 记忆 参与评分"]
         CON["Web 控制台 :3100"]
     end
-    DSH["DeepSeek Harness"]
+    DSH["DeepSeek Harness :3080"]
 
-    G -->|群消息| NC
-    P -->|私聊消息| NC
-    NC <-->|WS 3001(默认) 事件 / HTTP 3000(默认) 动作| R
-    PE -.人格状态与评分.-> R
+    G --> NC
+    P --> NC
+    NC -->|WS 3001 / HTTP 3005| R
+    PE -.状态与评分.-> R
     CON -.管理 / 远程指令.-> R
-    R <-->|prompt / 事件流| DSH
+    R --> DSH
+    DSH --> R
 ```
 
 - **QQ 侧**：NapCat 负责接入 QQ 协议，把群/私聊消息以 OneBot v11 协议上报
