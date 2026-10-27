@@ -6,7 +6,7 @@
 
 # 🔌 NimuQDock-dsh
 
-**把 DeepSeek Harness 的 AI 停靠进 QQ 的对接坞 · 带人格引擎的仿真群友：心情、精力、记忆，像真人一样潜水与参与**
+**把 DeepSeek Harness 的 AI 停靠进 QQ 的对接坞 · 带人格引擎的仿真群友**
 
 [![GitHub stars](https://img.shields.io/github/stars/NimuStudio/NimuQDock-dsh?style=flat-square&label=Stars&color=b48ccd)](https://github.com/NimuStudio/NimuQDock-dsh)
 [![License](https://img.shields.io/github/license/NimuStudio/NimuQDock-dsh?style=flat-square&label=License&color=b48ccd)](https://github.com/NimuStudio/NimuQDock-dsh/blob/main/LICENSE)
@@ -14,370 +14,356 @@
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.2-f6f4f7?style=flat-square&labelColor=2a2430&color=b48ccd)](https://github.com/deepseek-ai/deepseek-harness)
 [![NapCat](https://img.shields.io/badge/QQ-NapCat%20OneBot%20v11-6aa055?style=flat-square)](https://github.com/NapNeko/NapCatQQ)
 
-[**中文**](README.md) · [**English**](README.en.md)
-
 </div>
 
 ---
 
-## 下载
+## 目录
 
-| 方式 | 链接 | 说明 |
+- [1. 这是什么](#1-这是什么)
+- [2. 功能](#2-功能)
+- [3. 架构](#3-架构)
+- [4. 安装](#4-安装)
+- [5. 配置](#5-配置)
+- [6. 使用](#6-使用)
+- [7. 安全与隐私](#7-安全与隐私)
+- [8. 已知限制](#8-已知限制)
+- [9. 开发与测试](#9-开发与测试)
+- [10. 给代码审查者的指南](#10-给代码审查者的指南)
+- [11. 目录结构](#11-目录结构)
+
+---
+
+## 1. 这是什么
+
+NimuQDock-dsh 把 **DeepSeek Harness（DSH）** 的 agent 接进 QQ：群/私聊消息经 **NapCat**（OneBot v11）进入桥接进程，桥接把消息送进 DSH 会话，再把 agent 的回复发回 QQ。
+
+和"有问必答的机器人"不同，它有一个**人格引擎**：心情、精力、与群友的关系随互动演化，会判断"这条消息该不该接"，会潜水、会主动冒泡，更接近一个**仿真群友**。
+
+它不是：
+- ❌ 不是 QQ 机器人框架（协议接入由 NapCat 负责）
+- ❌ 不是多租户 SaaS（所有数据都在本机，单实例运行）
+- ❌ 不是 DSH 的替代品（必须有一个可用的 DSH 实例）
+
+## 2. 功能
+
+### 2.1 双模式
+
+| 模式 | 行为 |
+|---|---|
+| **chat** | 消息自动转发给 DSH，回复原样发回；适合"问答机器人" |
+| **agent** | DSH 以 agent 身份运行，自带工具与人格，自主决定看不看、回不回、接不接话题 |
+
+模式通过控制台切换（`POST /api/mode`），立即生效，不重启。
+
+### 2.2 人格引擎（agent 模式）
+
+- **状态**：心情（mood）、精力（energy）、在场状态（active / quiet / away），被怼会掉心情、聊得久会累
+- **关系**：对每个群友的熟悉度随互动累积
+- **记忆**：群话题滚动统计 + 长期记忆（对群友的印象、没聊完的话题），按相关性注入
+- **参与意愿**：`注意力 × 权重 + 兴趣 + 精力 + 心情 + 随机扰动` 超过阈值才说话；被 @ / 引用 / 点名时必回
+- **冷却与连发限制**：冷却时间、连续接话上限，避免"刷屏"
+- **心跳**：长时间没人说话时按概率主动开话题
+- **闭嘴检测**：用户说"别说了/闭嘴/关掉"会静默一段时间
+
+### 2.3 接话判断（规则 / 本地小模型）
+
+| 方式 | 条件 | 说明 |
 |---|---|---|
-| **exe（图形安装器，约 30 MB）** | [GitHub Releases](https://github.com/NimuStudio/NimuQDock-dsh/releases/latest) | 自动检测本机组件，勾选要装的 DSH / NapCat / 判断模型 |
-| **国内加速**（推荐） | [gh-proxy 直链](https://gh-proxy.com/https://github.com/NimuStudio/NimuQDock-dsh/releases/latest/download/NimuQDock-dsh-latest-setup.exe) | 固定文件名，始终指向最新版 |
-| **zip 完整离线包** | Releases 页面的 Assets | 内置 0.6B 模型与推理引擎，解压即用，适合网络不好 |
+| **规则** | 未安装模型 | @/引用/第二人称/问句/冷却/连续接话等信号打分 |
+| **本地模型** | 检测到 llama-server + GGUF | Qwen3-1.7B（推荐）判断语义"是否在叫它"，规则兜底 |
 
-> 安装器下载 NapCat、推理引擎、判断模型时会自动走国内镜像；只有 exe 本身需要走上面的加速链接。
-> 安装内容都在安装目录内，卸载删目录即可。
+- 模型默认 1.7B；`install-model.bat` 或安装器可换 0.6B（轻量、CPU 可跑）
+- 模型缺失/超时/输出异常时**自动回退规则**，聊天不受影响
+- 所有下载资源版本固定 + SHA256 校验 + 断点续传
 
-## 这是什么
+### 2.4 安全边界
 
-NimuQDock-dsh 把 DeepSeek Harness 的 agent 请进 QQ 群和私聊：群里有人说话，它就能听见；它想开口时，回复会出现在群里。在此基础上，**人格引擎**让它不是有问必答的客服，而是一个有心情、有精力、有记忆、会潜水也会冒泡的**仿真群友**。
+- **白名单**：私聊/群各自 allow/deny；**allow 为空时默认拒绝**（fail-closed，`allowAllWhenEmpty=true` 才放行）
+- **发送白名单**：回复前二次校验，防止 agent 往未授权会话发消息
+- **敏感信息拦截**：命中密钥/手机号/凭据等规则时整条拦截，不外发
+- **无本地工具**：QQ 会话的 agent preset 物理上不挂载本地文件/shell 工具；需要执行命令走**控制台远程指令面板**
+- **联网搜索**：SSRF 防护（内网地址/非 http(s) 协议拒绝）
+- **本地服务**：NapCat、DSH、控制台、判断模型全部只监听 `127.0.0.1`
 
-一条消息的旅程：
+### 2.5 Web 控制台（`:3100`）
 
-```
-① 群友在 QQ 发言（NapCat 以 OneBot v11 协议上报）
-        │
-        ▼
-② 桥接进程把消息投入对应的 DSH 会话
-        │
-        ▼
-③ agent 思考完毕：产出回复 / 提问 / 工具审批
-        │
-        ▼
-④ 结果发回 QQ（chat 模式自动回；agent 模式由 AI 用工具自主收发）
-```
+玻璃拟态 UI（薄荷 / 薰衣草 / 粉，深浅两套主题，鼠标跟随泛光）：
 
-> chat 模式：①②③④ 全自动；agent 模式：AI 自己看消息、自己决定回不回、自己挑话题接。
+- **概览**：运行状态、模式切换、日志
+- **会话与记忆**：会话列表、对话记录、长期记忆查看/清理
+- **人格**：心情/精力/关系可视化调节、人格卡（角色）管理
+- **远程指令**：完整 DSH 工具会话（跑命令、读写文件），结果回显
+- **配置**：白名单、模型、群开关、社交参数
 
-## 架构
+鉴权：`console.token`（未配置时启动自动生成并持久化），支持 `Authorization: Bearer` 或 `?token=`。
+
+### 2.6 安装器（Windows）
+
+exe 是**原生 NSIS 安装向导**（不是网页安装器）：
+
+1. 欢迎页 → **组件勾选**（程序本体 / DSH / NapCat / 判断模型 1.7B 或 0.6B / 推理引擎）
+2. 启动时自动检测本机：已有项目扫描 + 端口探测（3001/3100/8080）+ 配置文件里的 llama 路径
+3. 已装好的组件置灰跳过，没装的默认勾选
+4. 安装进度 + 实时日志，完成页可直接启动
+
+下载组件时：版本固定、SHA256 校验、断点续传、60 秒无响应自动换源。
+
+### 2.7 远程指令
+
+控制台里登录后可让 DSH 执行完整工具任务（pwsh / 文件 / 搜索），结果在面板回显——**不经过 QQ 传输层**，适合运维和调参。
+
+## 3. 架构
 
 ```mermaid
 flowchart TB
-    subgraph QQ_SIDE["QQ 侧"]
+    subgraph QQ["QQ 侧"]
         G["QQ 群"]
         P["QQ 私聊"]
     end
     NC["NapCat（OneBot v11）"]
-    subgraph BRIDGE["NimuQDock-dsh 桥接"]
+    subgraph BRIDGE["NimuQDock-dsh 桥接（Node）"]
         R["消息路由 / 会话管理"]
         PE["人格引擎<br/>心情·精力·记忆·参与评分"]
+        JD["接话判断<br/>规则 / llama.cpp 小模型"]
         CON["Web 控制台 :3100"]
     end
-    DSH["DeepSeek Harness"]
+    DSH["DeepSeek Harness :3080"]
 
-    G -->|群消息| NC
-    P -->|私聊消息| NC
-    NC <-->|WS 3001(默认) 事件 / HTTP 3000(默认) 动作| R
-    PE -.人格状态与评分.-> R
+    G --> NC
+    P --> NC
+    NC <-->|WS 3001 / HTTP 3005| R
+    PE -.状态与评分.-> R
+    JD -.该不该回.-> R
     CON -.管理 / 远程指令.-> R
     R <-->|prompt / 事件流| DSH
 ```
 
-- **QQ 侧**：NapCat 负责接入 QQ 协议，把群/私聊消息以 OneBot v11 协议上报
-- **桥接进程**：收到消息后路由到对应 DSH 会话；agent 的回复（含提问、工具审批）原路发回 QQ
-- **人格引擎**（agent 模式）：用心情/精力/记忆计算参与意愿，决定"这条要不要接"
-- **Web 控制台**：本地管理界面，可切换模式、调人格、管白名单、发远程指令
+### 一条消息的旅程
 
-## 截图
+**chat 模式**
 
-| Web 控制台概览 | 人格状态（agent 模式） |
-|---|---|
-| ![概览](docs/screenshots/console-overview.png) | ![人格状态](docs/screenshots/console-persona.png) |
-
-| 远程指令面板 | 人格卡管理 |
-|---|---|
-| ![远程指令](docs/screenshots/console-remote.png) | ![人格卡](docs/screenshots/console-roles.png) |
-
-> 截图中的 QQ 号/群号已打码。
-
-## 特性
-
-- 🧠 **人格引擎**：心情 / 精力 / 与群友的关系随互动演化，被怼心情下降、聊得多关系变熟、精力低了倾向潜水
-- 🎯 **参与意愿模型**：不是"每条都回"，而是按「被点名程度 + 话题兴趣 + 精力 + 心情 + 随机扰动」评分，超过阈值才参与——被 @/提问必回，普通闲聊按状态决定
-- 💾 **分层记忆**：群话题滚动统计 + 长期记忆（对群友的印象、没聊完的话题），按相关性自动注入
-- 🛡️ **安全边界**：QQ 会话物理上没有本地工具、发送强制白名单、回复敏感信息整条拦截、联网搜索带 SSRF 防护
-- 🎛️ **Web 控制台**（玻璃拟态 UI）：人格状态可视化调节、白名单管理、角色卡管理、远程指令面板（完整工具会话）、记忆/日志/会话管理
-- 🚀 **远程指令面板**：登录控制台即可让 DSH 的完整工具（pwsh/文件等）执行任务，结果回显——不经 QQ 传输层
-
-## 一键安装（Windows）
-
-不想手动折腾？去 [Releases](https://github.com/NimuStudio/NimuQDock-dsh/releases) 下载安装包（均含全部依赖，无需 npm install）：
-
-| 方式 | 操作 |
-|---|---|
-| **exe 安装器（推荐）** | 下载 `NimuQDock-dsh-vX.Y.Z-setup.exe` → 双击 → 选目录 → 自动解压并运行安装向导 |
-| zip 免安装 | 下载 `NimuQDock-dsh-vX.Y.Z-win-x64.zip` → 解压 → 双击 `install.bat` |
-
-安装向导会自动：检查 Node / 生成 config.json / **自动安装并启动 DeepSeek Harness**（锁版本）/ **自动下载解压 NapCat**（国内镜像加速）。你只需要两件手动事：**① 安装 QQ 客户端 ② 扫码登录并配置 OneBot11**（向导会一步步提示），最后双击 `start.bat` 启动，浏览器自动打开 Web 控制台。
-
-> 需要 Node.js ≥ 22.13 和已安装的 QQ 客户端。
-
-## 卸载
-
-- **exe 卸载程序**：下载 `NimuQDock-dsh-uninstall.exe`（Releases 页）→ 双击 → 勾选要卸载的内容（项目 / DeepSeek Harness / NapCat，可多选）。
-- **源码用户**：双击项目里的 `uninstall.bat`。
-- 卸载程序会先停止运行中的桥接，再按选择删除：项目目录、DSH（npm 全局包 + `~/.dsh`）、NapCat（`NapCatShell/` 及 QQ 登录配置）。
-
-## 开始使用
-
-### 需要准备
-
-| 依赖 | 说明 |
-|---|---|
-| Node.js | ≥ 22.13 |
-| DeepSeek Harness | 见下方「先装好 DeepSeek Harness」 |
-| NapCat | QQ 协议实现，[下载](https://github.com/NapNeko/NapCatQQ/releases/latest) |
-| QQ 账号 | 一个用于机器人的 QQ 号（建议小号） |
-
-### 先装好 DeepSeek Harness（DSH）
-
-本项目把 AI 放在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 里运行，需要先把它启动起来：
-
-```bash
-# 方式一：临时运行（想先试试就用这个）
-npx @deepseek-ai/dsh web
-
-# 方式二：全局安装后运行
-npm i -g @deepseek-ai/dsh
-dsh web
+```
+QQ 消息 → NapCat → 桥接（白名单校验）→ DSH 会话 → 回复 → 白名单二次校验 → QQ
 ```
 
-浏览器打开 `http://127.0.0.1:3080` 能看到 DSH 界面即成功。DSH 的地址/端口在 `config.json` 的 `dsh.baseUrl` 配置（默认 `http://127.0.0.1:3080`），改了地址就同步改这里。
+**agent 模式**
 
-### ① 安装依赖
+```
+QQ 消息 → NapCat → 桥接
+  → 人格引擎：更新状态/记忆，计算参与意愿
+  → 接话判断：规则 + 可选本地模型
+  → 决定"不接"：静默；决定"接"：送入 DSH agent 会话
+  → agent 用 MCP 工具读取上下文、决定回复/潜水
+  → 回复经发送白名单校验后发出
+```
+
+### 模块地图
+
+| 路径 | 职责 |
+|---|---|
+| `src/main.js` | 入口：加载配置、启动 NapCat/DSH 客户端、控制台、判断模型 |
+| `src/core/router.js` | 消息路由：白名单、模式分派、接话判断（混合决策）、冷却/连发限制 |
+| `src/core/session-manager.js` | 会话创建/复用/映射（QQ 会话 ↔ DSH sessionId） |
+| `src/core/pump.js` | DSH 事件流 → 回复收集 → 发送 |
+| `src/core/sender.js` | 发送前最终校验（白名单/长度/敏感信息） |
+| `src/persona/engagement.js` | 参与意愿评分、@/引用/点名识别、闭嘴检测、冷却 |
+| `src/persona/state.js` | 心情/精力/关系/在场状态持久化 |
+| `src/persona/memory.js` | 分层记忆：话题统计、长期记忆、相关性注入 |
+| `src/persona/reply-judge.js` | 本地小模型判断（OpenAI 兼容接口，健康探测、超时回退） |
+| `src/persona/judge-dataset.js` | 判断决策日志（脱敏，用于将来训练） |
+| `src/policy/allowlist.js` | 白名单判定（fail-closed） |
+| `src/console/server.js` | 控制台 HTTP API + 静态页面 + 远程指令 |
+| `src/mcp/qq-mcp.js` | 给 agent 的 QQ 工具（读取/发送/记忆） |
+| `src/mcp/web-search-mcp.js` | 联网搜索工具（SSRF 防护） |
+| `src/installer/steps.js` | 安装步骤：检测、下载（校验/续传）、解压、DSH 安装 |
+| `src/installer/assets.js` | 安装资源版本锁定 + SHA256 |
+| `installer/installer.nsi` | Windows 原生安装向导 |
+| `public/console.html` | 控制台单页 UI |
+| `scripts/` | 安装器构建、模型拉取、测试、数据集导出 |
+
+## 4. 安装
+
+### 4.1 exe 安装向导（Windows 10/11）
+
+从 [Releases](https://github.com/NimuStudio/NimuQDock-dsh/releases/latest) 下载：
+
+| 方式 | 大小 | 说明 |
+|---|---|---|
+| **exe 安装向导** | ~26 MB | 组件按需下载，自动检测本机已装内容 |
+| **国内加速直链** | — | `https://gh-proxy.com/https://github.com/NimuStudio/NimuQDock-dsh/releases/latest/download/NimuQDock-dsh-latest-setup.exe` |
+| **zip 离线包** | ~410 MB | 内置 0.6B 模型与推理引擎，解压即用 |
+
+### 4.2 源码运行
+
+```bash
+git clone https://github.com/NimuStudio/NimuQDock-dsh.git
+cd NimuQDock-dsh
+npm install
+cp config.example.json config.json   # 按需修改
+node start.mjs                        # 或 npm start
+```
+
+要求：Node.js ≥ 22.13、已安装 QQ 客户端、一个可用的 DSH 实例（默认 `http://127.0.0.1:3080`）。
+
+### 4.3 首次启动
+
+1. 启动 DSH（若尚未运行）
+2. 运行 `start.bat` / `node start.mjs`：
+   - 检查配置，必要时提示填管理员 QQ / 机器人 QQ
+   - 拉起 NapCat（需要 QQ 已安装并登录）
+   - 拉起判断模型（若已下载）
+   - 启动桥接与控制台
+3. 浏览器打开 `http://127.0.0.1:3100`（token 在启动日志里）
+
+## 5. 配置
+
+`config.json`（从 `config.example.json` 复制）：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `dsh.baseUrl` | `http://127.0.0.1:3080` | DSH 地址 |
+| `dsh.provider` / `dsh.model` | `deepseek-official` / … | 使用的模型 |
+| `dsh.reasoningEffort` | `low` | 思考强度 |
+| `napcat.wsUrl` / `httpUrl` | `ws://127.0.0.1:3001` / `http://127.0.0.1:3005` | NapCat 接入 |
+| `napcat.accessToken` | 空 | OneBot 鉴权（如启用） |
+| `napcat.qqPath` | 空 | QQ 安装路径（自动注入失败时指定） |
+| `ownerQQ` | 空 | 管理员 QQ（私聊指令/白名单） |
+| `agentPreset` / `agentPresetAgent` | `qq-chat` / `qq-agent` | chat / agent 模式使用的 DSH preset |
+| `allow` / `deny` | 空 | 白名单（私聊号 / 群号） |
+| `allowAllWhenEmpty` | `false` | 白名单为空时是否放行（默认拒绝） |
+| `maxReplyChars` | `1000` | 单条回复长度上限 |
+| `console.port` / `console.token` | `3100` / 空 | 控制台端口与 token（空则自动生成） |
+| `security.interceptNotify` | `true` | 敏感信息拦截 |
+| `vision.enabled` | `true` | 识图（需 DSH 支持 vision 模型） |
+| `social.*` | 见示例 | 人格引擎参数：权重、阈值、冷却、心跳、记忆、话题 |
+| `judge.enabled` / `judge.url` / `judge.modelPath` | `auto` / `:8080` / 空 | 接话判断模型 |
+| `dshCheckIntervalMs` | `5000` | DSH 健康检查间隔 |
+
+> 敏感文件：`config.json`、`state/`、`models/`、`llama/`、`NapCatShell/` 均在 `.gitignore`，不会提交。
+
+## 6. 使用
+
+### 控制台
+
+- **切换模式**：概览页 → chat / agent
+- **人格调节**：人格页可视化拖动心情/精力，或直接编辑人格卡
+- **白名单**：配置页添加允许的群/私聊；空列表默认拒绝
+- **远程指令**：输入命令 → DSH 执行 → 结果回显（不经过 QQ）
+- **记忆管理**：查看长期记忆、清理过期条目
+
+### 常用命令
+
+```bash
+npm start              # 启动（= node start.mjs）
+npm run self-test      # 基础自检
+npm run test-persona   # 人格引擎测试
+npm run test-onebot    # OneBot 协议测试
+npm run fetch-judge    # 下载判断模型（默认 1.7B，--small 为 0.6B）
+npm run export-judge   # 导出判断数据集（训练用）
+```
+
+## 7. 安全与隐私
+
+### 信任边界
+
+| 边界 | 措施 |
+|---|---|
+| QQ → 桥接 | 白名单（fail-closed）、长度限制、敏感信息拦截 |
+| 桥接 → QQ | 发送前二次白名单校验；未授权会话直接丢弃 |
+| agent → 本机 | QQ 会话的 preset 不挂载本地工具；需要时走控制台 |
+| 外部请求 | 搜索工具 SSRF 防护；本地服务只监听 127.0.0.1 |
+| 安装器 | 本地 token + Host 校验（防 CSRF/DNS rebinding）；资源版本固定 + SHA256 |
+
+### 数据存在哪
+
+- 配置、状态、记忆、日志：项目目录 `state/` 与 `config.json`
+- DSH 会话/凭据：`~/.dsh`
+- NapCat 登录数据：`NapCatShell/`
+- **不上传任何数据**；模型/组件下载直接走上游源
+
+### 已知风险
+
+- 安装器下载源是第三方（ModelScope / GitHub / npmmirror），已用 SHA256 兜底，但无法防御上游主动投毒
+- 控制台 token 为空时自动生成并落盘，本机其他进程可读取
+- agent 工具在"远程指令"面板里是**完整权限**，请勿把控制台暴露到公网
+
+## 8. 已知限制
+
+- **DSH 0.2 的审批/提问**：桥接目前只提示不支持，需到 DSH 网页处理
+- **判断模型**：默认零样本，未做 LoRA（训练脚本已提供，数据在 `state/judge-decisions.jsonl`）
+- **Windows 优先**：打包/安装器只面向 Windows；源码可在其他平台跑但未验证
+- **单实例**：同一数据目录只允许一个桥接进程（`state/bridge.lock`）
+- **测试**：目前是 `scripts/test-*.mjs` 手动测试，CI 只做构建与发布，没有自动化测试套件
+- **网页安装器已废弃**：exe 已改为 NSIS；`install-ui.mjs` 仅保留给 zip 用户
+
+## 9. 开发与测试
 
 ```bash
 npm install
+npm run self-test        # 自检
+npm run test-persona     # 人格/参与意愿
+npm run test-directed    # @/点名识别
+npm run test-onebot      # OneBot 消息构造
+npm run test-loop        # 端到端回路
 ```
 
-### ② 让 NapCat 上线
+- **构建/发布**：打 tag（`v*`）触发 `.github/workflows/release.yml`：拉取便携 Node/模型 → 构建 zip + NSIS 安装器 → 产物来源证明 → GitHub Release
+- **模型/推理**：`scripts/fetch-judge-model.mjs`（版本固定 + SHA256 + 断点续传）
+- **安装器**：`node scripts/make-installer-nsis.mjs <版本>`（需要 `makensis`）
 
-> **版本选择**：**Windows** 用 **Shell 版**（需先安装 QQ 客户端 QQNT，扫码登录）；**Linux 服务器**用 **Docker 版**（镜像自带 Linux QQ）。以下步骤以 Windows Shell 版为例。
+## 10. 给代码审查者的指南
 
-1. 下载 NapCat 并按官方教程把它接入你的 QQ 账号（扫码登录，会要求已安装 QQ 客户端）。
-2. 打开 NapCat WebUI：`http://127.0.0.1:6099/webui`（默认口令 `napcat`）。
-3. 进入 **网络配置**，新建两个连接，**消息格式都选 `array`**：
-   - **HTTP 服务端**：`127.0.0.1:3005`（端口可自定义；用 `start.bat` 自动安装时，若 3000 被别的程序占用会自动改用 3005 并写进 `config.json`）
-   - **WebSocket 服务端**：`127.0.0.1:3001`
-4. 如果在 WebUI 里设置了 accessToken，记下来，下一步填进 `config.json`；两边都留空也可以，但必须一致。
+重点看这些文件与场景：
 
-> 用 `start.bat` 自动安装时不用手动做这一步：桥接会生成 `onebot11_<QQ号>.json` 并自动避开被占用的端口，实际端口以 `config.json` 的 `napcat.wsUrl`/`httpUrl` 为准。
-
-生成的 OneBot11 配置在 NapCat 目录的 `config/onebot11_<QQ号>.json`。
-
-> **用自己的 QQ 时注意**：NapCat 需要把 QQ 重新拉起才能注入，所以启动机器人会把你当前登录的 QQ 退出。
-> 想两边同时用，给机器人单独准备一份 QQ（把现有 QQ 安装目录整个复制一份即可），然后在 `config.json` 里设置
-> `"napcat": { "qqPath": "D:\\QQ-bot\\QQ.exe" }` —— `start.bat` 会优先用这个路径，你自己的 QQ 不受影响。
-
-
-
-### 安装方式（exe 图形安装器）
-
-发行包的 `exe` 是一个**原生 Windows 安装向导（约 30 MB）**，标准安装界面：
-
-1. 欢迎页 → **组件勾选**：程序本体 / DSH / NapCat / 判断模型（1.7B 或 0.6B）/ 推理引擎
-2. 选择安装目录 → 安装（进度条 + 实时日志）→ 完成页可直接启动
-
-打开时会自动检测你的电脑：已装好的组件置灰跳过，没装的默认勾选。
-安装器会**断点续传**（网络中断后重跑从断点继续），并对每个下载做 **SHA256 校验**；
-所有资源版本固定，镜像被篡改会自动发现并换源。想更换已装模型，重新运行安装器、勾选模型即可（0.6B ↔ 1.7B）。
-
-> `zip` 是离线完整包（内置 0.6B 模型与推理引擎，约 440 MB），解压即用。
-
-### 接话判断：规则 / 本地模型（可选）
-
-agent 模式下「这条消息该不该接」有两种判断方式，桥接会自动选择：
-
-| 方式 | 条件 | 说明 |
+| 风险点 | 位置 | 建议检查 |
 |---|---|---|
-| **规则**（默认） | 未安装模型 | 基于 @/引用/第二人称/问句/冷却/连续接话等信号打分 |
-| **本地模型** | 检测到 llama-server + GGUF | 小模型判断语义（是否在叫它），上下文信号仍由规则兜底 |
+| 白名单绕过 | `src/policy/allowlist.js`、`src/core/router.js`、`src/core/sender.js` | allow/deny 边界、fail-closed、发送前二次校验 |
+| 工具权限 | `dsh/agent-presets/*/preset.yml`、`src/mcp/*.js` | QQ 会话是否真的没有本地工具；MCP 工具参数校验 |
+| 提示注入 | `src/persona/inject.js`、`src/core/pump.js` | 群消息是否直接拼进系统提示、是否有边界标记 |
+| SSRF | `src/mcp/web-search-mcp.js` | 内网地址/协议/重定向是否拦截 |
+| 凭据与日志 | `src/state.js`、`src/log.js`、`src/console/server.js` | token 落盘、日志是否泄露消息内容 |
+| 供应链 | `src/installer/assets.js`、`src/installer/steps.js`、`installer/installer.nsi` | 版本固定、SHA256、镜像回退、卸载残留 |
+| 并发/状态 | `src/core/session-manager.js`、`src/persona/state.js` | 多消息并发、会话复用、状态持久化竞争 |
 
-- 模型：[Qwen3-1.7B Q4_K_M](https://www.modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF)（约 1.1 GB，Apache-2.0；实测 20/20，判断约 200ms/条）
-  - 轻量替代：`npm run fetch-judge -- --small` 换成 0.6B（约 379 MB，CPU 也能跑）
-- 推理：[llama.cpp](https://github.com/ggml-org/llama.cpp) 的 `llama-server`（发行包自带 CPU 版，约 23 MB）
-- 安装：`npm run fetch-judge`（默认 1.7B；加 `-- --small` 换 0.6B；模型放 `models/`，推理放 `llama/`）
-  - 发行包内置的是 0.6B；想要更准，双击 `install-model.bat` 升级到 1.7B（约 1.1 GB）
-- 自动回退：模型没装、启动超时、或输出异常时，**自动退回规则**，聊天不受影响
-- chat 模式：不经过判断，所有消息原样交给 DSH
-
-`config.json` 相关配置：
-
-```json
-"judge": {
-  "enabled": "auto",          // auto | on | off
-  "url": "http://127.0.0.1:8080",
-  "modelPath": "",            // 留空自动用 models/ 下的第一个 .gguf
-  "llamaServer": "",          // 留空自动用 llama/llama-server.exe；有 N 卡可指向自己的 CUDA 版
-  "timeoutMs": 2500
-}
-```
-
-
-> 发行包内置的是 **0.6B**（判断够用、包体约 400MB）。想要更准，双击 `install-model.bat`
-> 下载 1.7B 模型（约 1.1GB）后重启项目即可；`start.bat` 会自动选 `models/` 里参数最多的模型。
-
-#### 训练自己的判断器（可选，进阶）
-
-桥接会把每次判断写进 `state/judge-decisions.jsonl`（只记消息文本，已脱敏）。积累一段时间后：
+审查时可运行：
 
 ```bash
-npm run export-judge     # 导出 dataset/judge-train.jsonl（正负均衡、去重）
-npm run train-judge      # LoRA 微调 Qwen3-0.6B（需要 Python + torch/peft/datasets）
+npm run self-test
+npm run test-persona
 ```
 
-训练产物需要合并 adapter 并转成 GGUF 才能给 llama.cpp 用（脚本头部有完整步骤）。
-没有 GPU 也能用：llama.cpp 的 CPU 版随包提供，只是判断稍慢（约 100~200ms/条）。
+## 11. 目录结构
 
-### ③ 填写 config.json
-
-```bash
-copy config.example.json config.json
+```
+napcat-bridge/
+├── src/
+│   ├── main.js                 # 入口
+│   ├── core/                   # 路由 / 会话 / 发送 / 事件泵
+│   ├── persona/                # 人格引擎（状态/记忆/参与/判断/注入）
+│   ├── policy/                 # 白名单
+│   ├── console/                # 控制台 HTTP 服务
+│   ├── mcp/                    # 给 agent 的 QQ / 搜索工具
+│   ├── installer/              # 安装步骤与资源锁定
+│   └── lib/                    # 工具函数
+├── public/                     # 控制台 UI（单页）
+├── dsh/agent-presets/          # qq-chat / qq-agent 两个 preset
+├── plugins/qq-mode-console/    # DSH 侧插件（模式设置同步）
+├── installer/installer.nsi     # NSIS 安装向导
+├── scripts/                    # 构建/模型/测试脚本
+├── docs/screenshots/           # 截图
+└── config.example.json
 ```
 
-主要字段：
+---
 
-| 字段 | 说明 |
-|---|---|
-| `dsh.baseUrl` | DSH Web 服务地址，默认 `http://127.0.0.1:3080` |
-| `dsh.provider` / `dsh.model` / `dsh.reasoningEffort` | 模型供应商 / 模型名 / 推理强度（`off`/`low`/`high`/`max`）；若你的 DSH 没有示例中的模型，改成 DSH 设置页里可用的即可。**回复慢就调低推理强度**（`low` 比 `max` 快 30%~45%，闲聊足够） |
-| `napcat.wsUrl` | NapCat WebSocket 服务端地址，默认 `ws://127.0.0.1:3001` |
-| `napcat.httpUrl` | NapCat HTTP 服务端地址，默认 `http://127.0.0.1:3000`；自动安装时若 3000 被占用会改用空闲端口并写回这里（**别填成 WS 端口**） |
-| `napcat.qqPath` | 机器人专用的 QQ 路径（留空自动检测）。NapCat 注入会重启 QQ，填一份独立的 QQ 可避免退出你自己的 QQ |
-| `napcat.accessToken` | 与 WebUI 里设置的 accessToken 一致，未配置留空 |
-| `ownerQQ` | 管理员 QQ 号（agent 模式的私聊唤醒、管理操作等） |
-| `agentPreset` | chat 模式使用的 DSH agent preset，默认 `qq-chat` |
-| `agentPresetAgent` | agent 模式使用的 DSH agent preset，默认 `qq-agent` |
-| `workspaceTitle` | QQ 会话在 DSH 界面里的归组名称，默认「QQ 聊天」 |
-| `allow.private` / `allow.groups` | 私聊 / 群聊白名单（QQ 号 / 群号数组），**建议先填上** |
-| `deny.private` / `deny.groups` | 黑名单，优先级高于白名单 |
-| `allowAllWhenEmpty` | 白名单为空时是否放行全部，默认 `false`（保持默认） |
-| `ackMessage` | 收到消息后的即时回复文本，空字符串关闭 |
-| `sendDelayMs` | QQ 连续发送间隔，防止触发频率限制 |
-| `maxReplyChars` | agent 单条回复最大字符数，超出自动分段 |
-| `console.port` / `console.token` | Web 控制台端口（默认 `3100`）与访问令牌；token 留空则启动时自动生成并打印 |
-| `security.interceptNotify` | 回复被敏感拦截时是否提示 |
-| `vision.enabled` / `vision.maxImageBytes` | 图片理解开关与大小上限（需 vision 模型） |
-| `queue.maxPerSession` | DSH 掉线期间每会话缓存的消息条数上限 |
-| `social.*` | 人格引擎参数（默认人格、参与评分权重、心跳、记忆、话题窗口），一般保持默认 |
+## 下载 / 链接
 
-### ④ 给 DSH 装 preset 和 MCP
+- Releases：<https://github.com/NimuStudio/NimuQDock-dsh/releases/latest>
+- 国内加速：<https://gh-proxy.com/https://github.com/NimuStudio/NimuQDock-dsh/releases/latest/download/NimuQDock-dsh-latest-setup.exe>
+- DeepSeek Harness：<https://github.com/deepseek-ai/deepseek-harness>
+- NapCat：<https://github.com/NapNeko/NapCatQQ>
 
-```bash
-node scripts/setup-dsh.mjs
-```
+## License
 
-脚本会把 `qq-chat` / `qq-agent` 两套 agent preset、两个 MCP server（QQ 安全工具 + 联网搜索）和一个设置页插件装进 DSH 环境，并写入本地 `state/mode.json` 兜底。可重复运行；**移动过项目目录后必须重跑**（MCP/插件路径是绝对路径）。装完**重启 DSH** 生效。
-
-### ⑤ 启动
-
-```bash
-npm start
-# 或双击 start.bat（守护模式：崩溃后 5 秒自动拉起）
-```
-
-日志依次出现 `配置已加载` → `DSH 已连接` → `NapCat 已连接` → `桥接已启动` 即成功。
-
-> 提示：桥接只能跑一个实例（单实例锁）。出现「已有实例在运行」时双击 `restart.bat` 一键重启，或手动删除 `state/bridge.lock`。
-
-### 验证与日常使用
-
-- 给机器人**私聊**或**群里 @ 它**，看它是否回复。
-- 打开 Web 控制台 `http://127.0.0.1:3100`（令牌在启动日志里）：查看状态、切换 **chat / agent** 模式、调节人格、管理白名单、发远程指令。
-- agent 模式 = 仿真群友：AI 主动看消息、按人格决定参不参与；agent 模式私聊只响应 `ownerQQ`。
-- 重启 DSH 不需要动桥接：桥接会自动探活，DSH 掉线期间的消息会入队缓存，恢复后自动补投。
-
-### 配置人格卡（角色扮演）
-
-- 控制台「🧠 人格 → 人格卡」页可**新建 / 编辑** `roles/*.yaml`：一个文件 = 一个完整人格，保存即生效（自动清缓存）。
-  `prompt` 字段就是人设文本（注入给 AI 的身份、说话风格、雷点）；其余字段（心情/精力/兴趣/参与度）驱动人格引擎。
-- **chat 模式**切换角色：控制台「📊 概览 → 人格 / 角色」点人格卡即可（群友无法更改）。
-- **agent 模式**默认人格：改 `config.json` 的 `social.defaultPersona`（如 `小鲸鱼`），保存后重启桥接生效。
-
-### 离线自测（不需要 QQ）
-
-```bash
-npm run self-test        # 桥接与 DSH 的连接链路
-npm run test-loop        # chat 闭环（真实 DSH + 假 QQ）
-npm run test-loop -- --mode agent   # agent 闭环（唤醒/潜水）
-npm run test-persona     # 人格引擎单测
-npm run test-agent-api   # agent 内部 API
-npm run test-mcp-web     # SSRF 防护搜索
-npm run test-onebot      # NapCat 连接
-```
-
-## 常见问题
-
-| 现象 | 处理 |
-|---|---|
-| HTTP 426（Upgrade Required） | `napcat.httpUrl` 填成了 WebSocket 端口；检查 config.json 与 `onebot11_<QQ号>.json` 的端口是否一致 |
-| 群里 @ 没反应 | 群号是否在白名单 `allow.groups`；agent 模式下检查它是不是在潜水（参与评分没过阈值） |
-| 私聊没反应 | 私聊白名单 `allow.private`；agent 模式只响应 `ownerQQ` |
-| 改了 MCP 或 preset 不生效 | MCP 由 DSH 拉起，改 `src/mcp/*.js` 或 `dsh/agent-presets/` 后要**重启 DSH** |
-| 提示「已有实例在运行」 | 单实例锁残留，双击 `restart.bat` 或删 `state/bridge.lock` |
-| 模型选择失败 | `dsh.model` 改成 DSH 设置页里实际可用的模型 |
-
-## 能力一览
-
-| 功能 | 说明 |
-|---|---|
-| chat 模式 | 文本自动转发，安全聊天 |
-| agent 模式 | 仿真群友：人格引擎 + 参与意愿 + 工具自主收发 |
-| 人格引擎 | 心情/精力/关系/在场状态演化（持久化） |
-| 分层记忆 | 群话题 + 长期记忆按相关性注入 |
-| 主动心跳 | 人格驱动"偶尔看看群" |
-| Web 控制台 | 状态/模式/人格调节/角色卡/记忆/远程指令/白名单/日志 |
-| 远程指令 | 完整工具会话执行，结果回显 |
-| 安全 MCP | 白名单发送 + SSRF 防护搜索 |
-
-## 项目结构
-
-| 目录 | 作用 |
-|---|---|
-| `src/transport/` | NapCat OneBot11 客户端、DSH WebSocket 下行客户端 |
-| `src/core/` | 会话管理 / 消息路由 / 发送链 / 事件泵 / turn 收集 |
-| `src/persona/` | 人格引擎：状态 / 记忆 / 参与度 / 词库 / 令牌 |
-| `src/mcp/` | 安全 QQ 工具 MCP + SSRF 防护搜索 MCP |
-| `src/console/` | Web 控制台 + `/agent/v1` 内部 API |
-| `dsh/` | DSH 端 agent preset（qq-chat / qq-agent） |
-| `roles/` | 人格卡（YAML，prompt 内嵌人设） |
-| `scripts/` | 安装 / 测试脚本 |
-| `docs/` | 架构与实现规格（DESIGN.md / PERSONA_ENGINE.md） |
-
-## 讨论
-
-💬 有问题或想交流？欢迎来 [GitHub Discussions](https://github.com/NimuStudio/NimuQDock-dsh/discussions) 聊聊。
-
-加入 **Nimu Studio 用户交流群**：QQ 群 `1097466590`（或加作者 QQ `2998827169`），一起交流、反馈、催更。
-
-## 配套组件
-
-- 🎨 控制台的玻璃拟态 UI 来自 [**Nimu Glass UI**](https://github.com/NimuStudio/Nimu-glass-ui)（三主题玻璃拟态 UI 体系）
-- ⚡ 需要轻量 WebSocket 通讯？[**NimuChat**](https://github.com/NimuStudio/NimuChat)
-
-## 支持者
-
-感谢以下支持者让这个项目持续下去 ❤️
-
-| 支持者 | 赞助档位 | 日期 |
-|---|---|---|
-| 等你来 ⭐ | 支持者 ¥18 | — |
-
-> 想支持这个项目？☕ [去爱发电请我喝杯咖啡](https://ifdian.net/a/NimuStudio)。**¥18 支持者档**支持者的名字（GitHub 用户名或昵称）会永久列入上表。
-
-## 支持
-
-喜欢这个项目？☕ [去爱发电请我喝杯咖啡](https://ifdian.net/a/NimuStudio)
-
-## 使用提醒
-
-QQ 协议层由第三方开源项目 NapCat 提供，与腾讯公司及其产品无任何隶属关系；本项目仅用于学习与技术研究，请在使用前自行了解并遵守相关条款与《QQ 用户协议》。
-
-另外请注意：把 agent 接进 QQ，等于把账号的发言权交给了模型。对外使用前请务必先配置好白名单（`allow.private` / `allow.groups`），谨慎评估风险。
-
-## 许可证
-
-[MIT](LICENSE)
+见 [LICENSE](LICENSE)。
