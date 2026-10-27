@@ -247,6 +247,10 @@ Section "Uninstall"
   DeleteRegKey HKCU "${UNINST_KEY}"
   ; 先停掉 NapCat 的 QQ 注入进程（不会影响普通 QQ）
   nsExec::Exec 'cmd /c taskkill /F /IM NapCatWinBootMain.exe >nul 2>&1'
+  ; 备份记忆/日志与配置到「文档」，避免误删后无法恢复
+  IfFileExists "$INSTDIR\state\*.*" 0 +3
+  nsExec::Exec 'cmd /c xcopy /E /I /Y "$INSTDIR\state" "$DOCUMENTS\NimuQDock-dsh-backup\state" >nul 2>&1'
+  nsExec::Exec 'cmd /c copy /Y "$INSTDIR\config.json" "$DOCUMENTS\NimuQDock-dsh-backup\config.json" >nul 2>&1'
   Sleep 500
   RMDir /r "$INSTDIR"
   nsExec::Exec 'cmd /c rmdir /s /q "$INSTDIR"'

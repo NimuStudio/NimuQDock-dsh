@@ -562,7 +562,8 @@ export class Router {
         || (seg.type === 'reply' && !quoteTargetIsSelf),
     );
     // 被要求「关掉 / 闭嘴」→ 真的安静（暂停 30 分钟），不要争辩或继续搭话
-    if (detectShutdownRequest(textContent, { toOthers })) {
+    // 只接受「对着机器人说」的请求（directed）：群里路人喊一句"把ai关了"不应触发静默 DoS
+    if (detectShutdownRequest(textContent, { toOthers }) && directed) {
       const until = Date.now() + 30 * 60 * 1000;
       state.setPresence(key, { mode: 'paused', until });
       this.log(`[agent] ${key} 收到关闭请求（${textContent.slice(0, 40)}）→ 暂停 30 分钟`);

@@ -122,7 +122,7 @@ flowchart TB
 - **exe 安装的用户**：Windows「设置 → 应用」里卸载，或运行安装目录下的 `uninstall.exe`。
 - **zip / 源码用户**：双击项目里的 `uninstall.bat`。
 - 卸载会先停止运行中的桥接与 NapCat 注入进程，再删除安装目录。
-- ⚠️ 安装目录里的 `state/`（记忆、日志）和 `config.json` 会一并删除；需要保留请先备份。
+- 卸载前会自动把 `state/`（记忆、日志）和 `config.json` 备份到「文档\NimuQDock-dsh-backup」，需要时可以手动恢复。
 
 ## 开始使用
 
@@ -366,6 +366,7 @@ npm run test-onebot      # NapCat 连接
 - 所有数据都在本机：`config.json`、`state/`（记忆/日志）、`NapCatShell/`（QQ 登录）、`~/.dsh`（DSH 会话）
 - 不上传任何数据；模型/组件下载直接走上游官方源
 - 控制台、DSH、NapCat、判断模型都只监听 `127.0.0.1`
+- 控制台 token 落盘在 `state/console-token`；Windows 下文件权限依赖本机进程隔离（POSIX 的 0600 不生效）
 - `state/judge-decisions.jsonl` 会保存**脱敏后的群聊文本**，用于以后训练判断模型；不需要可删除该文件
 
 ## 使用提醒

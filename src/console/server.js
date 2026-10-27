@@ -297,6 +297,9 @@ export function startConsoleServer({ port, token, deps }) {
     return { key, body };
   }
 
+  // 一次性登录码：启动时生成，浏览器用它换 token（避免 token 出现在命令行/浏览器历史）
+  const loginCodes = new Map();
+
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
     const pathname = url.pathname;
@@ -306,12 +309,22 @@ export function startConsoleServer({ port, token, deps }) {
     // 静态页面/资源免鉴权（页面内的 API 调用带 token）；/agent/v1 走 body 内令牌校验
     const isStatic = pathname === '/' || pathname === '/index.html' || pathname === '/console.html'
       || /\.(css|js|png|jpg|svg|woff2?)$/.test(pathname);
-    if (!isStatic && !pathname.startsWith('/agent/v1/') && pathname !== '/health' && !safeTokenEqual(supplied, token)) {
+    if (!isStatic && !pathname.startsWith('/agent/v1/') && pathname !== '/health' && pathname !== '/api/auth/login' && !safeTokenEqual(supplied, token)) {
       return sendJson(res, { error: 'unauthorized' }, 401);
     }
 
     try {
       if (pathname === '/health') return sendJson(res, { ok: true });
+      if (pathname === '/api/auth/login' && req.method === 'POST') {
+        const body = await readBody(req);
+        const code = String(body?.code ?? '');
+        const expires = loginCodes.get(code);
+        if (!code || !expires || expires < Date.now()) {
+          return sendJson(res, { error: '登录码无效或已过期' }, 401);
+        }
+        loginCodes.delete(code); // 一次性
+        return sendJson(res, { token });
+      }
       if (isStatic) {
         // 静态资源：public/ 目录按文件名服务（防路径穿越）
         const safeName = path.basename(pathname === '/' ? 'console.html' : pathname);
@@ -1009,7 +1022,10 @@ export function startConsoleServer({ port, token, deps }) {
     console.log(`[bridge] 控制台已启动：http://127.0.0.1:${port}（token: ${token.slice(0, 8)}…）`);
     // 启动成功后自动打开浏览器控制台（console.autoOpen 默认 true；URL 带 token 免手动登录）
     if (cfg.console?.autoOpen !== false) {
-      openConsoleBrowser(`http://127.0.0.1:${port}/console.html?token=${encodeURIComponent(token)}`);
+      const code = crypto.randomBytes(6).toString('hex');
+      loginCodes.clear();
+      loginCodes.set(code, Date.now() + 120000); // 2 分钟有效、一次性
+      openConsoleBrowser(`http://127.0.0.1:${port}/console.html?code=${code}`);
     }
   });
   server.on('error', (error) => {

@@ -581,6 +581,7 @@ const MODES = ['chat', 'agent'];
 
 // URL 带 ?token= 时（启动自动打开控制台的场景）：直接采用并记住，随后清掉地址栏里的 token
 const urlToken = new URLSearchParams(location.search).get('token');
+const urlCode = new URLSearchParams(location.search).get('code');
 if (urlToken) {
   TOKEN = urlToken;
   localStorage.setItem('napcat_token', TOKEN);
@@ -1236,7 +1237,25 @@ async function refreshLog() {
 async function refreshAll() { await Promise.allSettled([refreshStatus(), refreshRoles(), refreshSessions(), refreshPersona(), refreshLog()]); }
 
 // ── 初始化 ──
-if (TOKEN) { document.getElementById('login').style.display = 'none'; document.getElementById('app').style.display = 'flex'; refreshAll(); applyHash(); }
+async function bootstrap(){
+  if (urlCode) {
+    try {
+      const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: urlCode }) });
+      const j = await r.json().catch(() => ({}));
+      if (j.token) { TOKEN = j.token; localStorage.setItem('napcat_token', TOKEN); }
+    } catch {}
+  }
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch {}
+  if (TOKEN) {
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    refreshAll();
+    applyHash();
+  } else {
+    showLogin();
+  }
+}
+bootstrap();
 else { showLogin(); }
 // 远程指令框：Enter 执行（Shift+Enter 换行）
 document.getElementById('remoteCmd')?.addEventListener('keydown', (e) => {

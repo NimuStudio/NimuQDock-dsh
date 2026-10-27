@@ -57,18 +57,23 @@ export function saveMode(mode) {
 }
 
 /** 角色/静默状态：{ role: string|null, mode: 'active'|'silent' }。 */
+let roleStateCache = null; // 热路径（每条消息）避免同步读盘；写入时失效
 export function readRoleState() {
+  if (roleStateCache) return { ...roleStateCache };
   const s = readJsonSafe(ROLE_FILE, { role: null, mode: 'active' }) ?? {};
-  return {
+  roleStateCache = {
     role: typeof s.role === 'string' && s.role ? s.role : null,
     mode: s.mode === 'silent' ? 'silent' : 'active',
   };
+  return { ...roleStateCache };
 }
 export function writeRoleState(role, mode = 'active') {
-  atomicWriteJson(ROLE_FILE, {
+  const next = {
     role: typeof role === 'string' && role ? role : null,
     mode: mode === 'silent' ? 'silent' : 'active',
-  });
+  };
+  atomicWriteJson(ROLE_FILE, next);
+  roleStateCache = next;
 }
 
 /** 控制台令牌：config.json 配了就用配置值；否则读持久化值；都没有则生成强令牌并持久化。 */
