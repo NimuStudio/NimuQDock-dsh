@@ -584,7 +584,7 @@ const urlToken = new URLSearchParams(location.search).get('token');
 if (urlToken) {
   TOKEN = urlToken;
   localStorage.setItem('napcat_token', TOKEN);
-  try { history.replaceState(null, '', location.pathname); } catch {}
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch {}
 }
 
 // ── 输出安全：任何动态内容进 HTML/属性前必须过这两个函数（防 QQ 内容存储型 XSS） ──
@@ -618,11 +618,23 @@ async function api(path, method = 'GET', body = null) {
   return res.json();
 }
 
+// ── 深链：#overview / #persona/state 之类，方便分享与截图 ──
+function applyHash(){
+  const raw = (location.hash || '').replace(/^#/, '');
+  if (!raw) return false;
+  const [view, sub] = raw.split('/');
+  if (!['overview','sessions','persona','remote','config'].includes(view)) return false;
+  showView(view);
+  if (sub) showSub(view, sub);
+  return true;
+}
+
 // ── 视图切换 ──
 function showView(name) {
   document.querySelectorAll('.main-content > div').forEach((el) => el.classList.add('hidden-view'));
   document.getElementById('view-' + name).classList.remove('hidden-view');
   document.querySelectorAll('.game-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
+  try { if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name); } catch {}
   if (name === 'overview') refreshLog();
   if (name === 'sessions') showSub('sessions', 'sessions');
   if (name === 'persona') showSub('persona', 'state');
@@ -1122,6 +1134,7 @@ function login() {
   document.getElementById('login').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   refreshAll();
+  applyHash();
 }
 
 // ── 数据刷新 ──
@@ -1223,7 +1236,7 @@ async function refreshLog() {
 async function refreshAll() { await Promise.allSettled([refreshStatus(), refreshRoles(), refreshSessions(), refreshPersona(), refreshLog()]); }
 
 // ── 初始化 ──
-if (TOKEN) { document.getElementById('login').style.display = 'none'; document.getElementById('app').style.display = 'flex'; refreshAll(); }
+if (TOKEN) { document.getElementById('login').style.display = 'none'; document.getElementById('app').style.display = 'flex'; refreshAll(); applyHash(); }
 else { showLogin(); }
 // 远程指令框：Enter 执行（Shift+Enter 换行）
 document.getElementById('remoteCmd')?.addEventListener('keydown', (e) => {

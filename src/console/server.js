@@ -19,6 +19,7 @@ import crypto from 'node:crypto';
 import childProcess from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readActivityTail } from '../log.js';
+import { splitForQQ } from '../lib/md-to-plain.js';
 import { writeRoleState, readRoleState } from '../state.js';
 import { sanitizeRoleName, sleep, normalizeIdList } from '../lib/utils.js';
 import { imageBufferFromGetImage as getImageBuffer, sniffImageMime } from '../lib/qq-image.js';
@@ -875,18 +876,28 @@ export function startConsoleServer({ port, token, deps }) {
             const atUserId = body.at_user_id ?? null;
             const sent = [];
             const blocked = [];
+            const agentTokens = router?.knownAgentTokens ?? new Set();
             for (const text of messages) {
               if (SENSITIVE_RE.test(text)) {
                 blocked.push(text.slice(0, 80));
                 continue;
               }
-              let sendRes;
-              if (target.kind === 'group') {
-                sendRes = await bot.sendGroupMessage(target.id, text, { replyToMessageId, atUserId });
-              } else {
-                sendRes = await bot.sendPrivateMessage(target.id, text, { replyToMessageId });
+              // 与 sender.audit 同口径：回复里出现 agent 会话令牌整条拦截（防模型复述令牌）
+              if ([...agentTokens].some((t) => t && text.includes(t))) {
+                blocked.push('agent-token');
+                continue;
               }
-              sent.push(sendRes?.message_id ?? null);
+              // 复用 sender 的超长分段，避免单条过长被协议层拒绝
+              const parts = splitForQQ(text, cfg.maxReplyChars ?? 1000);
+              for (const part of parts) {
+                let sendRes;
+                if (target.kind === 'group') {
+                  sendRes = await bot.sendGroupMessage(target.id, part, { replyToMessageId, atUserId });
+                } else {
+                  sendRes = await bot.sendPrivateMessage(target.id, part, { replyToMessageId });
+                }
+                sent.push(sendRes?.message_id ?? null);
+              }
             }
             // 状态结算由 pump 的 onAgentTurnEnd(replied:true) 统一执行（避免双重结算）
             return sendJson(res, { sent, blocked });

@@ -9,7 +9,7 @@
 import { format } from 'node:util';
 
 /** 群友可控文本消毒：压平换行/控制符、剔除块标记【】，防记忆/未读内容伪造 prompt 块结构。 */
-function sanitizeLine(text, maxLen = 80) {
+export function sanitizeLine(text, maxLen = 80) {
   return String(text ?? '')
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/[\u0000-\u001f\u007f]/g, '')

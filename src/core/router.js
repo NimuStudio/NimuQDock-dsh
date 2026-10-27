@@ -20,7 +20,7 @@ import { classifyMood } from '../persona/lexicon.js';
 import { computeAttention, computeInterest, computeScore, detectShutdownRequest } from '../persona/engagement.js';
 import { recordDecision } from '../persona/judge-dataset.js';
 import { STATE_DIR } from '../state.js';
-import { buildWakePrompt } from '../persona/inject.js';
+import { buildWakePrompt, sanitizeLine } from '../persona/inject.js';
 import { loadPersona } from '../persona/definition.js';
 
 /**
@@ -126,7 +126,8 @@ export class Router {
         await this.handleOwnerCommand(key, plainContent, msg, roleState);
         return;
       }
-      await this.sender.notify(key, '管理命令仅管理员可用。');
+      // 非 owner 的 / 命令：静默忽略（避免被刷回复），仅记日志
+      this.log(`（忽略非管理员命令：${plainContent.slice(0, 40)}）`);
       return;
     }
 
@@ -249,8 +250,8 @@ export class Router {
     try {
       const m = await this.bot.getMessage(replyId);
       if (!m) return null;
-      const senderName = m.sender?.card || m.sender?.nickname || String(m.user_id ?? '');
-      const text = segmentsToPlain(m.message).slice(0, 200);
+      const senderName = sanitizeLine(m.sender?.card || m.sender?.nickname || String(m.user_id ?? ''), 40);
+      const text = sanitizeLine(segmentsToPlain(m.message), 200);
       return { senderName, text, targetIsSelf: String(m.user_id) === String(selfId) };
     } catch {
       return null;

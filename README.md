@@ -84,15 +84,15 @@ flowchart TB
 
 ## 截图
 
-| Web 控制台概览 | 人格状态（agent 模式） |
+| 概览 | 人格卡 |
 |---|---|
-| ![概览](docs/screenshots/console-overview.png) | ![人格状态](docs/screenshots/console-persona.png) |
+| ![概览](docs/screenshots/console-overview.png) | ![人格卡](docs/screenshots/console-persona.png) |
 
-| 远程指令面板 | 人格卡管理 |
-|---|---|
-| ![远程指令](docs/screenshots/console-remote.png) | ![人格卡](docs/screenshots/console-roles.png) |
+| 远程指令 |
+|---|
+| ![远程指令](docs/screenshots/console-remote.png) |
 
-> 截图中的 QQ 号/群号已打码。
+> 截图中的机器人 QQ 号与群聊内容已打码。
 
 ## 特性
 
@@ -105,22 +105,24 @@ flowchart TB
 
 ## 一键安装（Windows）
 
-不想手动折腾？去 [Releases](https://github.com/NimuStudio/NimuQDock-dsh/releases) 下载安装包（均含全部依赖，无需 npm install）：
+去 [Releases](https://github.com/NimuStudio/NimuQDock-dsh/releases/latest) 下载安装包（含全部依赖，无需 npm install）：
 
-| 方式 | 操作 |
-|---|---|
-| **exe 安装器（推荐）** | 下载 `NimuQDock-dsh-vX.Y.Z-setup.exe` → 双击 → 选目录 → 自动解压并运行安装向导 |
-| zip 免安装 | 下载 `NimuQDock-dsh-vX.Y.Z-win-x64.zip` → 解压 → 双击 `install.bat` |
+| 方式 | 大小 | 操作 |
+|---|---|---|
+| **exe 安装向导（推荐）** | 约 26 MB | 双击 → 勾选组件（程序本体 / DSH / NapCat / 判断模型）→ 选目录 → 安装 → 完成页直接启动 |
+| **zip 离线包** | 约 410 MB | 解压 → 双击 `start.bat`（内置 0.6B 模型与推理引擎） |
 
-安装向导会自动：检查 Node / 生成 config.json / **自动安装并启动 DeepSeek Harness**（锁版本）/ **自动下载解压 NapCat**（国内镜像加速）。你只需要两件手动事：**① 安装 QQ 客户端 ② 扫码登录并配置 OneBot11**（向导会一步步提示），最后双击 `start.bat` 启动，浏览器自动打开 Web 控制台。
+安装向导会自动检测本机已装的组件（已装好的置灰跳过），下载时会走国内镜像、支持断点续传与 SHA256 校验。
+你只需要两件手动事：**① 安装 QQ 客户端 ② 扫码登录并配置 OneBot11**，最后启动并打开 Web 控制台。
 
-> 需要 Node.js ≥ 22.13 和已安装的 QQ 客户端。
+> 需要 Node.js ≥ 22.13 和已安装的 QQ 客户端（exe 包自带 Node）。
 
 ## 卸载
 
-- **exe 卸载程序**：下载 `NimuQDock-dsh-uninstall.exe`（Releases 页）→ 双击 → 勾选要卸载的内容（项目 / DeepSeek Harness / NapCat，可多选）。
-- **源码用户**：双击项目里的 `uninstall.bat`。
-- 卸载程序会先停止运行中的桥接，再按选择删除：项目目录、DSH（npm 全局包 + `~/.dsh`）、NapCat（`NapCatShell/` 及 QQ 登录配置）。
+- **exe 安装的用户**：Windows「设置 → 应用」里卸载，或运行安装目录下的 `uninstall.exe`。
+- **zip / 源码用户**：双击项目里的 `uninstall.bat`。
+- 卸载会先停止运行中的桥接与 NapCat 注入进程，再删除安装目录。
+- ⚠️ 安装目录里的 `state/`（记忆、日志）和 `config.json` 会一并删除；需要保留请先备份。
 
 ## 开始使用
 
@@ -175,19 +177,6 @@ npm install
 
 
 
-### 安装方式（exe 图形安装器）
-
-发行包的 `exe` 是一个**原生 Windows 安装向导（约 30 MB）**，标准安装界面：
-
-1. 欢迎页 → **组件勾选**：程序本体 / DSH / NapCat / 判断模型（1.7B 或 0.6B）/ 推理引擎
-2. 选择安装目录 → 安装（进度条 + 实时日志）→ 完成页可直接启动
-
-打开时会自动检测你的电脑：已装好的组件置灰跳过，没装的默认勾选。
-安装器会**断点续传**（网络中断后重跑从断点继续），并对每个下载做 **SHA256 校验**；
-所有资源版本固定，镜像被篡改会自动发现并换源。想更换已装模型，重新运行安装器、勾选模型即可（0.6B ↔ 1.7B）。
-
-> `zip` 是离线完整包（内置 0.6B 模型与推理引擎，约 440 MB），解压即用。
-
 ### 接话判断：规则 / 本地模型（可选）
 
 agent 模式下「这条消息该不该接」有两种判断方式，桥接会自动选择：
@@ -217,9 +206,6 @@ agent 模式下「这条消息该不该接」有两种判断方式，桥接会�
 }
 ```
 
-
-> 发行包内置的是 **0.6B**（判断够用、包体约 400MB）。想要更准，双击 `install-model.bat`
-> 下载 1.7B 模型（约 1.1GB）后重启项目即可；`start.bat` 会自动选 `models/` 里参数最多的模型。
 
 #### 训练自己的判断器（可选，进阶）
 
@@ -332,6 +318,8 @@ npm run test-onebot      # NapCat 连接
 | 主动心跳 | 人格驱动"偶尔看看群" |
 | Web 控制台 | 状态/模式/人格调节/角色卡/记忆/远程指令/白名单/日志 |
 | 远程指令 | 完整工具会话执行，结果回显 |
+| 接话判断 | 规则 + 可选本地小模型，模型缺失自动回退 |
+| 图形安装器 | 原生 Windows 安装向导，按需下载组件 |
 | 安全 MCP | 白名单发送 + SSRF 防护搜索 |
 
 ## 项目结构
@@ -372,6 +360,13 @@ npm run test-onebot      # NapCat 连接
 ## 支持
 
 喜欢这个项目？☕ [去爱发电请我喝杯咖啡](https://ifdian.net/a/NimuStudio)
+
+## 数据与隐私
+
+- 所有数据都在本机：`config.json`、`state/`（记忆/日志）、`NapCatShell/`（QQ 登录）、`~/.dsh`（DSH 会话）
+- 不上传任何数据；模型/组件下载直接走上游官方源
+- 控制台、DSH、NapCat、判断模型都只监听 `127.0.0.1`
+- `state/judge-decisions.jsonl` 会保存**脱敏后的群聊文本**，用于以后训练判断模型；不需要可删除该文件
 
 ## 使用提醒
 

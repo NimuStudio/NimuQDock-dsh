@@ -3,6 +3,7 @@
 // → 逐条发送（sendDelayMs 间隔，防频率限制）。
 import { mdToPlain, splitForQQ } from '../lib/md-to-plain.js';
 import { SENSITIVE_RE } from '../lib/sensitive.js';
+import { isAllowed } from '../policy/allowlist.js';
 import { sleep } from '../lib/utils.js';
 
 export class Sender {
@@ -76,6 +77,11 @@ export class Sender {
       return { sent: 0, blocked: true, reason };
     }
     const { kind, id } = this._parseKey(key);
+    // 发送前二次校验：消息入口后可能已被移出白名单（fail-closed）
+    if (!isAllowed(kind, id, this.cfg)) {
+      this.log(`⚠️ 回复目标不在白名单（${key}），已丢弃`);
+      return { sent: 0, blocked: true, reason: '不在白名单' };
+    }
     const sent = await this._sendTextOne(kind, id, plain, replyToMessageId);
     return { sent, blocked: false };
   }
@@ -88,6 +94,10 @@ export class Sender {
    */
   async sendBurstToQQ(key, messages, { minMs = 800, maxMs = 2000 } = {}) {
     const { kind, id } = this._parseKey(key);
+    if (!isAllowed(kind, id, this.cfg)) {
+      this.log(`⚠️ 分条消息目标不在白名单（${key}），已丢弃`);
+      return { sent: 0, blocked: messages.length };
+    }
     let sent = 0;
     let blocked = 0;
     for (let i = 0; i < messages.length; i++) {
