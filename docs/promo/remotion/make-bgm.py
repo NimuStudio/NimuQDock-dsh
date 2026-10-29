@@ -5,7 +5,7 @@ import numpy as np
 SR = 44100
 BPM = 104
 BEAT = 60 / BPM
-DURATION = 34.0
+DURATION = 156.0
 N = int(SR * DURATION)
 t = np.arange(N) / SR
 
