@@ -582,6 +582,7 @@ const RuleScene: React.FC<{duration: number; text: string}> = ({duration, text})
         >
           {text}
         </div>
+        <MiniShot image="cfg-white.png" label="白名单 · 配置" x={3} y={8} w={360} delay={26} />
       </AbsoluteFill>
     </Scene>
   );
@@ -625,6 +626,7 @@ const SafeScene: React.FC<{duration: number; text: string}> = ({duration, text})
           })}
         </div>
         <div style={{fontFamily: FONT, fontSize: 34, color: 'rgba(246,242,250,.5)'}}>{text}</div>
+        <MiniShot image="cfg-top.png" label="配置 · 运行时生效" x={64} y={6} w={560} delay={26} />
       </AbsoluteFill>
     </Scene>
   );
@@ -775,6 +777,7 @@ const ArchScene: React.FC<{duration: number; text: string}> = ({duration}) => {
         <div style={{fontFamily: FONT, fontSize: 32, color: 'rgba(246,242,250,.55)'}}>
           OneBot v11 · 本地部署 · 一条消息的完整旅程
         </div>
+        <MiniShot image="ov-top.png" label="运行状态 · 控制台" x={70} y={8} w={420} delay={20} />
       </AbsoluteFill>
     </Scene>
   );
@@ -820,6 +823,7 @@ const BehaviorScene: React.FC<{duration: number}> = ({duration}) => {
         <div style={{fontFamily: FONT, fontSize: 32, color: 'rgba(246,242,250,.55)'}}>
           人格状态会持久化，按聊天慢慢变化
         </div>
+        <MiniShot image="ses-top.png" label="会话与记忆 · 控制台" x={3} y={8} w={400} delay={24} />
       </AbsoluteFill>
     </Scene>
   );
@@ -861,6 +865,7 @@ const CompareScene: React.FC<{duration: number; text: string}> = ({duration, tex
           })}
         </div>
         <div style={{fontFamily: FONT, fontSize: 32, color: 'rgba(246,242,250,.55)'}}>{text}</div>
+        <MiniShot image="cfg-model.png" label="判断模型 · 配置" x={72} y={8} w={360} delay={28} />
       </AbsoluteFill>
     </Scene>
   );
@@ -921,6 +926,40 @@ const InstallReal: React.FC<{duration: number; text: string}> = ({duration, text
         <div style={{fontFamily: FONT, fontSize: 34, color: 'rgba(246,242,250,.65)'}}>{text}</div>
       </AbsoluteFill>
     </Scene>
+  );
+};
+
+
+/** 角落小截图：给文字镜头加"真实控制台"佐证 */
+const MiniShot: React.FC<{
+  image: string;
+  label: string;
+  x: number;
+  y: number;
+  w?: number;
+  delay?: number;
+}> = ({image, label, x, y, w = 400, delay = 0}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const p = spring({frame: frame - delay, fps, config: {damping: 200}});
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: `${x}%`,
+        top: `${y}%`,
+        width: w,
+        opacity: clamp(p) * 0.95,
+        transform: `translateY(${(1 - p) * 26}px) rotate(${(1 - p) * -3}deg)`,
+      }}
+    >
+      <div style={{borderRadius: 16, overflow: 'hidden', border: '1px solid rgba(255,255,255,.2)', boxShadow: '0 30px 70px rgba(0,0,0,.55), 0 0 40px rgba(180,140,205,.18)'}}>
+        <Img src={staticFile(image)} style={{width: '100%', display: 'block'}} />
+      </div>
+      <div style={{marginTop: 10, display: 'inline-block', padding: '6px 14px', borderRadius: 999, fontFamily: FONT, fontSize: 18, fontWeight: 700, color: 'rgba(246,242,250,.85)', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)'}}>
+        {label}
+      </div>
+    </div>
   );
 };
 
