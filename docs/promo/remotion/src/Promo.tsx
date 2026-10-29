@@ -131,11 +131,16 @@ const Scene: React.FC<{duration: number; children: React.ReactNode; tone?: 'dark
 }) => {
   const frame = useCurrentFrame();
   const inP = spring({frame, fps: 30, config: {damping: 200}});
-  const out = interpolate(frame, [duration - 12, duration], [1, 0], {
+  // 出场：最后 7 帧快速放大+淡出，形成"冲击切"
+  const out = interpolate(frame, [duration - 7, duration], [1, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
-  const scale = 1.045 - inP * 0.045;
+  const exitZoom = interpolate(frame, [duration - 7, duration], [1, 1.07], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  const scale = (1.045 - inP * 0.045) * exitZoom;
   return (
     <AbsoluteFill style={{opacity: Math.min(clamp(inP + 0.1), out), transform: `scale(${scale})`}}>
       <Backdrop tone={tone} />
@@ -180,14 +185,20 @@ const Words: React.FC<{
             style={{
               opacity: clamp(p),
               transform: `translateY(${(1 - p) * 26}px) rotate(${(1 - p) * (i % 2 ? 4 : -4)}deg)`,
-              background: sweep,
-              WebkitBackgroundClip: sweep ? 'text' : undefined,
-              backgroundClip: sweep ? 'text' : undefined,
-              color: sweep ? 'transparent' : light ? INK : '#241b33',
+              display: 'inline-block',
               whiteSpace: 'pre',
             }}
           >
-            {c}
+            <span
+              style={{
+                background: sweep,
+                WebkitBackgroundClip: sweep ? 'text' : undefined,
+                backgroundClip: sweep ? 'text' : undefined,
+                color: sweep ? 'transparent' : light ? INK : '#241b33',
+              }}
+            >
+              {c}
+            </span>
           </span>
         );
       })}
@@ -552,13 +563,159 @@ const EndScene: React.FC<{duration: number; text: string}> = ({duration, text}) 
   );
 };
 
+
+const ArchScene: React.FC<{duration: number; text: string}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const nodes = [
+    {t: 'QQ 群 / 私聊', c: ROSE},
+    {t: 'NapCat', c: LILAC},
+    {t: '桥接', c: MINT},
+    {t: 'DeepSeek Harness', c: LILAC},
+  ];
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 40}}>
+        <Words text="它是怎么跑起来的" size={84} gradient />
+        <div style={{display: 'flex', alignItems: 'center', gap: 18}}>
+          {nodes.map((n, i) => {
+            const p = spring({frame: frame - 16 - i * 12, fps, config: {damping: 200}});
+            return (
+              <React.Fragment key={n.t}>
+                {i > 0 ? (
+                  <div
+                    style={{
+                      width: 70,
+                      height: 2,
+                      background: `linear-gradient(90deg, transparent, ${n.c})`,
+                      opacity: clamp(p),
+                    }}
+                  />
+                ) : null}
+                <div
+                  style={{
+                    padding: '22px 30px',
+                    borderRadius: 18,
+                    fontFamily: FONT,
+                    fontSize: 30,
+                    fontWeight: 800,
+                    color: INK,
+                    background: `linear-gradient(140deg,${n.c}33, rgba(255,255,255,.03))`,
+                    border: `1px solid ${n.c}77`,
+                    boxShadow: `0 18px 40px ${n.c}22`,
+                    opacity: clamp(p),
+                    transform: `translateY(${(1 - p) * 26}px)`,
+                  }}
+                >
+                  {n.t}
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+        <div style={{fontFamily: FONT, fontSize: 32, color: 'rgba(246,242,250,.55)'}}>
+          OneBot v11 · 本地部署 · 一条消息的完整旅程
+        </div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
+const BehaviorScene: React.FC<{duration: number}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const items = [
+    {t: '被怼会不高兴', c: ROSE},
+    {t: '聊熟了会记得你', c: MINT},
+    {t: '没话说就潜水', c: LILAC},
+  ];
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 46}}>
+        <Words text="它不是每次都要说话" size={86} gradient />
+        <div style={{display: 'flex', gap: 30}}>
+          {items.map((it, i) => {
+            const p = spring({frame: frame - 18 - i * 10, fps, config: {damping: 200}});
+            return (
+              <div
+                key={it.t}
+                style={{
+                  padding: '30px 40px',
+                  borderRadius: 24,
+                  fontFamily: FONT,
+                  fontSize: 36,
+                  fontWeight: 800,
+                  color: INK,
+                  background: `linear-gradient(140deg,${it.c}33, rgba(255,255,255,.03))`,
+                  border: `1px solid ${it.c}77`,
+                  boxShadow: `0 22px 50px ${it.c}22`,
+                  opacity: clamp(p),
+                  transform: `scale(${0.92 + p * 0.08})`,
+                }}
+              >
+                {it.t}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{fontFamily: FONT, fontSize: 32, color: 'rgba(246,242,250,.55)'}}>
+          人格状态会持久化，按聊天慢慢变化
+        </div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
+const CompareScene: React.FC<{duration: number; text: string}> = ({duration, text}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const rows = [
+    {name: 'Qwen3-0.6B', score: '15 / 20', ratio: 0.75, c: LILAC},
+    {name: 'Qwen3-1.7B', score: '20 / 20', ratio: 1.0, c: MINT},
+  ];
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 44, width: '100%'}}>
+        <Words text="小模型，也能判断对" size={84} gradient />
+        <div style={{display: 'flex', flexDirection: 'column', gap: 26, width: 1100}}>
+          {rows.map((r, i) => {
+            const p = spring({frame: frame - 20 - i * 14, fps, config: {damping: 200}});
+            return (
+              <div key={r.name} style={{opacity: clamp(p)}}>
+                <div style={{display: 'flex', justifyContent: 'space-between', fontFamily: FONT, fontSize: 30, color: INK}}>
+                  <span>{r.name}</span>
+                  <span style={{color: r.c, fontWeight: 800}}>{r.score}</span>
+                </div>
+                <div style={{height: 16, borderRadius: 99, background: 'rgba(255,255,255,.08)', marginTop: 10}}>
+                  <div
+                    style={{
+                      width: `${r.ratio * 100 * clamp(p)}%`,
+                      height: '100%',
+                      borderRadius: 99,
+                      background: `linear-gradient(90deg,${r.c}88,${r.c})`,
+                      boxShadow: `0 0 22px ${r.c}66`,
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{fontFamily: FONT, fontSize: 32, color: 'rgba(246,242,250,.55)'}}>{text}</div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
 /* ---------- 时间线 ---------- */
 const VISUALS: Array<(d: number, text: string) => React.ReactNode> = [
   (d) => <HookScene duration={d} />,
   (d) => <BrandScene duration={d} />,
-  (d, t) => <ConsoleScene duration={d} text={t} />,
+  (d, t) => <ArchScene duration={d} text={t} />,
   (d, t) => <PersonaScene duration={d} text={t} />,
+  (d) => <BehaviorScene duration={d} />,
   (d, t) => <RuleScene duration={d} text={t} />,
+  (d, t) => <CompareScene duration={d} text={t} />,
   (d, t) => <SafeScene duration={d} text={t} />,
   (d, t) => <InstallScene duration={d} text={t} />,
   (d, t) => <EndScene duration={d} text={t} />,
