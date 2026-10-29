@@ -194,6 +194,7 @@ const Words: React.FC<{
                 background: sweep,
                 WebkitBackgroundClip: sweep ? 'text' : undefined,
                 backgroundClip: sweep ? 'text' : undefined,
+                WebkitTextFillColor: sweep ? 'transparent' : undefined,
                 color: sweep ? 'transparent' : light ? INK : '#241b33',
               }}
             >
@@ -302,17 +303,11 @@ const FloatTag: React.FC<{text: string; x: number; y: number; delay: number; col
 
 /* ---------- 镜头 ---------- */
 const HookScene: React.FC<{duration: number}> = ({duration}) => {
-  const frame = useCurrentFrame();
-  const shake = Math.sin(frame / 1.8) * (frame < 55 ? 2.5 : 1);
   return (
     <Scene duration={duration} tone="deep">
       <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 26}}>
-        <div style={{transform: `translateX(${shake}px)`}}>
-          <Words text="你的群里" size={70} delay={0} />
-        </div>
-        <div style={{transform: `translateX(${-shake}px)`}}>
-          <Words text="是不是也有一个" size={92} delay={16} gradient />
-        </div>
+        <Words text="你的群里" size={70} delay={0} />
+        <Words text="是不是也有一个" size={92} delay={16} gradient />
         <Words text="只会复读的机器人？" size={104} delay={40} gradient />
       </AbsoluteFill>
       <LightSweep delay={12} />
