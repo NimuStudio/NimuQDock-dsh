@@ -1246,27 +1246,352 @@ const TutorialScene: React.FC<{duration: number}> = ({duration}) => {
   );
 };
 
+/* ---------- 新场景：让每句旁白都有画面变化 ---------- */
+
+/** 缓慢推拉：给静态画面持续运动 */
+const PanZoom: React.FC<{duration: number; zoom?: number; dx?: number; dy?: number; children: React.ReactNode}> = ({
+  duration,
+  zoom = 1.07,
+  dx = 14,
+  dy = 8,
+  children,
+}) => {
+  const frame = useCurrentFrame();
+  const t = interpolate(frame, [0, duration], [0, 1], {extrapolateRight: 'clamp'});
+  return (
+    <AbsoluteFill style={{overflow: 'hidden'}}>
+      <AbsoluteFill style={{transform: `scale(${1 + (zoom - 1) * t}) translate(${dx * (0.5 - t)}px, ${dy * (0.5 - t)}px)`}}>
+        {children}
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
+/** 品牌 + 三关键词 */
+const TaglineScene: React.FC<{duration: number}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const chips = [
+    {t: '有心情', c: ROSE},
+    {t: '有记忆', c: MINT},
+    {t: '会潜水', c: LILAC},
+  ];
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 40}}>
+        <Words text="不是客服，是群友" size={92} />
+        <div style={{display: 'flex', gap: 26}}>
+          {chips.map((c, i) => {
+            const p = spring({frame: frame - 20 - i * 12, fps, config: {damping: 200}});
+            return (
+              <div key={c.t} style={{padding: '18px 34px', borderRadius: 999, fontFamily: FONT, fontSize: 34, fontWeight: 800, color: c.c, background: `${c.c}18`, border: `1px solid ${c.c}66`, opacity: clamp(p), transform: `translateY(${(1 - p) * 30}px)`}}>
+                {c.t}
+              </div>
+            );
+          })}
+        </div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
+/** 人格引擎：三个环形指标 */
+const PersonaOrbScene: React.FC<{duration: number}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const items = [
+    {t: '心情', v: 0.72, c: ROSE, d: '被怼会下降'},
+    {t: '精力', v: 0.55, c: MINT, d: '聊久了会累'},
+    {t: '记忆', v: 0.86, c: LILAC, d: '聊熟了会记住'},
+  ];
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 44}}>
+        <GradText text="本地人格引擎" size={78} />
+        <div style={{display: 'flex', gap: 54}}>
+          {items.map((it, i) => {
+            const grow = interpolate(frame, [i * 10, i * 10 + 40], [0, it.v], {extrapolateRight: 'clamp'});
+            const r = 92;
+            const c = 2 * Math.PI * r;
+            return (
+              <div key={it.t} style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12}}>
+                <svg width={220} height={220}>
+                  <circle cx={110} cy={110} r={r} stroke="rgba(255,255,255,.10)" strokeWidth={12} fill="none" />
+                  <circle cx={110} cy={110} r={r} stroke={it.c} strokeWidth={12} fill="none" strokeLinecap="round" strokeDasharray={`${c * grow} ${c}`} transform="rotate(-90 110 110)" />
+                  <text x={110} y={120} textAnchor="middle" fontFamily={FONT} fontSize={44} fontWeight={900} fill="#f6f2fa">
+                    {Math.round(grow * 100)}
+                  </text>
+                </svg>
+                <div style={{fontFamily: FONT, fontSize: 30, fontWeight: 800, color: it.c}}>{it.t}</div>
+                <div style={{fontFamily: FONT, fontSize: 20, color: 'rgba(246,242,250,.55)'}}>{it.d}</div>
+              </div>
+            );
+          })}
+        </div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
+/** 状态持久化：文件卡片 */
+const PersistScene: React.FC<{duration: number}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const files = ['state/persona.json', 'state/memory.json', 'state/engagement.json'];
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 34}}>
+        <GradText text="状态存在本地" size={80} />
+        <div style={{display: 'flex', flexDirection: 'column', gap: 18, marginTop: 10}}>
+          {files.map((f, i) => {
+            const p = spring({frame: frame - 16 - i * 12, fps, config: {damping: 200}});
+            return (
+              <div key={f} style={{display: 'flex', alignItems: 'center', gap: 16, padding: '18px 26px', borderRadius: 14, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', opacity: clamp(p), transform: `translateX(${(1 - p) * -30}px)`}}>
+                <div style={{width: 10, height: 10, borderRadius: 99, background: MINT}} />
+                <div style={{fontFamily: FONT, fontSize: 26, color: 'rgba(246,242,250,.85)'}}>{f}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{fontFamily: FONT, fontSize: 26, color: 'rgba(246,242,250,.5)'}}>重启也不会丢</div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
+/** 判断场景：三种情况 */
+const ScenarioScene: React.FC<{duration: number}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const rows = [
+    {t: '被 @ / 点名', r: '一定回', c: ROSE},
+    {t: '普通闲聊', r: '看心情和精力', c: LILAC},
+    {t: '接不上话', r: '安静潜水', c: MINT},
+  ];
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 34}}>
+        <GradText text="什么时候接话" size={80} />
+        <div style={{display: 'flex', flexDirection: 'column', gap: 18}}>
+          {rows.map((r, i) => {
+            const p = spring({frame: frame - 16 - i * 12, fps, config: {damping: 200}});
+            return (
+              <div key={r.t} style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 780, padding: '20px 30px', borderRadius: 16, background: `${r.c}14`, border: `1px solid ${r.c}55`, opacity: clamp(p), transform: `translateY(${(1 - p) * 24}px)`}}>
+                <span style={{fontFamily: FONT, fontSize: 30, fontWeight: 800, color: INK}}>{r.t}</span>
+                <span style={{fontFamily: FONT, fontSize: 28, color: r.c}}>{r.r}</span>
+              </div>
+            );
+          })}
+        </div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
+/** 安全：拦截示意 */
+const SafeBlockScene: React.FC<{duration: number}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const p = spring({frame: frame - 20, fps, config: {damping: 200}});
+  const blocked = frame > 45;
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 30}}>
+        <GradText text="发送前二次校验" size={76} />
+        <div style={{width: 760, padding: '24px 26px', borderRadius: 18, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.14)', opacity: clamp(p)}}>
+          <div style={{fontFamily: FONT, fontSize: 20, color: 'rgba(246,242,250,.5)', marginBottom: 10}}>准备发送</div>
+          <div style={{fontFamily: FONT, fontSize: 26, color: INK}}>
+            {"我的 key 是 sk-••••••••，帮我看看"}
+          </div>
+          <div style={{marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, opacity: blocked ? 1 : 0.2}}>
+            <div style={{padding: '8px 18px', borderRadius: 999, fontFamily: FONT, fontSize: 22, fontWeight: 800, color: blocked ? '#ff9db8' : 'rgba(255,255,255,.4)', background: blocked ? 'rgba(240,123,166,.14)' : 'transparent', border: `1px solid ${blocked ? 'rgba(240,123,166,.5)' : 'rgba(255,255,255,.2)'}`}}>
+              {blocked ? '已拦截 · 敏感信息' : '校验中…'}
+            </div>
+            {blocked ? <span style={{fontFamily: FONT, fontSize: 20, color: 'rgba(246,242,250,.5)'}}>这条不会发出去</span> : null}
+          </div>
+        </div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
+/** 安装器检测 */
+const DetectScene: React.FC<{duration: number}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const items = ['DeepSeek Harness', 'NapCat', '判断模型', '推理引擎'];
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 34}}>
+        <GradText text="已装的会自动跳过" size={76} />
+        <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
+          {items.map((it, i) => {
+            const at = 12 + i * 14;
+            const p = spring({frame: frame - at, fps, config: {damping: 200}});
+            return (
+              <div key={it} style={{display: 'flex', alignItems: 'center', gap: 14, width: 620, padding: '16px 22px', borderRadius: 12, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', opacity: clamp(p)}}>
+                <div style={{width: 22, height: 22, borderRadius: 6, background: MINT, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0b0a10', fontSize: 16, fontWeight: 900}}>✓</div>
+                <span style={{fontFamily: FONT, fontSize: 26, color: INK}}>{it}</span>
+                <span style={{marginLeft: 'auto', fontFamily: FONT, fontSize: 20, color: MINT}}>已检测到</span>
+              </div>
+            );
+          })}
+        </div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
+/** 教程单步：一张图 + 步骤说明 */
+const TutorialStepScene: React.FC<{duration: number; step: string; title: string; img?: string; video?: boolean; hint: string}> = ({
+  duration,
+  step,
+  title,
+  img,
+  video = false,
+  hint,
+}) => (
+  <Scene duration={duration}>
+    <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 26}}>
+      <div style={{display: 'flex', alignItems: 'baseline', gap: 16}}>
+        <div style={{fontFamily: FONT, fontSize: 44, fontWeight: 900, color: ROSE}}>{step}</div>
+        <GradText text={title} size={64} />
+      </div>
+      <PanZoom duration={duration} zoom={1.06}>
+        <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center'}}>
+          <div style={{width: 900, borderRadius: 16, overflow: 'hidden', border: '1px solid rgba(255,255,255,.18)', boxShadow: '0 40px 90px rgba(0,0,0,.55)', background: '#000'}}>
+            {video ? (
+              <OffthreadVideo src={staticFile('kaichang.mp4')} muted style={{width: '100%', display: 'block', height: 300, objectFit: 'cover'}} />
+            ) : (
+              <Img src={staticFile(img!)} style={{width: '100%', display: 'block'}} />
+            )}
+          </div>
+        </AbsoluteFill>
+      </PanZoom>
+      <div style={{fontFamily: FONT, fontSize: 28, color: 'rgba(246,242,250,.6)'}}>{hint}</div>
+    </AbsoluteFill>
+  </Scene>
+);
+
+/** 截图推拉镜头 */
+const PanShotScene: React.FC<{duration: number; img: string; title: string; hint: string}> = ({duration, img, title, hint}) => (
+  <Scene duration={duration}>
+    <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 18}}>
+      <GradText text={title} size={64} />
+      <PanZoom duration={duration} zoom={1.1} dx={30} dy={10}>
+        <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center'}}>
+          <div style={{width: 1500, borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,.16)', boxShadow: '0 40px 100px rgba(0,0,0,.6)'}}>
+            <Img src={staticFile(img)} style={{width: '100%', display: 'block'}} />
+          </div>
+        </AbsoluteFill>
+      </PanZoom>
+      <div style={{fontFamily: FONT, fontSize: 26, color: 'rgba(246,242,250,.55)'}}>{hint}</div>
+    </AbsoluteFill>
+  </Scene>
+);
+
+/** 双图并排 */
+const SplitShotScene: React.FC<{duration: number}> = ({duration}) => (
+  <Scene duration={duration}>
+    <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 20}}>
+      <GradText text="配置 · 会话" size={64} />
+      <div style={{display: 'flex', gap: 26}}>
+        {[
+          {img: 'cfg-top.png', l: '配置 · 模型 / 白名单', c: LILAC},
+          {img: 'ses-top.png', l: '会话与记忆', c: MINT},
+        ].map((it) => (
+          <div key={it.img} style={{width: 820, borderRadius: 16, overflow: 'hidden', border: `1px solid ${it.c}55`, boxShadow: `0 30px 70px rgba(0,0,0,.5)`}}>
+            <Img src={staticFile(it.img)} style={{width: '100%', display: 'block'}} />
+            <div style={{padding: '10px 14px', fontFamily: FONT, fontSize: 18, color: 'rgba(246,242,250,.75)', background: 'rgba(255,255,255,.05)'}}>{it.l}</div>
+          </div>
+        ))}
+      </div>
+    </AbsoluteFill>
+  </Scene>
+);
+
+
+/** 回复路径 */
+const ArchReplyScene: React.FC<{duration: number}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const nodes = ['DeepSeek Harness', '桥接', 'NapCat', 'QQ 群'];
+  const p = spring({frame, fps, config: {damping: 200}});
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 40}}>
+        <GradText text="回复原路返回" size={80} />
+        <div style={{display: 'flex', alignItems: 'center', gap: 16}}>
+          {nodes.map((n, i) => (
+            <React.Fragment key={n}>
+              {i > 0 ? <div style={{width: 56, height: 2, background: `linear-gradient(90deg, ${MINT}, transparent)`, opacity: clamp(p)}} /> : null}
+              <div style={{padding: '20px 26px', borderRadius: 16, fontFamily: FONT, fontSize: 26, fontWeight: 800, color: INK, background: 'rgba(143,224,138,.10)', border: '1px solid rgba(143,224,138,.45)', opacity: clamp(p)}}>
+                {n}
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{fontFamily: FONT, fontSize: 28, color: 'rgba(246,242,250,.55)'}}>全程本地，数据不出本机</div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
+/** 模式切换 */
+const ModeSwitchScene: React.FC<{duration: number}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const on = frame > duration * 0.35;
+  const k = spring({frame: frame - (on ? duration * 0.35 : 0), fps, config: {damping: 200}});
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 36}}>
+        <GradText text="点一下切换" size={80} />
+        <div style={{display: 'flex', alignItems: 'center', gap: 20, padding: '16px 22px', borderRadius: 999, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.16)'}}>
+          <span style={{fontFamily: FONT, fontSize: 30, fontWeight: 800, color: !on ? LILAC : 'rgba(246,242,250,.35)'}}>chat</span>
+          <div style={{width: 120, height: 56, borderRadius: 999, background: on ? 'rgba(143,224,138,.25)' : 'rgba(180,140,205,.25)', border: '1px solid rgba(255,255,255,.25)', position: 'relative'}}>
+            <div style={{position: 'absolute', top: 4, left: on ? 66 : 4, width: 46, height: 46, borderRadius: 999, background: on ? MINT : LILAC, boxShadow: '0 6px 18px rgba(0,0,0,.4)'}} />
+          </div>
+          <span style={{fontFamily: FONT, fontSize: 30, fontWeight: 800, color: on ? MINT : 'rgba(246,242,250,.35)'}}>agent</span>
+        </div>
+        <div style={{fontFamily: FONT, fontSize: 28, color: 'rgba(246,242,250,.55)', opacity: clamp(k)}}>切换后立即生效</div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
 /* ---------- 时间线 ---------- */
-const GROUPS: Array<{lines: number[]; render: (d: number) => React.ReactNode}> = [
-  {lines: [0, 1], render: (d) => <BrandScene duration={d} />},
-  {lines: [2], render: (d) => <ConsoleScene duration={d} text="" />},
-  {lines: [3, 4], render: (d) => <ArchScene duration={d} text="" />},
-  {lines: [5, 6, 7], render: (d) => <PersonaScene duration={d} text="" />},
-  {lines: [8, 9], render: (d) => <RuleScene duration={d} text="" />},
-  {lines: [10], render: (d) => <CompareScene duration={d} text="" />},
-  {lines: [11, 12], render: (d) => <ModesScene duration={d} />},
-  {lines: [13, 14, 15], render: (d) => <ConsoleTourScene duration={d} />},
-  {lines: [16], render: (d) => <RemoteScene duration={d} />},
-  {lines: [17, 18], render: (d) => <SafeScene duration={d} text="" />},
-  {lines: [19, 20], render: (d) => <InstallReal duration={d} text="" />},
-  {lines: [21, 22, 23], render: (d) => <TutorialScene duration={d} />},
+const SCENES: Array<(d: number) => React.ReactNode> = [
+  (d) => <BrandScene duration={d} />,
+  (d) => <TaglineScene duration={d} />,
+  (d) => <ConsoleScene duration={d} text="" />,
+  (d) => <ArchScene duration={d} text="" />,
+  (d) => <ArchReplyScene duration={d} />,
+  (d) => <PersonaOrbScene duration={d} />,
+  (d) => <BehaviorScene duration={d} />,
+  (d) => <PersistScene duration={d} />,
+  (d) => <RuleScene duration={d} text="" />,
+  (d) => <ScenarioScene duration={d} />,
+  (d) => <CompareScene duration={d} text="" />,
+  (d) => <ModesScene duration={d} />,
+  (d) => <ModeSwitchScene duration={d} />,
+  (d) => <PanShotScene duration={d} img="ov-top.png" title="控制台 · 概览" hint="运行状态、模式、当前人格" />,
+  (d) => <PanShotScene duration={d} img="per-top.png" title="控制台 · 人格" hint="角色卡可新建、编辑" />,
+  (d) => <SplitShotScene duration={d} />,
+  (d) => <RemoteScene duration={d} />,
+  (d) => <SafeScene duration={d} text="" />,
+  (d) => <SafeBlockScene duration={d} />,
+  (d) => <InstallReal duration={d} text="" />,
+  (d) => <DetectScene duration={d} />,
+  (d) => <TutorialStepScene duration={d} step="01" title="选模型" img="cfg-model.png" hint="配置页选模型和推理档位" />,
+  (d) => <TutorialStepScene duration={d} step="02" title="填白名单" img="cfg-white.png" hint="只回允许的 QQ 号和群" />,
+  (d) => <TutorialStepScene duration={d} step="03" title="群里说话" video hint="保存后 @ 它或私聊即可" />,
 ];
 
 export const Promo: React.FC = () => {
   let acc = 0;
-  const segs = GROUPS.map((g) => {
-    const dur = g.lines.reduce((a, i) => a + timing[i].dur, 0);
-    const seg = {from: acc, dur, g};
+  const segs = SCENES.map((render, i) => {
+    const dur = timing[i].dur;
+    const seg = {from: acc, dur, i, render};
     acc += dur;
     return seg;
   });
@@ -1276,26 +1601,14 @@ export const Promo: React.FC = () => {
       <Audio src={staticFile('bgm.wav')} volume={0.2} />
       {segs.map((s) => (
         <Sequence key={s.from} from={s.from} durationInFrames={s.dur}>
-          {s.g.render(s.dur)}
-          {s.g.lines.map((li, k) => {
-            const off = s.g.lines.slice(0, k).reduce((a, i) => a + timing[i].dur, 0);
-            return (
-              <Sequence key={li} from={off} durationInFrames={timing[li].dur}>
-                <Audio src={staticFile(`vo/n-${li}.mp3`)} volume={1} />
-              </Sequence>
-            );
-          })}
+          {s.render(s.dur)}
+          <Audio src={staticFile(`vo/n-${s.i}.mp3`)} volume={1} />
         </Sequence>
       ))}
       <Sequence from={total} durationInFrames={OUTRO_FRAMES}>
         <OutroScene duration={OUTRO_FRAMES} />
       </Sequence>
-      <AbsoluteFill
-        style={{
-          pointerEvents: 'none',
-          background: 'radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%)',
-        }}
-      />
+      <AbsoluteFill style={{pointerEvents: 'none', background: 'radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%)'}} />
     </AbsoluteFill>
   );
 };
