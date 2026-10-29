@@ -150,6 +150,47 @@ const Scene: React.FC<{duration: number; children: React.ReactNode; tone?: 'dark
   );
 };
 
+
+/** SVG 渐变文字：不依赖 background-clip，渲染/视频完全一致 */
+const GradText: React.FC<{
+  text: string;
+  size?: number;
+  weight?: number;
+  letterSpacing?: number;
+  width?: number;
+}> = ({text, size = 120, weight = 900, letterSpacing = -2, width = 1800}) => {
+  const id = React.useId().replace(/:/g, '');
+  const height = Math.round(size * 1.5);
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      style={{display: 'block', overflow: 'visible'}}
+    >
+      <defs>
+        <linearGradient id={`g-${id}`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#c9a7ef" />
+          <stop offset="48%" stopColor="#f07ba6" />
+          <stop offset="100%" stopColor="#8fe08a" />
+        </linearGradient>
+      </defs>
+      <text
+        x={width / 2}
+        y={size}
+        textAnchor="middle"
+        fontFamily={FONT}
+        fontSize={size}
+        fontWeight={weight}
+        letterSpacing={letterSpacing}
+        fill={`url(#g-${id})`}
+      >
+        {text}
+      </text>
+    </svg>
+  );
+};
+
 const Words: React.FC<{
   text: string;
   size?: number;
@@ -307,8 +348,8 @@ const HookScene: React.FC<{duration: number}> = ({duration}) => {
     <Scene duration={duration} tone="deep">
       <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 26}}>
         <Words text="你的群里" size={70} delay={0} />
-        <Words text="是不是也有一个" size={92} delay={16} gradient />
-        <Words text="只会复读的机器人？" size={104} delay={40} gradient />
+        <GradText text="是不是也有一个" size={92} />
+        <GradText text="只会复读的机器人？" size={104} />
       </AbsoluteFill>
       <LightSweep delay={12} />
     </Scene>
@@ -323,7 +364,7 @@ const BrandScene: React.FC<{duration: number}> = ({duration}) => {
     <Scene duration={duration}>
       <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 30}}>
         <div style={{transform: `scale(${0.92 + p * 0.08})`}}>
-          <Words text="NimuQDock-dsh" size={150} gradient />
+          <GradText text="NimuQDock-dsh" size={150} />
         </div>
         <div style={{opacity: clamp(p), transform: `translateY(${(1 - p) * 20}px)`}}>
           <Words text="把 DeepSeek Harness 接进 QQ" size={52} light />
@@ -381,7 +422,7 @@ const RuleScene: React.FC<{duration: number; text: string}> = ({duration, text})
   return (
     <Scene duration={duration}>
       <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 54}}>
-        <Words text="该不该接" size={104} gradient />
+        <GradText text="该不该接" size={104} />
         <div style={{display: 'flex', gap: 34}}>
           {rules.map((r, i) => {
             const p = spring({frame: frame - 22 - i * 10, fps, config: {damping: 200}});
@@ -434,7 +475,7 @@ const SafeScene: React.FC<{duration: number; text: string}> = ({duration, text})
   return (
     <Scene duration={duration}>
       <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 50}}>
-        <Words text="它只说该说的话" size={88} gradient />
+        <GradText text="它只说该说的话" size={88} />
         <div style={{display: 'flex', gap: 30}}>
           {items.map((it, i) => {
             const p = spring({frame: frame - 20 - i * 10, fps, config: {damping: 200}});
@@ -536,7 +577,7 @@ const EndScene: React.FC<{duration: number; text: string}> = ({duration, text}) 
           }}
         />
         <div style={{transform: `scale(${0.94 + p * 0.06})`}}>
-          <Words text="NimuQDock-dsh" size={140} gradient />
+          <GradText text="NimuQDock-dsh" size={140} />
         </div>
         <div style={{opacity: clamp(p)}}>
           <Words text={text} size={44} />
@@ -571,7 +612,7 @@ const ArchScene: React.FC<{duration: number; text: string}> = ({duration}) => {
   return (
     <Scene duration={duration}>
       <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 40}}>
-        <Words text="它是怎么跑起来的" size={84} gradient />
+        <GradText text="它是怎么跑起来的" size={84} />
         <div style={{display: 'flex', alignItems: 'center', gap: 18}}>
           {nodes.map((n, i) => {
             const p = spring({frame: frame - 16 - i * 12, fps, config: {damping: 200}});
@@ -627,7 +668,7 @@ const BehaviorScene: React.FC<{duration: number}> = ({duration}) => {
   return (
     <Scene duration={duration}>
       <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 46}}>
-        <Words text="它不是每次都要说话" size={86} gradient />
+        <GradText text="它不是每次都要说话" size={86} />
         <div style={{display: 'flex', gap: 30}}>
           {items.map((it, i) => {
             const p = spring({frame: frame - 18 - i * 10, fps, config: {damping: 200}});
@@ -671,7 +712,7 @@ const CompareScene: React.FC<{duration: number; text: string}> = ({duration, tex
   return (
     <Scene duration={duration}>
       <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 44, width: '100%'}}>
-        <Words text="小模型，也能判断对" size={84} gradient />
+        <GradText text="小模型，也能判断对" size={84} />
         <div style={{display: 'flex', flexDirection: 'column', gap: 26, width: 1100}}>
           {rows.map((r, i) => {
             const p = spring({frame: frame - 20 - i * 14, fps, config: {damping: 200}});
