@@ -1036,7 +1036,6 @@ const VISUALS: Array<(d: number, text: string) => React.ReactNode> = [
   (d, t) => <CompareScene duration={d} text={t} />,
   (d, t) => <SafeScene duration={d} text={t} />,
   (d, t) => <InstallReal duration={d} text={t} />,
-  (d, t) => <EndScene duration={d} text={t} />,
 ];
 
 let acc = 0;
