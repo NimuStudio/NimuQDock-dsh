@@ -146,6 +146,7 @@ const Scene: React.FC<{duration: number; children: React.ReactNode; tone?: 'dark
       <Backdrop tone={tone} />
       <Particles />
       <AbsoluteFill>{children}</AbsoluteFill>
+      <Wipe />
     </AbsoluteFill>
   );
 };
@@ -225,7 +226,7 @@ const Words: React.FC<{
             key={i}
             style={{
               opacity: clamp(p),
-              transform: `translateY(${(1 - p) * 26}px) rotate(${(1 - p) * (i % 2 ? 4 : -4)}deg)`,
+              transform: `translateY(${(1 - p) * 22}px)`,
               display: 'inline-block',
               whiteSpace: 'pre',
             }}
@@ -268,10 +269,11 @@ const LightSweep: React.FC<{delay?: number}> = ({delay = 0}) => {
   );
 };
 
-const Shot: React.FC<{image: string; duration: number; side?: 1 | -1}> = ({
+const Shot: React.FC<{image: string; duration: number; side?: 1 | -1; width?: number}> = ({
   image,
   duration,
   side = 1,
+  width = 1560,
 }) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
@@ -292,7 +294,7 @@ const Shot: React.FC<{image: string; duration: number; side?: 1 | -1}> = ({
     >
       <div
         style={{
-          width: 1560,
+          width,
           transform: `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(${scale})`,
           borderRadius: 26,
           overflow: 'hidden',
@@ -338,6 +340,88 @@ const FloatTag: React.FC<{text: string; x: number; y: number; delay: number; col
       }}
     >
       {text}
+    </div>
+  );
+};
+
+
+/** 仿 QQ 群聊窗口：用来演示"发消息 → 机器人回复" */
+const ChatMock: React.FC<{delay?: number}> = ({delay = 0}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const bubble = (at: number, side: 'left' | 'right', text: string, color: string) => {
+    const p = spring({frame: frame - at - delay, fps, config: {damping: 200}});
+    if (p <= 0.001) return null;
+    return (
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: side === 'right' ? 'flex-end' : 'flex-start',
+          opacity: clamp(p),
+          transform: `translateY(${(1 - p) * 14}px)`,
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 380,
+            padding: '12px 18px',
+            borderRadius: 16,
+            fontFamily: FONT,
+            fontSize: 24,
+            lineHeight: 1.5,
+            color: '#2a2233',
+            background: side === 'right' ? `linear-gradient(120deg,${color},#ffffff)` : '#ffffff',
+            boxShadow: '0 10px 24px rgba(0,0,0,.25)',
+          }}
+        >
+          {text}
+        </div>
+      </div>
+    );
+  };
+  const typing = spring({frame: frame - 42 - delay, fps, config: {damping: 200}});
+  return (
+    <div
+      style={{
+        width: 560,
+        borderRadius: 24,
+        background: 'rgba(24,20,32,.72)',
+        border: '1px solid rgba(255,255,255,.14)',
+        boxShadow: '0 40px 90px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.12)',
+        padding: 22,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+      }}
+    >
+      <div style={{display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,.08)'}}>
+        <div style={{width: 10, height: 10, borderRadius: 99, background: MINT, boxShadow: `0 0 12px ${MINT}`}} />
+        <div style={{fontFamily: FONT, fontSize: 22, color: 'rgba(246,242,250,.8)'}}>QQ 群 · 测试群</div>
+      </div>
+      <div style={{display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(246,242,250,.45)', fontFamily: FONT, fontSize: 18}}>
+        <div style={{width: 26, height: 26, borderRadius: 99, background: 'linear-gradient(130deg,#f07ba6,#b48ccd)'}} />
+        群友 · 小北
+      </div>
+      {bubble(14, 'left', 'dsh 在吗，帮我看看这个报错', ROSE)}
+      {bubble(30, 'left', '顺便问下今晚谁有空', ROSE)}
+      {typing > 0.2 && frame - 42 - delay < 18 ? (
+        <div style={{display: 'flex', justifyContent: 'flex-end', gap: 6, opacity: clamp(typing)}}>
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: 99,
+                background: 'rgba(255,255,255,.6)',
+                opacity: 0.35 + 0.55 * Math.abs(Math.sin((frame + i * 4) / 6)),
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+      {bubble(62, 'right', '在的，报错贴一下，我看看。', MINT)}
+      {bubble(78, 'right', '今晚我潜水，你们定～', MINT)}
     </div>
   );
 };
@@ -389,12 +473,14 @@ const BrandScene: React.FC<{duration: number}> = ({duration}) => {
 
 const ConsoleScene: React.FC<{duration: number; text: string}> = ({duration, text}) => (
   <Scene duration={duration}>
-    <Shot image="ov-top.png" duration={duration} side={1} />
-    <FloatTag text="群消息" x={8} y={20} delay={14} color={ROSE} />
-    <FloatTag text="人格状态" x={80} y={26} delay={22} color={LILAC} />
-    <FloatTag text="工具调用" x={12} y={68} delay={30} color={MINT} />
-    <AbsoluteFill style={{alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 70}}>
-      <Words text={text} size={40} />
+    <AbsoluteFill style={{display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 30, padding: '0 50px'}}>
+      <div style={{width: 1060}}>
+        <Shot image="ov-top.png" duration={duration} side={1} width={1060} />
+      </div>
+      <ChatMock delay={10} />
+    </AbsoluteFill>
+    <AbsoluteFill style={{alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 40}}>
+      <Words text={text} size={34} />
     </AbsoluteFill>
   </Scene>
 );
@@ -743,11 +829,37 @@ const CompareScene: React.FC<{duration: number; text: string}> = ({duration, tex
   );
 };
 
+
+/** 擦除转场：每场开头一条渐变光带扫过 */
+const Wipe: React.FC = () => {
+  const frame = useCurrentFrame();
+  const d = Math.floor(frame / 22) % 2 === 0 ? 1 : -1;
+  const t = interpolate(frame, [0, 9], [0, 1], {extrapolateRight: 'clamp'});
+  if (t >= 1) return null;
+  return (
+    <AbsoluteFill style={{pointerEvents: 'none', overflow: 'hidden'}}>
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          width: '160%',
+          left: d > 0 ? `${-120 + t * 140}%` : `${-40 - t * 140}%`,
+          background:
+            'linear-gradient(90deg, transparent 0%, rgba(201,167,239,.22) 38%, rgba(240,123,166,.28) 55%, rgba(143,224,138,.18) 70%, transparent 100%)',
+          filter: 'blur(18px)',
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
 /* ---------- 时间线 ---------- */
 const VISUALS: Array<(d: number, text: string) => React.ReactNode> = [
   (d) => <HookScene duration={d} />,
   (d) => <BrandScene duration={d} />,
   (d, t) => <ArchScene duration={d} text={t} />,
+  (d, t) => <ConsoleScene duration={d} text={t} />,
   (d, t) => <PersonaScene duration={d} text={t} />,
   (d) => <BehaviorScene duration={d} />,
   (d, t) => <RuleScene duration={d} text={t} />,
