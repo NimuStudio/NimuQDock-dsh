@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   AbsoluteFill,
+  Audio,
   Img,
   Sequence,
   interpolate,
@@ -9,6 +10,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
+import timing from './timing.json';
 
 /* ---------- 品牌 ---------- */
 const INK = '#43304f';
@@ -153,6 +155,44 @@ const Caption: React.FC<{text: string; delay?: number}> = ({text, delay = 0}) =>
   );
 };
 
+const Subtitle: React.FC<{text: string; light?: boolean}> = ({text, light = false}) => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 12], [0, 1], {extrapolateRight: 'clamp'});
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 54,
+        display: 'flex',
+        justifyContent: 'center',
+        opacity,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: FONT,
+          fontSize: 34,
+          fontWeight: 600,
+          lineHeight: 1.5,
+          textAlign: 'center',
+          maxWidth: 1500,
+          color: light ? 'rgba(255,255,255,.92)' : INK,
+          background: light ? 'rgba(30,24,38,.45)' : 'rgba(255,255,255,.72)',
+          border: light ? '1px solid rgba(255,255,255,.18)' : '1px solid rgba(255,255,255,.9)',
+          padding: '12px 30px',
+          borderRadius: 18,
+          boxShadow: '0 12px 30px rgba(80,60,100,.14)',
+          backdropFilter: 'blur(14px)',
+        }}
+      >
+        {text}
+      </div>
+    </div>
+  );
+};
+
 const Title: React.FC<{text: string; size?: number; light?: boolean}> = ({
   text,
   size = 120,
@@ -258,9 +298,9 @@ const IntroScene: React.FC<{duration: number}> = ({duration}) => {
 const ShotScene: React.FC<{
   duration: number;
   image: string;
-  caption: string;
+  caption?: string;
   from?: 'left' | 'right' | 'bottom';
-}> = ({duration, image, caption, from = 'bottom'}) => {
+}> = ({duration, image, from = 'bottom'}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const zoom = interpolate(frame, [0, duration], [1.02, 1.09], {
@@ -287,7 +327,6 @@ const ShotScene: React.FC<{
           <Img src={staticFile(image)} style={{width: '100%', display: 'block'}} />
         </div>
       </AbsoluteFill>
-      <Caption text={caption} delay={12} />
     </Scene>
   );
 };
@@ -465,40 +504,34 @@ const EndScene: React.FC<{duration: number}> = ({duration}) => {
 };
 
 /* ---------- 时间线 ---------- */
-const SEGMENTS: Array<{from: number; dur: number; render: (d: number) => React.ReactNode}> = [
-  {from: 0, dur: 150, render: (d) => <HookScene duration={d} />},
-  {from: 150, dur: 240, render: (d) => <IntroScene duration={d} />},
-  {
-    from: 390,
-    dur: 390,
-    render: (d) => (
-      <ShotScene duration={d} image="ov-top.png" caption="群友发言，它听得见；想说时，就出现在群里" />
-    ),
-  },
-  {
-    from: 780,
-    dur: 360,
-    render: (d) => (
-      <ShotScene
-        duration={d}
-        image="per-top.png"
-        caption="心情 · 精力 · 记忆 —— 被怼会不高兴，聊熟了会记得你"
-        from="right"
-      />
-    ),
-  },
-  {from: 1140, dur: 360, render: (d) => <JudgeScene duration={d} />},
-  {from: 1500, dur: 300, render: (d) => <SafetyScene duration={d} />},
-  {from: 1800, dur: 240, render: (d) => <InstallScene duration={d} />},
-  {from: 2040, dur: 210, render: (d) => <EndScene duration={d} />},
+const VISUALS: Array<(d: number) => React.ReactNode> = [
+  (d) => <HookScene duration={d} />,
+  (d) => <IntroScene duration={d} />,
+  (d) => <ShotScene duration={d} image="ov-top.png" />,
+  (d) => <ShotScene duration={d} image="per-top.png" from="right" />,
+  (d) => <JudgeScene duration={d} />,
+  (d) => <SafetyScene duration={d} />,
+  (d) => <InstallScene duration={d} />,
+  (d) => <EndScene duration={d} />,
 ];
+
+const DARK_SCENES = new Set([0, 7]);
+
+let acc = 0;
+const SEGMENTS = timing.map((t) => {
+  const seg = {from: acc, dur: t.dur, i: t.i, text: t.text};
+  acc += t.dur;
+  return seg;
+});
 
 export const Promo: React.FC = () => {
   return (
     <AbsoluteFill style={{backgroundColor: '#f4f2f6', fontFamily: FONT}}>
       {SEGMENTS.map((s) => (
         <Sequence key={s.from} from={s.from} durationInFrames={s.dur}>
-          {s.render(s.dur)}
+          {VISUALS[s.i](s.dur)}
+          <Audio src={staticFile(`vo/vo-${s.i}.wav`)} />
+          <Subtitle text={s.text} light={DARK_SCENES.has(s.i)} />
         </Sequence>
       ))}
     </AbsoluteFill>
