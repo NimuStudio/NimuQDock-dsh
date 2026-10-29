@@ -941,7 +941,8 @@ const MiniShot: React.FC<{
 }> = ({image, label, x, y, w = 400, delay = 0}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const p = spring({frame: frame - delay, fps, config: {damping: 200}});
+  const p = spring({frame: frame - delay, fps, config: {damping: 200, mass: 0.7}});
+  const float = Math.sin(frame / 45) * 4;
   return (
     <div
       style={{
@@ -949,14 +950,74 @@ const MiniShot: React.FC<{
         left: `${x}%`,
         top: `${y}%`,
         width: w,
-        opacity: clamp(p) * 0.95,
-        transform: `translateY(${(1 - p) * 26}px) rotate(${(1 - p) * -3}deg)`,
+        opacity: clamp(p),
+        transform: `translateY(${(1 - p) * 40 + float}px) scale(${0.96 + p * 0.04})`,
       }}
     >
-      <div style={{borderRadius: 16, overflow: 'hidden', border: '1px solid rgba(255,255,255,.2)', boxShadow: '0 30px 70px rgba(0,0,0,.55), 0 0 40px rgba(180,140,205,.18)'}}>
+      {/* 光晕 */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: -28,
+          borderRadius: 30,
+          background: 'radial-gradient(closest-side, rgba(180,140,205,.22), transparent 72%)',
+          filter: 'blur(18px)',
+        }}
+      />
+      <div
+        style={{
+          position: 'relative',
+          borderRadius: 16,
+          overflow: 'hidden',
+          border: '1px solid rgba(255,255,255,.22)',
+          boxShadow: '0 30px 80px rgba(0,0,0,.58), inset 0 1px 0 rgba(255,255,255,.25)',
+          background: '#0e0b14',
+        }}
+      >
+        {/* 窗口标题栏 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '9px 12px',
+            background: 'linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.02))',
+            borderBottom: '1px solid rgba(255,255,255,.08)',
+          }}
+        >
+          <div style={{width: 8, height: 8, borderRadius: 99, background: '#f07ba6'}} />
+          <div style={{width: 8, height: 8, borderRadius: 99, background: '#f0c97b'}} />
+          <div style={{width: 8, height: 8, borderRadius: 99, background: '#8fe08a'}} />
+          <div style={{marginLeft: 8, fontFamily: FONT, fontSize: 12, color: 'rgba(246,242,250,.55)'}}>
+            控制台 · NimuQDock-dsh
+          </div>
+        </div>
         <Img src={staticFile(image)} style={{width: '100%', display: 'block'}} />
+        {/* 边缘渐隐，融入背景 */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            background:
+              'linear-gradient(180deg, rgba(14,11,20,.55) 0%, transparent 12%, transparent 88%, rgba(14,11,20,.55) 100%)',
+          }}
+        />
       </div>
-      <div style={{marginTop: 10, display: 'inline-block', padding: '6px 14px', borderRadius: 999, fontFamily: FONT, fontSize: 18, fontWeight: 700, color: 'rgba(246,242,250,.85)', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)'}}>
+      <div
+        style={{
+          marginTop: 10,
+          display: 'inline-block',
+          padding: '6px 14px',
+          borderRadius: 999,
+          fontFamily: FONT,
+          fontSize: 18,
+          fontWeight: 700,
+          color: 'rgba(246,242,250,.88)',
+          background: 'rgba(255,255,255,.08)',
+          border: '1px solid rgba(255,255,255,.16)',
+        }}
+      >
         {label}
       </div>
     </div>
