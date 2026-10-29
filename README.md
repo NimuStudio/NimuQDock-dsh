@@ -380,3 +380,12 @@ QQ 协议层由第三方开源项目 NapCat 提供，与腾讯公司及其产品
 ## 许可证
 
 [MIT](LICENSE)
+
+---
+
+## 联系
+
+- 官网：[nimustudio.cn](https://nimustudio.cn)
+- GitHub：[@NimuStudio](https://github.com/NimuStudio)
+- QQ 交流群：**`1097466590`**
+- 爱发电：[☕ 请我喝杯咖啡](https://ifdian.net/a/NimuStudio)

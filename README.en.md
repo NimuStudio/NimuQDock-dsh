@@ -305,3 +305,12 @@ Also note: connecting an agent to QQ means handing your account's voice to a mod
 ## License
 
 [MIT](LICENSE)
+
+---
+
+## Contact
+
+- Website: [nimustudio.cn](https://nimustudio.cn)
+- GitHub: [@NimuStudio](https://github.com/NimuStudio)
+- QQ Group: **`1097466590`**
+- Afdian: [☕ Buy me a coffee](https://ifdian.net/a/NimuStudio)
