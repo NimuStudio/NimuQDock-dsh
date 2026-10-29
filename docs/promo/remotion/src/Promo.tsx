@@ -3,6 +3,7 @@ import {
   AbsoluteFill,
   Audio,
   Img,
+  OffthreadVideo,
   Sequence,
   interpolate,
   spring,
@@ -426,6 +427,42 @@ const ChatMock: React.FC<{delay?: number}> = ({delay = 0}) => {
   );
 };
 
+const RealChat: React.FC<{delay?: number}> = ({delay = 0}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const p = spring({frame: frame - delay, fps, config: {damping: 200}});
+  return (
+    <div
+      style={{
+        width: 560,
+        borderRadius: 24,
+        background: 'rgba(24,20,32,.72)',
+        border: '1px solid rgba(255,255,255,.14)',
+        boxShadow: '0 40px 90px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.12)',
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        opacity: clamp(p),
+        transform: `translateY(${(1 - p) * 20}px)`,
+      }}
+    >
+      <div style={{display: 'flex', alignItems: 'center', gap: 10, color: 'rgba(246,242,250,.8)', fontFamily: FONT, fontSize: 22}}>
+        <div style={{width: 10, height: 10, borderRadius: 99, background: MINT, boxShadow: `0 0 12px ${MINT}`}} />
+        实机演示 · QQ 群
+      </div>
+      <div style={{width: '100%', height: 315, borderRadius: 14, overflow: 'hidden', background: '#000'}}>
+        <OffthreadVideo
+          src={staticFile('kaichang.mp4')}
+          muted
+          style={{width: '100%', height: '100%', objectFit: 'contain'}}
+        />
+      </div>
+      <div style={{fontFamily: FONT, fontSize: 18, color: 'rgba(246,242,250,.5)'}}>群友发问 → 它接话</div>
+    </div>
+  );
+};
+
 /* ---------- 镜头 ---------- */
 const HookScene: React.FC<{duration: number}> = ({duration}) => {
   return (
@@ -477,7 +514,7 @@ const ConsoleScene: React.FC<{duration: number; text: string}> = ({duration, tex
       <div style={{width: 1060}}>
         <Shot image="ov-top.png" duration={duration} side={1} width={1060} />
       </div>
-      <ChatMock delay={10} />
+      <RealChat delay={10} />
     </AbsoluteFill>
     <AbsoluteFill style={{alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 40}}>
       <Words text={text} size={34} />

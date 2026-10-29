@@ -1,0 +1,8 @@
+<!doctype html><html><body style="margin:0;background:#000">
+<video id="v" src="kaichang.mp4" muted preload="auto" width="1920" height="1080" style="object-fit:contain"></video>
+<script>
+const v=document.getElementById('v');
+const t=Number(new URLSearchParams(location.search).get('t')||1);
+v.addEventListener('loadedmetadata',()=>{ v.currentTime=t; });
+v.addEventListener('seeked',()=>{ v.pause(); });
+</script></body></html>
