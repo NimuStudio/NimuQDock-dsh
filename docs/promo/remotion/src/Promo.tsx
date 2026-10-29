@@ -891,6 +891,39 @@ const Wipe: React.FC = () => {
   );
 };
 
+
+/** 真实安装向导录屏（逐帧图片） */
+const InstallReal: React.FC<{duration: number; text: string}> = ({duration, text}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const total = 146;
+  const idx = Math.min(total, Math.floor((frame / Math.max(1, duration)) * total));
+  const p = spring({frame, fps, config: {damping: 200}});
+  const file = `install/frame-${String(idx).padStart(4, '0')}.png`;
+  return (
+    <Scene duration={duration}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 26}}>
+        <div style={{fontFamily: FONT, fontSize: 46, fontWeight: 900, color: INK, opacity: clamp(p)}}>
+          下载 → 安装 → 启动
+        </div>
+        <div
+          style={{
+            width: 1180,
+            borderRadius: 18,
+            overflow: 'hidden',
+            border: '1px solid rgba(255,255,255,.18)',
+            boxShadow: '0 50px 120px rgba(0,0,0,.6), 0 0 70px rgba(180,140,205,.18)',
+            background: '#0d0b12',
+          }}
+        >
+          <Img src={staticFile(file)} style={{width: '100%', display: 'block'}} />
+        </div>
+        <div style={{fontFamily: FONT, fontSize: 34, color: 'rgba(246,242,250,.65)'}}>{text}</div>
+      </AbsoluteFill>
+    </Scene>
+  );
+};
+
 /* ---------- 时间线 ---------- */
 const VISUALS: Array<(d: number, text: string) => React.ReactNode> = [
   (d) => <HookScene duration={d} />,
@@ -902,7 +935,7 @@ const VISUALS: Array<(d: number, text: string) => React.ReactNode> = [
   (d, t) => <RuleScene duration={d} text={t} />,
   (d, t) => <CompareScene duration={d} text={t} />,
   (d, t) => <SafeScene duration={d} text={t} />,
-  (d, t) => <InstallScene duration={d} text={t} />,
+  (d, t) => <InstallReal duration={d} text={t} />,
   (d, t) => <EndScene duration={d} text={t} />,
 ];
 
