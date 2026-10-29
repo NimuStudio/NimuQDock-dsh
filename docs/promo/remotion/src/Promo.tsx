@@ -1053,7 +1053,6 @@ const OutroScene: React.FC<{duration: number}> = ({duration}) => {
 
 /* ---------- 时间线 ---------- */
 const VISUALS: Array<(d: number, text: string) => React.ReactNode> = [
-  (d) => <HookScene duration={d} />,
   (d) => <BrandScene duration={d} />,
   (d, t) => <ArchScene duration={d} text={t} />,
   (d, t) => <ConsoleScene duration={d} text={t} />,
