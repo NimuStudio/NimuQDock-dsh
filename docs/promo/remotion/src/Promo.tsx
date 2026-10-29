@@ -1024,6 +1024,33 @@ const MiniShot: React.FC<{
   );
 };
 
+
+const OUTRO_FRAMES = 90;
+
+const OutroScene: React.FC<{duration: number}> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const inP = spring({frame, fps, config: {damping: 200}});
+  const out = interpolate(frame, [duration - 26, duration], [1, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  return (
+    <AbsoluteFill style={{opacity: out}}>
+      <Backdrop tone="deep" />
+      <Particles />
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 20}}>
+        <div style={{opacity: clamp(inP), transform: `translateY(${(1 - inP) * 16}px)`}}>
+          <GradText text="NimuQDock-dsh" size={132} />
+        </div>
+        <div style={{fontFamily: FONT, fontSize: 34, color: 'rgba(246,242,250,.62)', opacity: clamp(inP)}}>
+          把 DeepSeek Harness 停靠进 QQ
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
 /* ---------- 时间线 ---------- */
 const VISUALS: Array<(d: number, text: string) => React.ReactNode> = [
   (d) => <HookScene duration={d} />,
@@ -1048,13 +1075,24 @@ const SEGMENTS = timing.map((t) => {
 export const Promo: React.FC = () => {
   return (
     <AbsoluteFill style={{backgroundColor: '#060509', fontFamily: FONT}}>
-      <Audio src={staticFile('bgm.wav')} volume={0.22} />
+      <Audio
+        src={staticFile('bgm.wav')}
+        loop
+        volume={(f) => {
+          const total = timing.reduce((a, x) => a + x.dur, 0) + OUTRO_FRAMES;
+          const left = total - f;
+          return left < 70 ? Math.max(0, left / 70) * 0.22 : 0.22;
+        }}
+      />
       {SEGMENTS.map((s) => (
         <Sequence key={s.from} from={s.from} durationInFrames={s.dur}>
           {VISUALS[s.i](s.dur, s.text)}
           <Audio src={staticFile(`vo/n-${s.i}.mp3`)} volume={1} />
         </Sequence>
       ))}
+      <Sequence from={timing.reduce((a, x) => a + x.dur, 0)} durationInFrames={OUTRO_FRAMES}>
+        <OutroScene duration={OUTRO_FRAMES} />
+      </Sequence>
       <AbsoluteFill
         style={{
           pointerEvents: 'none',

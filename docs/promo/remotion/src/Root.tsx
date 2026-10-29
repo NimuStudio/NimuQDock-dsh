@@ -2,7 +2,8 @@ import {Composition} from 'remotion';
 import {Promo} from './Promo';
 import timing from './timing.json';
 
-const TOTAL_FRAMES = timing.reduce((a, x) => a + x.dur, 0);
+const OUTRO_FRAMES = 90;
+const TOTAL_FRAMES = timing.reduce((a, x) => a + x.dur, 0) + OUTRO_FRAMES;
 
 export const RemotionRoot: React.FC = () => {
   return (
