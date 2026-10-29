@@ -1256,7 +1256,6 @@ async function bootstrap(){
   }
 }
 bootstrap();
-else { showLogin(); }
 // 远程指令框：Enter 执行（Shift+Enter 换行）
 document.getElementById('remoteCmd')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); remoteExec(); }
