@@ -382,6 +382,30 @@ export async function installNapCatStep(onLog = noop, onProgress = noop) {
   onLog('NapCat 安装完成（首次启动时填 QQ 号并扫码登录）');
 }
 
+/** best-effort 停掉占用 models/ 的本地 judge server（llama-server）。
+ * 为什么需要：Windows 上 llama-server 会 mmap 模型文件，句柄没释放时 rename/unlink 换不掉模型。
+ * 匹配判据与 uninstall.mjs 一致（进程名含 llama 且命令行引用了本项目 models/），不按端口 8080 盲杀，
+ * 避免误伤用户自己跑在 8080 上的其它服务。非 Windows（如 CI 的 ubuntu runner）没有本地 judge server。
+ * 任何失败（无 PowerShell / 无进程 / 超时 / 权限不足）只记一行日志，绝不抛——调用点在模型安装主路径上。 */
+export function stopLocalJudgeServer(onLog = noop) {
+  if (process.platform !== 'win32') return false;
+  try {
+    const models = path.join(ROOT, 'models').replace(/'/g, "''");
+    const cmd = `$m='${models}'; $p=@(Get-CimInstance Win32_Process | Where-Object { $_.Name -like '*llama*' -and $_.CommandLine -like "*$m*" }); if($p.Count -eq 0){'NONE'} else { foreach($x in $p){ try { $pr=Get-Process -Id $x.ProcessId -ErrorAction Stop; Stop-Process -Id $x.ProcessId -Force -ErrorAction SilentlyContinue; $null=$pr.WaitForExit(5000) } catch {} }; "STOPPED:$($p.Count)" }`;
+    const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', cmd], { encoding: 'utf8', windowsHide: true, timeout: 20000 });
+    if (r.error) {
+      onLog(`停止本地 judge server 跳过（${r.error.message}）`);
+      return false;
+    }
+    const stopped = Number((r.stdout || '').match(/STOPPED:(\d+)/)?.[1] ?? 0);
+    if (stopped > 0) onLog(`已停止本地 judge server（${stopped} 个进程），避免模型文件被占用`);
+    return stopped > 0;
+  } catch (error) {
+    try { onLog(`停止本地 judge server 失败（已忽略，继续）：${error?.message ?? error}`); } catch {}
+    return false;
+  }
+}
+
 /** 下载判断模型（1.7b / 0.6b，版本锁定 + 校验和）。 */
 export async function installModelStep(kind = '1.7b', onLog = noop, onProgress = noop, { force = false } = {}) {
   const src = JUDGE_MODELS[kind] ?? JUDGE_MODELS.large;
@@ -391,7 +415,7 @@ export async function installModelStep(kind = '1.7b', onLog = noop, onProgress =
     return dest;
   }
   if (force) {
-    stopLocalJudgeServer();
+    stopLocalJudgeServer(onLog);
     await new Promise((r) => setTimeout(r, 600));
     try { fs.unlinkSync(dest); } catch {}
     onLog('已选择更换模型，重新下载…');
@@ -416,7 +440,7 @@ export async function installModelStep(kind = '1.7b', onLog = noop, onProgress =
   if (fs.statSync(tmp).size !== src.size) throw new Error(`模型大小不符（期望 ${src.size}）`);
   fs.renameSync(tmp, dest);
   // 只保留当前模型：避免 0.6B/1.7B 同时存在时 start.bat 按"最大"选到旧的那个
-  stopLocalJudgeServer();
+  stopLocalJudgeServer(onLog);
   for (const other of Object.values(JUDGE_MODELS)) {
     if (other.file === src.file) continue;
     try { fs.unlinkSync(path.join(PATHS.modelsDir, other.file)); } catch {}
