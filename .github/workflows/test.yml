@@ -1,0 +1,52 @@
+# 离线测试流水线：不需要 DSH 服务、不需要任何 API key / secret。
+# 只跑四类检查：语法（node --check 全量）+ test-persona + test-agent-api + test-mcp-web。
+# 需要在线 DSH（或密钥）的 self-test / test-loop / test-onebot / test-directed 刻意不在此列，
+# 说明见 docs/DEPLOY.md 的「CI 与发布」小节。
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      # -print0 | xargs -0：路径里有空格也不会被拆成两个参数
+      - name: Syntax check (node --check, all src + scripts)
+        run: |
+          set -euo pipefail
+          find src scripts -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
+            | xargs -0 -r -n1 node --check
+          echo "✅ 语法检查通过：$(find src scripts -type f \( -name '*.js' -o -name '*.mjs' \) | wc -l) 个文件"
+
+      - name: Persona engine tests
+        run: npm run test-persona
+
+      - name: Agent API tests
+        run: npm run test-agent-api
+
+      - name: MCP web-search tests
+        run: npm run test-mcp-web

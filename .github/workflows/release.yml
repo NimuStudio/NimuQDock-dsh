@@ -80,9 +80,7 @@ jobs:
               -f state=failure -f context=fetch-judge -f description="$MSG" || true
             exit 1
           fi
-          fi
         timeout-minutes: 30
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -139,26 +137,105 @@ jobs:
             '' '---' '' '### 下载' '' \
             '- **国内加速（推荐）**：https://gh-proxy.com/https://github.com/NimuStudio/NimuQDock-dsh/releases/latest/download/NimuQDock-dsh-latest-setup.exe' \
             '- **GitHub 原链**：https://github.com/NimuStudio/NimuQDock-dsh/releases/latest' \
-            '- **zip 完整离线包**：见下方 Assets（内置 0.6B 判断模型，适合网络不好或想开箱即用）' \
+            '- **zip 完整离线包**：见下方 Assets（内置内容以本次构建为准：fetch-judge 步骤成功时含推理引擎与 0.6B 判断模型；实际内容以本 Release 的资产与说明为准）' \
             '' '> `...-latest-setup.exe` 是每次发版自动更新的固定文件名，链接不会过期。' \
             '> 安装器下载 NapCat / 推理引擎 / 判断模型时也会自动走国内镜像。' \
             >> /tmp/release-notes.md
           echo "notes 行数: $(wc -l < /tmp/release-notes.md)"
 
+      # 两种入口：
+      #  · push tag                          → 正常发布
+      #  · workflow_dispatch 且填 version    → 对「已存在的 tag/Release」补齐 assets（不会新建 release）
+      #    例：给 v0.6.5 补 zip —— Actions → Build & Release → Run workflow → version=v0.6.5
+      #
+      # 存在性判断必须能看见 draft：gh release view 对 draft 读不到（报 not found）→ 误判「不存在」
+      # → 走 gh release create → 撞 "release already exists" 直接失败。
+      # v0.6.5 的第 2 次运行（run 40830445718）正是死在这里。改用 gh release list --json tagName,isDraft。
       - name: Create or update GitHub Release
         run: |
+          set -euo pipefail
           VERSION="${{ steps.ver.outputs.version }}"
-          if gh release view "$VERSION" >/dev/null 2>&1; then
-            echo "Release $VERSION 已存在，补传 assets + 更新备注…"
-            gh release upload "$VERSION" dist/*.zip dist/*.exe "dist/NimuQDock-dsh-latest-setup.exe" --clobber
+          echo "目标版本: $VERSION"
+
+          # ① 存在性判断（draft 也算存在）—— 不看 draft 就会重复 create 而失败
+          HAS_RELEASE=$(gh release list --json tagName,isDraft --limit 100 \
+            --jq "[.[] | select(.tagName == \"$VERSION\")] | length" 2>/dev/null || echo 0)
+          HAS_RELEASE=${HAS_RELEASE:-0}
+          IS_DRAFT=$(gh release list --json tagName,isDraft --limit 100 \
+            --jq "[.[] | select(.tagName == \"$VERSION\")][0].isDraft" 2>/dev/null || echo false)
+          echo "该版本是否已有 Release: $HAS_RELEASE（draft=$IS_DRAFT）"
+
+          if [ "$HAS_RELEASE" -gt 0 ]; then
+            echo "Release $VERSION 已存在 → 补传 assets + 更新备注（这条路径就是补 zip 的路径）"
+
+            # 不再用 gh release upload --clobber：它内部「先探测再重传」在本仓库稳定 404
+            #   run 41331714859 第 15 步：HTTP 404 ... /releases/427537950/assets?label=&name=NimuQDock-dsh-latest-setup.exe
+            # 改成显式 REST：GET release 拿 id → 同名 asset 先 DELETE → 再 POST 到 uploads 端点（个人 PAT 实测该端点 201）
+            RELEASE_ID=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$VERSION" --jq '.id')
+            if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+              echo "❌ 取不到 $VERSION 的 release id"
+              exit 1
+            fi
+            echo "release id: $RELEASE_ID"
+
+            # 待传文件：两条 glob 已覆盖全部产物；latest-setup.exe 就在 dist/*.exe 里，别再多列一遍（sort -u 兜底去重）
+            mapfile -t UPLOAD_FILES < <(ls -1 dist/*.zip dist/*.exe 2>/dev/null | sort -u)
+            if [ "${#UPLOAD_FILES[@]}" -eq 0 ]; then
+              echo "❌ dist/ 下没有任何待上传产物"
+              ls -la dist/
+              exit 1
+            fi
+            printf '待上传: %s\n' "${UPLOAD_FILES[@]}"
+
+            for f in "${UPLOAD_FILES[@]}"; do
+              NAME=$(basename "$f")
+              OLD_ID=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" \
+                --jq "[.[] | select(.name == \"$NAME\")][0].id // empty")
+              if [ -n "$OLD_ID" ]; then
+                echo "同名 asset 已存在（$NAME, id=$OLD_ID）→ 先 DELETE"
+                gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/$OLD_ID"
+              fi
+              echo "上传 $NAME（$(stat -c%s "$f") 字节）"
+              gh api --method POST \
+                -H "Content-Type: application/octet-stream" \
+                --input "$f" \
+                "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${NAME}" \
+                --jq '"已上传: " + .name + " (" + (.size|tostring) + " 字节, id=" + (.id|tostring) + ")"'
+            done
+
             gh release edit "$VERSION" --notes-file /tmp/release-notes.md
           else
+            echo "Release $VERSION 不存在 → 新建"
             gh release create "$VERSION" \
               "dist/NimuQDock-dsh-$VERSION-win-x64.zip" \
               "dist/NimuQDock-dsh-$VERSION-setup.exe" \
               "dist/NimuQDock-dsh-latest-setup.exe" \
               --title "NimuQDock-dsh $VERSION" \
               --notes-file /tmp/release-notes.md
+          fi
+
+          # ② 上传后校验：必须同时存在 *-win-x64.zip 与 *-setup.exe，缺一个就红灯（不再静默少文件）。
+          #    draft 用 gh release view 读不到时，回退 REST（带 push 权限的 token 能读 draft）。
+          if ASSETS=$(gh release view "$VERSION" --json assets --jq '[.assets[].name] | join(" ")' 2>/dev/null); then
+            echo "assets（gh release view）: $ASSETS"
+          else
+            ASSETS=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$VERSION" --jq '[.assets[].name] | join(" ")')
+            echo "assets（gh api，draft 兜底）: $ASSETS"
+          fi
+          MISSING=0
+          printf '%s\n' $ASSETS | grep -q -- '-win-x64\.zip$' || { echo "❌ 缺少 zip asset（*-win-x64.zip）"; MISSING=1; }
+          printf '%s\n' $ASSETS | grep -q -- '-setup\.exe$'   || { echo "❌ 缺少安装器 asset（*-setup.exe）"; MISSING=1; }
+          if [ "$MISSING" -ne 0 ]; then
+            echo "实际 asset 列表："
+            printf ' - %s\n' $ASSETS
+            exit 1
+          fi
+          echo "✅ assets 校验通过：zip 与 setup.exe 都在"
+
+          # ③ draft 收尾：校验通过后才转正（校验失败时 release 保持 draft，不会把坏包放出去）
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "Release $VERSION 处于 draft → 转为正式发布"
+            gh release edit "$VERSION" --draft=false
           fi
         env:
           GH_TOKEN: ${{ github.token }}
