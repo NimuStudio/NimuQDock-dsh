@@ -49,8 +49,11 @@ NapCat 与 QQ 登录步骤同「方式 A」第 4~5 步。
 2. `git clone` 仓库 → `npm install`
 3. 按「配置样例」填 `config.json`
 4. 启动 DSH → `setup-dsh.mjs` → 装 NapCat 并扫码登录机器人 QQ
-5. 配 OneBot11（HTTP 3000 + WS 3001，array）
-6. `npm start` 启动
+5. 配 OneBot11（HTTP 3005 + WS 3001，array；3000 常被占用，旧机固定 3005）
+6. （可选）起判断模型 `llama-server`（8080），否则接话判断会退回规则模式
+7. `npm start` 启动
+
+> 整体迁移（含计划任务、DSH_HOME、模型路径）以工作区根目录的 `HANDOVER.md` 为准，本文只保留源码部署的最小步骤。
 
 > ⚠️ 迁移前先停掉旧电脑上的桥接/NapCat，避免两台机器同时登录同一个机器人 QQ 触发风控。
 
@@ -66,7 +69,7 @@ NapCat 与 QQ 登录步骤同「方式 A」第 4~5 步。
   "dsh": {
     "baseUrl": "http://127.0.0.1:3080",
     "provider": "deepseek-official",
-    "model": "deepseek-v4-flash-vision-exp",
+    "model": "deepseek-flash",
     "reasoningEffort": "low"
   },
   "social": {
@@ -99,7 +102,7 @@ NapCat 与 QQ 登录步骤同「方式 A」第 4~5 步。
 ## 六、常见问题（避坑）
 
 ### 图片识别不生效 / 启动日志警告「配置模型不在 DSH 模型目录」
-多半是 **DSH 版本与项目锁定的不一致**（老版本 DSH 的模型目录里没有 `*-vision-exp` 等视觉模型）。处理：把 DSH 升级到项目锁定版本（`install.mjs` 里的 `DSH_VERSION`，当前 `0.1.1-rc.2`，`npm i -g @deepseek-ai/dsh@0.1.1-rc.2` 后重启 DSH），或把 `config.json` 的 `dsh.model` 改成 DSH 模型目录里实际存在的模型。0.1.2 起桥接启动时会在日志里直接警告缺失模型。
+多半是 **DSH 版本与项目锁定的不一致**（老版本 DSH 的模型目录里没有 `*-vision-exp` 等视觉模型）。处理：把 DSH 升级到项目锁定版本（`src/dsh-install.js` 里的 `DSH_VERSION`，当前 `0.2.1-rc.2`，`npm i -g @deepseek-ai/dsh@0.2.1-rc.2` 后重启 DSH），或把 `config.json` 的 `dsh.model` 改成 DSH 模型目录里实际存在的模型。0.1.2 起桥接启动时会在日志里直接警告缺失模型。
 
 ### NapCat 的 `restart-napcat.bat` 报「QQ not found」
 该脚本（NapCat 自带/旧机自定义）可能写死了旧电脑的 QQ 安装路径。请改用 **`launcher-user.bat`**（读注册表自动定位 QQ），或把 `restart-napcat.bat` 里的 `QQ_PATH` 改成你的 QQ.exe 实际路径。
