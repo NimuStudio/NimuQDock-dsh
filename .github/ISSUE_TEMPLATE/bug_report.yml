@@ -1,0 +1,159 @@
+name: Bug 报告 · Bug report
+description: 报告可复现的故障（安装、启动、收发消息、控制台、判断模型）
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### 请先自查（能省一次来回）
+
+        - 安装与配置步骤见 [README](https://github.com/NimuStudio/NimuQDock-dsh/blob/main/README.md)。
+        - 私聊没反应看 `allow.private`，群里 @ 没反应看 `allow.groups` 与潜水评分；`allowAllWhenEmpty=false` 时白名单为空就是谁都不回。
+        - HTTP 426 通常是把 `napcat.httpUrl` 填成了 WebSocket 端口。
+        - 改过 `src/mcp/*.js` 或 `dsh/agent-presets/` 之后必须**重启 DSH** 才生效。
+        - 报"已有实例在运行"请删 `state/bridge.lock` 或双击 `restart.bat`。
+        - 判断模型没启动不会报错，只会静默降级——先在日志里确认有没有「接话判断：规则模式」。
+
+        ### ⚠️ 不要贴敏感信息
+
+        **请勿粘贴真实 QQ 号、群号、`accessToken`、控制台 token、DSH API Key、`config.json` 全文。** 请把号码与凭据替换成 `123456789` / `<your-token>` 之类的假值，截图请打码。
+        安全漏洞请走 [SECURITY.md](https://github.com/NimuStudio/NimuQDock-dsh/blob/main/SECURITY.md) 的私密报告通道，不要开公开 issue。
+
+  - type: input
+    id: bridge-version
+    attributes:
+      label: 版本
+      description: 控制台「概览」页显示的版本，或安装目录/仓库里 `package.json` 的 `version`。
+      placeholder: "0.6.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: 安装方式
+      options:
+        - exe 图形安装器
+        - zip 完整离线包
+        - 源码运行（npm install && node src/main.js）
+        - start.bat
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js 版本
+      description: 终端执行 `node -v`（要求 >= 22.13.0）。安装包自带运行时的话写「安装包自带」。
+      placeholder: "v22.13.0"
+    validations:
+      required: true
+
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DeepSeek Harness 版本
+      description: DSH 设置页或配置文件里的版本（本项目对齐 0.2.x）。不确定就写「不确定」。
+      placeholder: "0.2.x"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 桥接模式
+      description: 控制台里当前模式；不确定就选「不确定」。
+      options:
+        - chat 模式
+        - agent 模式
+        - 不确定 / 两种都试过
+    validations:
+      required: true
+
+  - type: dropdown
+    id: napcat-running
+    attributes:
+      label: NapCat 是否在运行
+      description: 也就是 QQ 协议端是否在线（默认 WebSocket 端口 3001，实际以 `config.json` 的 `napcat.wsUrl` 为准）。
+      options:
+        - 是，NapCat 在运行且已登录
+        - 否，NapCat 没启动 / 没登录
+        - 不确定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: judge-model
+    attributes:
+      label: 判断模型（可选组件）状态
+      description: 本地 llama.cpp + Qwen3 GGUF（默认 http://127.0.0.1:8080）。
+      options:
+        - 已安装并运行
+        - 未安装（回退规则模式）
+        - 装了但不确定是否在运行
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 一步一步写清楚，从"打开什么/发了什么消息"开始。能稳定复现的步骤最有价值。
+      placeholder: |
+        1. 启动 DSH（地址 ...）
+        2. node src/main.js
+        3. 在群里 @ 机器人，发送"..."
+        4. 观察 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: 期望行为 / 实际行为
+      placeholder: |
+        期望：...
+        实际：...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 控制台 / 桥接日志片段
+      description: 启动日志与控制台日志页的相关片段（已打码）。日志文件在 `state/` 下（如 `state/bridge.log`、`state/bridge-console.log`）。请删掉号码与令牌。
+      render: shell
+      placeholder: |
+        [bridge] 控制台已启动：http://127.0.0.1:3100
+        ...
+    validations:
+      required: true
+
+  - type: input
+    id: dsh-base-url
+    attributes:
+      label: DSH 地址（脱敏）
+      description: 填 `config.json` 里 `dsh.baseUrl` 的值，例如 http://127.0.0.1:3080；换了端口请注明。
+      placeholder: "http://127.0.0.1:3080"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 是否改过 `config.json` / 人格卡 / preset、是否刚升级、是否换过端口、系统版本等。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: sanitized
+    attributes:
+      label: 确认
+      options:
+        - label: 我已删除/打码所有真实 QQ 号、群号、token 与 API Key。
+          required: true
+        - label: 我已在最新发布版（0.6.x）上复现过，或说明了为何无法升级。
+          required: true
+        - label: 这不是安全漏洞（安全漏洞走 SECURITY.md 的私密通道）。
+          required: true
