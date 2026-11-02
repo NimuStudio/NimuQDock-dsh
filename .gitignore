@@ -15,6 +15,7 @@ models/
 llama/
 dataset/
 dist/
+.scratch/
 README.review.md
 docs/promo/remotion/node_modules/
 docs/promo/remotion/out/
