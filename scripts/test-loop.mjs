@@ -5,13 +5,15 @@
 //   → session.prompt → pump（events.mux）收集回合 → Sender 发送回「QQ」。
 //
 // 用法：node scripts/test-loop.mjs
-// 依赖：本机 DSH Web 正在运行（默认 http://127.0.0.1:3080，可用 DSH_URL 覆盖）。
+// 依赖：本机 DSH Web 正在运行（地址按 DSH_URL → config.json 的 dsh.baseUrl → 127.0.0.1:3080 派生）。
 // 副作用：会在 DSH 里创建一个临时工作区/会话，测试结束后自动归档并删除。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NodeApiClient } from '../src/transport/dsh-client.js';
+import { DshV2ApiClient } from '../src/transport/dsh-client-v2.js';
+import { createDshAuth, resolveDshHome } from '../src/transport/dsh-auth.js';
 import { SessionManager } from '../src/core/session-manager.js';
 import { Router } from '../src/core/router.js';
 import { Sender } from '../src/core/sender.js';
@@ -21,18 +23,26 @@ import { PersonaStateStore } from '../src/persona/state.js';
 import { MemoryStore } from '../src/persona/memory.js';
 import { TokenStore } from '../src/persona/tokens.js';
 import { personaForKey } from '../src/persona/definition-utils.js';
+import { resolveDshUrl } from './lib/dsh-url.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
+// agent 支用群聊场景验证「潜水语义」：群消息默认 fail-closed（allow.groups 为空 = 全部拦截），
+// 测试群必须列进 allow.groups，否则消息在 handleIncoming 的白名单第一道门就被丢弃，
+// 唤醒断言会以「promptCalls 恒为 0」的形式永远不成立。
+const TEST_GROUP_ID = '900000001'; // 绝不存在的群号：测试消息不会落到真实群
+const TEST_GROUP_KEY = `group:${TEST_GROUP_ID}`;
+
 // 测试专用配置（不依赖 config.json）
 const cfg = {
-  dsh: { baseUrl: String(process.env.DSH_URL ?? 'http://127.0.0.1:3080').replace(/\/+$/, ''), provider: '', model: '' },
+  // DSH_URL → config.json 的 dsh.baseUrl → 127.0.0.1:3080（实现见 scripts/lib/dsh-url.mjs）
+  dsh: { baseUrl: resolveDshUrl(), provider: '', model: '' },
   ownerQQ: '0',
   agentPreset: 'qq-chat',
   agentPresetAgent: 'qq-agent',
   workspaceTitle: '桥接闭环测试',
-  allow: { private: ['TEST'], groups: [] },
+  allow: { private: ['TEST'], groups: [TEST_GROUP_ID] },
   deny: { private: [], groups: [] },
   allowAllWhenEmpty: false,
   ackMessage: '',
@@ -55,6 +65,28 @@ const cfg = {
   },
 };
 
+// 新版 DSH 的 /api 要求浏览器会话 cookie：取法与 src/main.js 一致（cfg.dsh.home > DSH_HOME > ~/.dsh），
+// 缺 auth 时 /api/* 一律 401（老版 DSH 无 secret 时自动退化为无需鉴权）。
+const auth = createDshAuth({ baseUrl: cfg.dsh.baseUrl, home: resolveDshHome(cfg) });
+
+// 两代协议自适应（与 src/main.js 同一套判断）：
+//   0.2.x → /api/<ns>/<method> + payload.args + /api/remote.mux 的 session/follow
+//   0.1.x → /api/<ns>.<method> + payload 直传 + /api/events.mux
+// 只探测一次，两代客户端都构造出来由 supports() 二选一，与桥接主程序选中的是同一个客户端。
+// followSessionIds 与 main.js 同义：测试会话也是临时新建的，DSH 断线重连时要能重新 follow。
+const sessionState = { sessions: {} };
+async function createDshClient() {
+  const apiV1 = new NodeApiClient(cfg.dsh.baseUrl, 180000, auth);
+  const apiV2 = new DshV2ApiClient({
+    baseUrl: cfg.dsh.baseUrl,
+    auth,
+    followSessionIds: () => Object.values(sessionState.sessions ?? {}).filter(Boolean),
+  });
+  const isV2 = await apiV2.supports();
+  console.log(`[test-loop] DSH 协议：${isV2 ? '0.2.x' : '0.1.x'}（supports()=${isV2}）`);
+  return isV2 ? apiV2 : apiV1;
+}
+
 // 假 QQ：只打印不发送
 const fakeBot = {
   async sendGroupMessage(groupId, message) {
@@ -66,6 +98,10 @@ const fakeBot = {
     const text = Array.isArray(message) ? message.map((s) => s.data?.text ?? '').join('') : String(message);
     console.log(`[fake-bot] ▶ 私聊消息(${userId}): ${text}`);
     return { message_id: -1 };
+  },
+  // 群聊 @ 段解析用（router.resolveAtName → getGroupMemberInfo）：返回群名片，缺卡回退昵称
+  async getGroupMemberInfo(groupId, userId) {
+    return { card: '', nickname: String(userId) === '0' ? '机器人' : '测试员' };
   },
 };
 
@@ -98,7 +134,7 @@ async function main() {
     }
   };
 
-  const api = new NodeApiClient(cfg.dsh.baseUrl, 180000);
+  const api = await createDshClient();
   try {
     await api.sessions.list({});
     console.log(`[test-loop] ✅ DSH 在线（${cfg.dsh.baseUrl}）`);
@@ -107,7 +143,7 @@ async function main() {
     process.exit(1);
   }
 
-  const sessions = new SessionManager({ api, cfg, state: { sessions: {} }, log });
+  const sessions = new SessionManager({ api, cfg, state: sessionState, log });
   const sender = new Sender({ bot: fakeBot, cfg, log });
   const router = new Router({ api, bot: fakeBot, cfg, sessions, sender, log, mode: 'chat' });
 
@@ -198,7 +234,7 @@ async function runAgentModeTest() {
     } catch {}
   };
 
-  const api = new NodeApiClient(cfg.dsh.baseUrl, 180000);
+  const api = await createDshClient();
   try {
     await api.sessions.list({});
     console.log(`[agent] ✅ DSH 在线（${cfg.dsh.baseUrl}）`);
@@ -207,7 +243,7 @@ async function runAgentModeTest() {
     process.exit(1);
   }
 
-  const sessions = new SessionManager({ api, cfg, state: { sessions: {} }, log });
+  const sessions = new SessionManager({ api, cfg, state: sessionState, log });
   const sender = new Sender({ bot: fakeBot, cfg, log, knownTokens: () => router.knownAgentTokens });
 
   const personaDir = path.join(tmp, 'persona');
@@ -222,11 +258,16 @@ async function runAgentModeTest() {
 
   // prompt 调用计数（断言唤醒投递）
   let promptCalls = 0;
-  const origPrompt = api.sessions.prompt;
-  api.sessions.prompt = async (payload) => {
+  const baseSessions = api.sessions;
+  const origPrompt = baseSessions.prompt;
+  const countedSessions = Object.create(baseSessions);
+  countedSessions.prompt = async (...args) => {
     promptCalls += 1;
-    return origPrompt(payload);
+    return origPrompt(...args);
   };
+  // 0.2 客户端的 sessions 是 getter（每次访问都返回新对象），直接改它的属性会被丢弃 →
+  // 在实例上定义一个自有属性遮蔽该 getter，两代客户端都能稳定计数。
+  Object.defineProperty(api, 'sessions', { configurable: true, value: countedSessions });
 
   const pumpAbort = new AbortController();
   startPump({ api, cfg, sessions, sender, router, log, signal: pumpAbort.signal });
@@ -238,36 +279,60 @@ async function runAgentModeTest() {
   fakeBot.sendPrivateMessage = async (...a) => { sentCount += 1; return origSendPrivate(...a); };
   fakeBot.sendGroupMessage = async (...a) => { sentCount += 1; return origSendGroup(...a); };
 
-  const TEST_KEY = 'private:TEST';
+  // 会话场景必须是群聊：私聊在 router.isDirectedAtAi 里「无条件指向机器人」（产品语义，
+  // 「私聊 = 直接找 AI 说话」），attention 恒为 1.0 → 用它测「普通闲聊不唤醒」永不成立。
+  // 参与度/潜水语义本来就只对群聊生效，所以 agent 支走群聊。
+  const TEST_KEY = TEST_GROUP_KEY;
+  const AT_BOT = { type: 'at', data: { qq: '0' } }; // qq=0 与 selfId 都算「@机器人」
   const makeMsg = (userId, seq, segments, raw) => ({
-    kind: 'private', convId: 'TEST', userId, selfId: '0', messageId: -seq, seq,
-    time: Math.floor(Date.now() / 1000), subType: '', segments, rawMessage: raw,
+    kind: 'group', convId: TEST_GROUP_ID, groupId: TEST_GROUP_ID, groupName: '闭环测试群',
+    userId, selfId: '0', messageId: -seq, seq,
+    time: Math.floor(Date.now() / 1000), subType: 'normal', segments, rawMessage: raw,
     senderName: '测试员', sender: { user_id: userId, nickname: '测试员' },
   });
 
-  // 1) 被点名（@机器人）→ 强制唤醒投递
+  // 观测唤醒回合的收尾路径（测试侧挂钩子，不动产品源码）：pump 收尾时调用 router.onAgentTurnEnd。
+  //   replied=true  → agent 已通过发送工具（mcp__napcat__qq_*）自行发出消息，桥接按预期跳过自动转发
+  //   replied=false → 纯思考回合（未调发送工具），路由把该会话计入 noActionCounts
+  const turnEnds = [];
+  const origTurnEnd = router.onAgentTurnEnd.bind(router);
+  router.onAgentTurnEnd = (key, opts = {}) => {
+    if (key === TEST_KEY) turnEnds.push({ replied: Boolean(opts.replied), at: Date.now() });
+    return origTurnEnd(key, opts);
+  };
+
+  // 1) 群里 @机器人 → 强制唤醒投递
   await router.handleIncoming(makeMsg('TEST', 1, [
-    { type: 'at', data: { qq: '0' } },
+    AT_BOT,
     { type: 'text', data: { text: '在吗' } },
-  ], '在吗'));
+  ], '@机器人 在吗'));
   await new Promise((r) => setTimeout(r, 1500));
   check(`被点名触发唤醒投递（promptCalls=${promptCalls}）`, promptCalls === 1);
 
-  // 2) 普通闲聊（无点名、无话题相关）→ 不投递
+  // 2) 群里普通闲聊（不指向机器人、无问句）→ 不投递
   await router.handleIncoming(makeMsg('TEST', 2, [
     { type: 'text', data: { text: '今天天气不错' } },
   ], '今天天气不错'));
   await new Promise((r) => setTimeout(r, 1500));
   check(`普通闲聊不唤醒（promptCalls=${promptCalls}）`, promptCalls === 1);
 
-  // 3) 等待唤醒回合结束（noAction 计数出现），验证文本不自动转发
+  // 3) 唤醒回合必须收尾，且两条合法收尾路径都接受：
+  //    a) 纯思考回合正常结束 → 出现 noAction 计数；
+  //    b) agent 已用发送工具自行发出 → replied=true，桥接跳过自动转发，因此不会有 noAction 计数
+  //       （router.onAgentTurnEnd 的 replied 分支会 delete 该 key，白等旧判据只会空转 120s）。
+  //    这条断言防的回归是：回合既没有正常结束、也没有自行发送——事件流卡死/会话回合丢失。
   const deadline = Date.now() + 120000;
-  while (!router.noActionCounts.has(TEST_KEY) && Date.now() < deadline) {
+  while (turnEnds.length === 0 && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 1000));
   }
   const turnEnded = router.noActionCounts.has(TEST_KEY);
-  check(`唤醒回合已结束（${turnEnded ? '是' : '否'}）`, turnEnded);
+  const selfSent = turnEnds.some((t) => t.replied);
+  check(
+    `唤醒回合已收尾（noAction收尾=${turnEnded ? '是' : '否'}，agent自行发送=${selfSent ? '是' : '否'}）`,
+    turnEnded || selfSent,
+  );
   await new Promise((r) => setTimeout(r, 1000)); // 留出收尾余量
+  // agent 群聊回合的纯文本输出只是思考：桥接不得自动转发（真实发言只能走发送工具）
   check(`agent 模式文本不自动转发（sentCount=${sentCount}）`, sentCount === 0);
 
   // 清理
