@@ -1,5 +1,6 @@
 # 离线测试流水线：不需要 DSH 服务、不需要任何 API key / secret。
-# 只跑四类检查：语法（node --check 全量）+ test-persona + test-agent-api + test-mcp-web。
+# 跑五类检查：语法（node --check 全量，含 start.mjs）+ test-persona + test-agent-api
+# + test-mcp-web + test-start（start.mjs 启动链路，纯离线）。
 # 需要在线 DSH（或密钥）的 self-test / test-loop / test-onebot / test-directed 刻意不在此列，
 # 说明见 docs/DEPLOY.md 的「CI 与发布」小节。
 name: Test
@@ -50,3 +51,9 @@ jobs:
 
       - name: MCP web-search tests
         run: npm run test-mcp-web
+
+      # start.mjs 的启动链路（选型/超时/阶段隔离/入口判断）纯离线：假探针，不起任何服务
+      - name: start.mjs launch-plan tests (offline)
+        run: |
+          node --check start.mjs
+          npm run test-start
