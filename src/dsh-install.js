@@ -16,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 
 /** 项目锁定的 DSH 版本：与 package.json 里 dsh-host-apiproxy 同版本线，保证 API 兼容。 */
 /** 项目锁定的 DSH 版本：桥接已适配 0.2.x（session/modelCatalog、session/follow、remote.mux）。 */
-export const DSH_VERSION = '0.2.1-rc.2';
+export const DSH_VERSION = '0.2.1-rc.5';
 /** 0.1.x 需要这个 hmr 版本（含 registerConfig）；0.2.x 自带 @deepseek-ai/dsh-hmr，此项不生效。 */
 export const HMR_VERSION = '1.0.17';
 /** 本地供给 pnpm 用的版本（只装一次，缓存在 <root>/pnpm-tool）。 */

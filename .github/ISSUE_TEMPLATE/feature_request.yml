@@ -1,0 +1,76 @@
+name: 功能建议 · Feature request
+description: 提一个使用场景驱动的需求或改进建议
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提需求时最有用的不是"加个 XX 功能"，而是**你在什么场景下被绊住了**。本项目面向"把 DSH agent 接进 QQ"这一条主线，人格化叙事与技术可复现性要同时成立，请围绕这个范围提。
+
+        单纯想问用法、想聊想法，欢迎去 [Discussions](https://github.com/NimuStudio/NimuQDock-dsh/discussions)。
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 相关模块
+      description: 大致属于哪一块；不确定选「不确定」。
+      options:
+        - 桥接核心 / 消息路由（src/core）
+        - DSH 对接 / 协议（src/transport）
+        - 人格引擎（src/persona、roles/*.yaml）
+        - Web 控制台（src/console）
+        - 安全 MCP（src/mcp：QQ 工具、搜索）
+        - 安装器 / 打包 / 启动脚本
+        - 判断模型（规则 / 本地小模型）
+        - 文档
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景
+      description: 你现在想做什么、被什么卡住了？尽量具体（什么群、什么模式、什么频率、期望谁看到什么）。
+      placeholder: |
+        我在一个 X 人的群里用 agent 模式，希望 ...
+        现在的问题是会 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 你希望项目怎么表现？如果涉及配置项，可以写出你设想的字段名与默认值。
+      placeholder: |
+        期望：...
+        可接受的替代：...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案
+      description: 你现在是怎么绕过去的？或者你考虑过但被否掉的方案（以及否掉的原因）。
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 参考实现、上游（DSH / NapCat）已有能力、相关 issue 链接等。请把号码与凭据打码。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已在现有 issue / Discussions 里搜索过，没有重复。
+          required: true
+        - label: 我的描述里没有真实 QQ 号、群号、token 或 API Key。
+          required: true

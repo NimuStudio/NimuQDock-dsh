@@ -17,6 +17,7 @@
     "test-persona": "node scripts/test-persona.mjs",
     "test-directed": "node scripts/test-directed.mjs",
     "test-agent-api": "node scripts/test-agent-api.mjs",
+    "test-start": "node scripts/test-start-plan.mjs",
     "fetch-judge": "node scripts/fetch-judge-model.mjs",
     "export-judge": "node scripts/export-judge-dataset.mjs",
     "train-judge": "python scripts/train-judge-lora.py"

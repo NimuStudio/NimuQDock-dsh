@@ -4,8 +4,8 @@
 // → 收集回合回复。
 //
 // 用法：
-//   npm run self-test                     # 默认 http://127.0.0.1:3080
-//   DSH_URL=http://127.0.0.1:3080 npm run self-test
+//   npm run self-test                     # 地址按 DSH_URL → config.json 的 dsh.baseUrl → 127.0.0.1:3080 派生
+//   DSH_URL=http://127.0.0.1:3090 npm run self-test
 //
 // 预期输出：连接成功 → 会话创建 → prompt 被接受 → 打印 agent 回复文本。
 // 注意：会话必须挂在 workspace 下，且先订阅 mux 再建会话（与桥接 ensureSession 时序一致），
@@ -18,10 +18,12 @@ import { NodeApiClient, unwrap } from '../src/transport/dsh-client.js';
 import { createTurnCollector } from '../src/core/turn-collector.js';
 import { DshV2ApiClient } from '../src/transport/dsh-client-v2.js';
 import { createDshAuth } from '../src/transport/dsh-auth.js';
+import { resolveDshUrl } from './lib/dsh-url.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const baseUrl = String(process.env.DSH_URL ?? 'http://127.0.0.1:3080').replace(/\/+$/, '');
+// DSH_URL → config.json 的 dsh.baseUrl → 127.0.0.1:3080（实现见 scripts/lib/dsh-url.mjs）
+const baseUrl = resolveDshUrl();
 // 两代协议自适应：先按 0.2 探测，失败再退回 0.1（与桥接 main.js 同一套判断）
 const auth = createDshAuth({ baseUrl, home: process.env.DSH_HOME ?? path.join(os.homedir(), '.dsh') });
 const v2 = new DshV2ApiClient({ baseUrl, auth });

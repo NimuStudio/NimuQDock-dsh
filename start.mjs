@@ -30,7 +30,10 @@ let napcatWsPort = 3001;
 const NAPCAT_URL = 'https://github.com/NapNeko/NapCatQQ/releases/latest/download/NapCat.Shell.zip';
 const divider = () => console.log('─'.repeat(52));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+// readline 惰性创建：本文件被测试 import 时不能占用 stdin、也不能挂住进程
+let rl = null;
+const getRl = () => (rl ??= readline.createInterface({ input: process.stdin, output: process.stdout }));
+const closeRl = () => { try { rl?.close(); } catch {} rl = null; };
 // 转义：PS 单引号字符串内、以及 Start-Process -ArgumentList 里需要手动加双引号的路径
 const esc = (s) => String(s).replace(/'/g, "''");
 const dq = (s) => '"' + String(s ?? '').replace(/"/g, '') + '"';
@@ -41,10 +44,208 @@ function installDshPortable() {
   return installDshCore({ root: ROOT, prefix: DSH_PREFIX, binPath: DSH_BIN, version: DSH_VERSION });
 }
 
+// ── 启动日志（state/start-<YYYYMMDD-HHmmss>.log）──────────────────────────────
+// 全程 tee 到文件：用户报障时控制台往往已经关了，日志文件是唯一可诊断的证据。
+const STATE_DIR = path.join(ROOT, 'state');
+let logPath = null;
+let logTeeInstalled = false;
+
+/** 日志文件名：start-YYYYMMDD-HHmmss.log（本地时间）。 */
+export function startLogFileName(date = new Date()) {
+  const p2 = (n) => String(n).padStart(2, '0');
+  return 'start-' + date.getFullYear() + p2(date.getMonth() + 1) + p2(date.getDate())
+    + '-' + p2(date.getHours()) + p2(date.getMinutes()) + p2(date.getSeconds()) + '.log';
+}
+
+const logValue = (v) => {
+  if (typeof v === 'string') return v;
+  if (v instanceof Error) return String(v.stack ?? v.message).split('\n')[0]; // 错误堆栈首行
+  try { return JSON.stringify(v); } catch { return String(v); }
+};
+
+function appendLog(line) {
+  if (!logPath) return;
+  try { fs.appendFileSync(logPath, line + '\n', 'utf8'); } catch {}
+}
+
+/** 创建 state/start-*.log，并把 console.log/error tee 进去（幂等）。返回日志路径。 */
+export function ensureStartLog() {
+  if (!logPath) {
+    try {
+      fs.mkdirSync(STATE_DIR, { recursive: true });
+      const file = path.join(STATE_DIR, startLogFileName());
+      fs.writeFileSync(file, '# NimuQDock-dsh 启动日志 ' + new Date().toISOString() + '\n', 'utf8');
+      logPath = file;
+    } catch (error) {
+      console.log('⚠️ 无法创建启动日志（不影响启动）：' + (error?.message ?? error));
+    }
+  }
+  if (!logTeeInstalled) {
+    logTeeInstalled = true;
+    const origLog = console.log.bind(console);
+    const origError = console.error.bind(console);
+    console.log = (...args) => { origLog(...args); appendLog(args.map(logValue).join(' ')); };
+    console.error = (...args) => { origError(...args); appendLog(args.map(logValue).join(' ')); };
+  }
+  return logPath;
+}
+
+// ── 启动步骤表 + 注入式执行器（失败隔离，可离线测试）─────────────────────────
+/** terminal=true 的步骤失败才允许整体中止（DSH 不可用 → 后续没有意义）。 */
+export const START_STEPS = Object.freeze([
+  { id: 'node', label: '检查 Node.js', terminal: true, manual: '安装 Node.js ≥ 22.13：https://nodejs.org/' },
+  { id: 'config', label: '配置（config.json）', terminal: false, manual: '编辑 config.json：ownerQQ / botQQ' },
+  { id: 'dsh', label: 'DeepSeek Harness', terminal: true, manual: 'dsh web --port 3080 --no-open' },
+  { id: 'setup', label: '安装 DSH 预设/插件', terminal: false, manual: 'node scripts/setup-dsh.mjs' },
+  { id: 'judge', label: '判断模型（可选）', terminal: false, optional: true, manual: '可选：把 .gguf 放进 models/ 并安装 llama-server' },
+  { id: 'napcat', label: 'NapCat + 机器人上线', terminal: false, manual: path.join(ROOT, 'NapCatShell', 'napcat-launch.bat') },
+  { id: 'bridge', label: '启动桥接', terminal: false, manual: 'npm start' },
+]);
+
+/** 本次要尝试执行的步骤（顺序即执行顺序）。 */
+export function planSteps() {
+  return START_STEPS.map((s) => ({ ...s }));
+}
+
+/**
+ * 顺序执行步骤：单步失败/抛错只记入 failures 并**继续**后续步骤；terminal 步骤失败才中止。
+ * run(step) 返回 { ok: false, detail?, manual? }，或直接抛错。测试注入假 run，不启动任何进程。
+ * @returns {{ failures: object[], ran: string[], aborted: string|null }}
+ */
+export async function runSteps({ steps = [], run, log = () => {} } = {}) {
+  const failures = [];
+  const ran = [];
+  let aborted = null;
+  for (let i = 0; i < steps.length; i += 1) {
+    const step = steps[i];
+    log('\n[' + (i + 1) + '/' + steps.length + '] ' + step.label + ' …');
+    let outcome = { ok: true };
+    try {
+      outcome = (await run(step)) ?? { ok: true };
+    } catch (error) {
+      outcome = { ok: false, detail: '异常：' + (error?.message ?? error) };
+    }
+    ran.push(step.id);
+    if (outcome.ok === false) {
+      const failure = { id: step.id, label: step.label, detail: outcome.detail ?? '未成功', manual: outcome.manual ?? step.manual ?? null };
+      failures.push(failure);
+      log('  ❌ ' + step.label + '：' + failure.detail);
+      if (step.terminal) { aborted = step.id; break; }
+    }
+  }
+  return { failures, ran, aborted };
+}
+
+/** 汇总未成功的步骤 + 各自的手动命令（纯函数，便于测试）。 */
+export function summarizeFailures(failures = []) {
+  if (!failures.length) return ['✅ 全部步骤成功'];
+  const lines = ['⚠️ 本次未成功的步骤（' + failures.length + ' 个），其余步骤已照常执行：'];
+  for (const f of failures) {
+    lines.push('  · ' + f.label + '：' + (f.detail ?? '未成功'));
+    if (f.manual) lines.push('    手动命令：' + f.manual);
+  }
+  return lines;
+}
+
+// ── DSH 选型：优先复用本机已有 dsh，只有完全没有才退回便携安装 ───────────────
+export function dshPortOf(baseUrl, fallback = 3080) {
+  try { return Number(new URL(String(baseUrl)).port) || fallback; } catch { return fallback; }
+}
+
+/**
+ * 决定用哪个 DSH（纯函数，无 IO）：
+ *  · 端口在跑且 API 可用 → 复用（什么都不启动）
+ *  · 端口没在跑但本机有 dsh（CLI / 全局安装）→ 用它启动：不联网、不下载数百 MB
+ *  · 完全没有 dsh → 才退回便携安装
+ * 端口被占但不可复用（别的程序占了 3080）→ 让到 fallbackPort（默认 3081）。
+ */
+export function planDsh({ probePort = false, usable = false, hasLocalCli = null, savedBaseUrl = 'http://127.0.0.1:3080', fallbackPort = 3081 } = {}) {
+  const baseUrl = String(savedBaseUrl || 'http://127.0.0.1:3080').replace(/\/+$/, '');
+  const port = dshPortOf(baseUrl);
+  if (probePort === true && usable === true) {
+    return { action: 'reuse-running', baseUrl, port, localCli: hasLocalCli ?? null, needsInstall: false, reason: '本机 DSH 已在运行且 API 可用' };
+  }
+  const launchPort = probePort === true ? fallbackPort : port;
+  const launchBaseUrl = 'http://127.0.0.1:' + launchPort;
+  if (hasLocalCli) {
+    const why = probePort === true ? '原端口上的 DSH 不可复用' : '端口未监听';
+    return { action: 'launch-local-cli', baseUrl: launchBaseUrl, port: launchPort, localCli: hasLocalCli, needsInstall: false, reason: why + '，但检测到本机 dsh → 用本机 dsh 启动' };
+  }
+  return { action: 'install-portable', baseUrl: launchBaseUrl, port: launchPort, localCli: null, needsInstall: true, reason: '本机未检测到 dsh → 退回便携安装' };
+}
+
+/** 等待端口就绪（probe / 时钟 / sleep 均可注入，便于离线测试）。 */
+export async function waitForPortReady({ probe, waitSeconds = 300, intervalMs = 3000, now = () => Date.now(), wait = sleep } = {}) {
+  const deadline = now() + waitSeconds * 1000;
+  while (now() < deadline) {
+    let ok = false;
+    try { ok = await probe(); } catch { ok = false; }
+    if (ok) return true;
+    await wait(intervalMs);
+  }
+  return false;
+}
+
+/** 启动结果判定：等待超时、或子进程 spawn 报错，都算 fatal（原实现里超时会被当成成功）。 */
+export function dshLaunchVerdict({ ready, launchError = null, port, baseUrl, dshHome = DSH_HOME, mode = 'portable', waitSeconds = 300 } = {}) {
+  const target = baseUrl || ('http://127.0.0.1:' + port);
+  const manual = mode === 'local'
+    ? 'dsh web --port ' + port + ' --no-open'
+    : 'install.bat（重新安装便携版），或先装全局 dsh：npm i -g @deepseek-ai/dsh';
+  if (launchError) {
+    return { reused: false, dshHome, baseUrl: target, fatal: true, reason: '启动进程失败：' + launchError, manual };
+  }
+  if (!ready) {
+    return { reused: false, dshHome, baseUrl: target, fatal: true, reason: '等待 ' + waitSeconds + 's 后 ' + target + ' 仍未就绪', manual };
+  }
+  return { reused: false, dshHome, baseUrl: target, fatal: false, reason: null, manual: null };
+}
+
+/** 探测本机已有的 dsh（只看文件系统与 PATH，**不启动任何进程**）。返回 { kind: 'node'|'exe', bin, source } 或 null。 */
+export function findLocalDsh({ env = process.env, platform = process.platform, spawnSyncFn = spawnSync, exists = (p) => fs.existsSync(p), homedir = os.homedir() } = {}) {
+  const nodeEntry = (prefix) => {
+    const hit = path.join(prefix, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
+    return exists(hit) ? hit : null;
+  };
+  const envBin = String(env.DSH_BIN ?? '').trim();
+  if (envBin && exists(envBin)) return { kind: 'node', bin: envBin, source: 'DSH_BIN' };
+  try {
+    const r = spawnSyncFn(platform === 'win32' ? 'where' : 'which', ['dsh'], { encoding: 'utf8' });
+    if (r.status === 0 && r.stdout) {
+      for (const raw of String(r.stdout).split(/\r?\n/)) {
+        const hit = raw.trim();
+        if (!hit || !exists(hit)) continue;
+        // npm 全局安装：dsh.cmd 同目录的 node_modules 里才是真实入口（用 node 直接跑最稳）
+        const sibling = nodeEntry(path.dirname(hit));
+        if (sibling) return { kind: 'node', bin: sibling, source: 'PATH ' + hit };
+        if (/\.(c|m)?js$/i.test(hit)) return { kind: 'node', bin: hit, source: 'PATH ' + hit };
+        return { kind: 'exe', bin: hit, source: 'PATH ' + hit };
+      }
+    }
+  } catch {}
+  const appData = env.APPDATA || path.join(homedir, 'AppData', 'Roaming');
+  const prefixes = platform === 'win32'
+    ? [path.join(appData, 'npm'), path.join(env.ProgramFiles || 'C:\\Program Files', 'nodejs')]
+    : ['/usr/local', '/usr', path.join(homedir, '.npm-global'), path.join(homedir, '.local')];
+  for (const prefix of prefixes) {
+    const hit = nodeEntry(prefix);
+    if (hit) return { kind: 'node', bin: hit, source: '全局前缀 ' + prefix };
+  }
+  return null;
+}
+
+/** 是否作为入口直接运行（被 import 时返回 false → 不执行 main()）。 */
+export function isDirectRun(argv1 = process.argv[1], moduleFile = fileURLToPath(import.meta.url), platform = process.platform) {
+  if (!argv1) return false;
+  const a = path.resolve(argv1);
+  const b = path.resolve(moduleFile);
+  return platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
 function ask(label, { digits = true, def = '' } = {}) {
   return new Promise((resolve) => {
     const suffix = def ? `（直接回车=${def}）` : '';
-    rl.question(`  ${label}${suffix}：`, (ans) => {
+    getRl().question(`  ${label}${suffix}：`, (ans) => {
       let v = String(ans ?? '').trim();
       if (!v && def) v = def;
       if (digits && v && !/^\d{5,12}$/.test(v)) {
@@ -253,15 +454,58 @@ async function probeLocalDsh() {
   return { usable: true, hasVision };
 }
 
-/** 启动本目录便携 DSH 到指定端口，返回 baseUrl。 */
+/** detached 启动一个进程，并把 spawn 结果等回来（error 变成可诊断的字符串，而不是被异步回调吞掉）。 */
+async function spawnDetached(psCmd) {
+  try {
+    const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
+    const launchError = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), 2000);
+      child.once('error', (err) => { clearTimeout(timer); resolve(err?.message ?? String(err)); });
+      child.once('spawn', () => { clearTimeout(timer); resolve(null); });
+    });
+    try { child.unref(); } catch {}
+    return launchError;
+  } catch (error) {
+    return error?.message ?? String(error);
+  }
+}
+
+/** 用本机已有的 dsh 起一个 Web 服务（不下载、不安装）。 */
+async function launchLocalDsh(plan) {
+  const port = plan.port;
+  const baseUrl = plan.baseUrl;
+  const localCli = plan.localCli ?? {};
+  const dshHome = path.join(os.homedir(), '.dsh');
+  const workdir = path.join(dshHome, 'workdir');
+  try { fs.mkdirSync(workdir, { recursive: true }); } catch {}
+  console.log('✅ 检测到本机 dsh：' + localCli.bin + '（来源：' + localCli.source + '）');
+  console.log('⏳ 用本机 dsh 启动（端口 ' + port + '，DSH_HOME=' + dshHome + '）…');
+  // dsh web 就是 --profile web 的别名；--profile 不能写在子命令之后（dsh 的 bin.js 会 rejectParentOptions）
+  const dshArgs = ['web', '--port', String(port), '--host', '127.0.0.1', '--no-open'];
+  const file = localCli.kind === 'node' ? process.execPath : String(localCli.bin);
+  const argList = localCli.kind === 'node' ? dq(localCli.bin) + ' ' + dshArgs.join(' ') : dshArgs.join(' ');
+  const sq = (s) => "'" + esc(s) + "'";
+  const psCmd = '$env:DSH_HOME=' + sq(dshHome) + '; Start-Process -FilePath ' + sq(file)
+    + ' -ArgumentList ' + sq(argList) + ' -WorkingDirectory ' + sq(workdir);
+  const launchError = await spawnDetached(psCmd);
+  if (launchError) console.log('❌ 启动本机 dsh 失败：' + launchError);
+  const waitSeconds = 180;
+  const ready = launchError ? false : await waitForPortReady({ probe: () => probePort(port), waitSeconds, intervalMs: 2000 });
+  const verdict = dshLaunchVerdict({ ready, launchError, port, baseUrl, dshHome, mode: 'local', waitSeconds });
+  if (verdict.fatal) console.log('❌ 本机 dsh 未能在 ' + baseUrl + ' 就绪：' + verdict.reason);
+  else console.log('✅ DeepSeek Harness 已启动（' + baseUrl + '）');
+  return verdict;
+}
+
+/** 启动本目录便携 DSH 到指定端口（仅在完全没有本机 dsh 时才会走到这里）。 */
 async function launchPortableDsh(port) {
-  const baseUrl = `http://127.0.0.1:${port}`;
+  const baseUrl = 'http://127.0.0.1:' + port;
   if (!fs.existsSync(DSH_BIN)) {
     // start 自举：没装便携 DSH 就自动下载（不再要求先跑 install.bat）
     console.log('⏳ 尚未安装 DeepSeek Harness，正在自动下载安装…');
     if (!installDshPortable()) {
       console.log('❌ 自动安装失败。可稍后重试，或手动运行 install.bat。');
-      return { reused: false, dshHome: DSH_HOME, baseUrl, fatal: true };
+      return { reused: false, dshHome: DSH_HOME, baseUrl, fatal: true, reason: '便携版安装失败（网络/磁盘/权限）', manual: 'install.bat，或先装全局 dsh：npm i -g @deepseek-ai/dsh' };
     }
   }
   // 必须**在首次启动前**铺好 profile（web bundles）并重新启用 hmr：
@@ -270,28 +514,22 @@ async function launchPortableDsh(port) {
   runSetupDsh(DSH_HOME);
   // 便携 DSH 是全新的、没有 API key——在启动前先确保 .credentials.yaml 已配 DEEPSEEK_API_KEY
   await ensureApiKey(DSH_HOME);
-  console.log(`⏳ 正在启动 DeepSeek Harness（本目录便携版，端口 ${port}）…`);
-  try {
-    fs.mkdirSync(DSH_WORKDIR, { recursive: true });
-    // -ArgumentList 传单字符串并手动给路径加双引号：@(数组) 形式遇到含空格路径会被拆参
-    const psCmd = `$env:DSH_HOME='${esc(DSH_HOME)}'; Start-Process -FilePath '${esc(process.execPath)}' -ArgumentList '${dq(DSH_BIN)} web --port ${port} --host 127.0.0.1 --no-open' -WorkingDirectory '${esc(DSH_WORKDIR)}'`;
-    const child = spawn('powershell', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore' });
-    child.on('error', (err) => console.log(`❌ 启动 DSH 失败：${err?.message ?? err}`));
-    child.unref();
-  } catch (error) {
-    console.log(`❌ 启动 DSH 失败：${error?.message ?? error}`);
-    return { reused: false, dshHome: DSH_HOME, baseUrl, fatal: true };
-  }
-  const deadline = Date.now() + 300000;
-  while (Date.now() < deadline) {
-    if (await probePort(port)) { console.log(`✅ DeepSeek Harness 已启动（${baseUrl}）`); break; }
-    await sleep(3000);
-  }
-  return { reused: false, dshHome: DSH_HOME, baseUrl };
+  console.log('⏳ 正在启动 DeepSeek Harness（本目录便携版，端口 ' + port + '）…');
+  try { fs.mkdirSync(DSH_WORKDIR, { recursive: true }); } catch {}
+  // -ArgumentList 传单字符串并手动给路径加双引号：@(数组) 形式遇到含空格路径会被拆参
+  const sq = (s) => "'" + esc(s) + "'";
+  const psCmd = '$env:DSH_HOME=' + sq(DSH_HOME) + '; Start-Process -FilePath ' + sq(process.execPath)
+    + ' -ArgumentList ' + sq(dq(DSH_BIN) + ' web --port ' + port + ' --host 127.0.0.1 --no-open')
+    + ' -WorkingDirectory ' + sq(DSH_WORKDIR);
+  const launchError = await spawnDetached(psCmd);
+  const waitSeconds = 300;
+  const ready = launchError ? false : await waitForPortReady({ probe: () => probePort(port), waitSeconds, intervalMs: 3000 });
+  const verdict = dshLaunchVerdict({ ready, launchError, port, baseUrl, dshHome: DSH_HOME, mode: 'portable', waitSeconds });
+  if (verdict.fatal) console.log('❌ 便携版 DSH 未能在 ' + baseUrl + ' 就绪：' + verdict.reason);
+  else console.log('✅ DeepSeek Harness 已启动（' + baseUrl + '）');
+  return verdict;
 }
 
-/** 决定用哪个 DSH：3080 在跑且 API 可用→复用；否则用便携版（3080 被占则起 3081）。
- *  返回 { reused, dshHome, baseUrl }。 */
 /** config.json 里保存的 DSH 地址（用户可能改过端口），默认 3080。 */
 function savedDshBaseUrl() {
   try {
@@ -301,20 +539,31 @@ function savedDshBaseUrl() {
   return 'http://127.0.0.1:3080';
 }
 
+/**
+ * 选并启动 DSH：在跑则可复用 → 本机有 dsh 就用本机 dsh 起 → 完全没有才装便携版。
+ * 返回 { reused, dshHome, baseUrl, fatal, reason? }。
+ */
 async function ensureDsh() {
-  const baseUrl = savedDshBaseUrl();
-  const port = Number(new URL(baseUrl).port) || 3080;
-  if (await probePort(port)) {
+  const savedBaseUrl = savedDshBaseUrl();
+  const port = dshPortOf(savedBaseUrl);
+  const portOpen = await probePort(port);
+  let usable = false;
+  if (portOpen) {
     const info = await probeLocalDsh();
-    if (info.usable) {
-      console.log(`✅ 复用本机 DeepSeek Harness（${baseUrl}${info.hasVision ? '，含识图' : '，⚠️ 无识图模型'}）`);
-      return { reused: true, dshHome: path.join(os.homedir(), '.dsh'), baseUrl };
-    }
-    console.log(`⚠️ 本机 ${baseUrl} 的 DSH 无法复用（${info.reason}）`);
-    console.log('   → 改用本目录便携版在 3081 另起一份（不会动你现有的 DSH）');
-    return await launchPortableDsh(3081);
+    usable = info.usable === true;
+    if (usable) console.log('✅ 复用本机 DeepSeek Harness（' + savedBaseUrl + (info.hasVision ? '，含识图' : '，⚠️ 无识图模型') + '）');
+    else console.log('⚠️ 本机 ' + savedBaseUrl + ' 的 DSH 无法复用（' + (info.reason ?? 'API 不可用') + '）');
+  } else {
+    console.log('ℹ️ ' + savedBaseUrl + ' 上没有正在运行的 DSH');
   }
-  return await launchPortableDsh(port);
+  const localCli = findLocalDsh();
+  if (localCli) console.log('✅ 检测到本机 dsh：' + localCli.bin + '（来源：' + localCli.source + '）');
+  else console.log('ℹ️ 本机未检测到 dsh（PATH / 全局 npm 前缀 / DSH_BIN 都没有）');
+  const plan = planDsh({ probePort: portOpen, usable, hasLocalCli: localCli, savedBaseUrl });
+  console.log('ℹ️ DSH 方案 ' + plan.action + '：' + plan.reason + '（目标 ' + plan.baseUrl + '）');
+  if (plan.action === 'reuse-running') return { reused: true, dshHome: path.join(os.homedir(), '.dsh'), baseUrl: plan.baseUrl, fatal: false };
+  if (plan.action === 'launch-local-cli') return await launchLocalDsh(plan);
+  return await launchPortableDsh(plan.port);
 }
 
 async function downloadFile(url, dest, timeoutMs = 600000) {
@@ -683,44 +932,78 @@ async function ensureJudgeModel() {
 }
 
 async function main() {
+  const logFile = ensureStartLog();
   divider();
   console.log('  🔌 NimuQDock-dsh · 启动');
   divider();
+  if (logFile) console.log('  📝 启动日志：' + logFile);
 
-  console.log('\n[1/7] 检查 Node.js …');
-  if (!checkNode()) { rl.close(); return; }
+  const ctx = { dshHome: DSH_HOME, baseUrl: savedDshBaseUrl(), bot: '', admin: '' };
+  const run = async (step) => {
+    switch (step.id) {
+      case 'node':
+        return checkNode() ? { ok: true } : { ok: false, detail: 'Node.js ' + process.version + ' 过低（需要 ≥ 22.13）' };
+      case 'config': {
+        const { admin, bot } = await ensureConfig();
+        ctx.admin = admin;
+        ctx.bot = bot;
+        return { ok: true };
+      }
+      case 'dsh': {
+        const info = await ensureDsh();
+        if (info.fatal) return { ok: false, detail: info.reason ?? 'DSH 不可用', manual: info.manual ?? step.manual };
+        ctx.dshHome = info.dshHome;
+        ctx.baseUrl = info.baseUrl;
+        patchDshBaseUrl(info.baseUrl);
+        return { ok: true };
+      }
+      case 'setup':
+        runSetupDsh(ctx.dshHome); // 内部自会打印警告；失败不阻断（预设缺失仍能用）
+        return { ok: true };
+      case 'judge':
+        await ensureJudgeModel(); // 可选步骤：失败只记录，绝不阻断后面两步
+        return { ok: true };
+      case 'napcat': {
+        const ok = await ensureNapCat(ctx.bot);
+        return ok
+          ? { ok: true }
+          : { ok: false, detail: 'NapCat 未就绪（未检测到 QQ / 下载失败 / 未扫码上线）', manual: '双击 ' + path.join(ROOT, 'NapCatShell', 'napcat-launch.bat') + ' 后扫码登录机器人' };
+      }
+      case 'bridge': {
+        const ok = await startBridge(ctx.dshHome);
+        return ok ? { ok: true } : { ok: false, detail: '桥接未能启动', manual: '在项目目录执行 npm start' };
+      }
+      default:
+        return { ok: true };
+    }
+  };
 
-  console.log('\n[2/7] 配置 …');
-  const { admin, bot } = await ensureConfig();
+  const { failures, aborted } = await runSteps({ steps: planSteps(), run, log: (line) => console.log(line) });
 
-  console.log('\n[3/7] DeepSeek Harness …');
-  const { dshHome, baseUrl, fatal } = await ensureDsh();
-  if (fatal) {
-    console.log('\n❌ DeepSeek Harness 安装失败，已停止后续步骤。请检查网络后重试，或手动运行 install.bat。');
-    rl.close();
-    return;
+  divider();
+  for (const line of summarizeFailures(failures)) console.log(line);
+  if (aborted) {
+    const label = failures.find((f) => f.id === aborted)?.label ?? aborted;
+    console.log('❌ 关键步骤「' + label + '」未通过 → 后续步骤已跳过（DSH 不可用时其余步骤没有意义）。');
   }
-  patchDshBaseUrl(baseUrl);
-
-  console.log('\n[4/7] 安装预设 …');
-  runSetupDsh(dshHome);
-
-  console.log('\n[5/7] 判断模型（可选）…');
-  await ensureJudgeModel();
-
-  console.log('\n[6/7] NapCat + 机器人上线 …');
-  await ensureNapCat(bot);
-
-  console.log('\n[7/7] 启动桥接 …');
-  await startBridge(dshHome);
-
-  console.log('\n✅ 完成！');
-  console.log('  · Web 控制台: http://127.0.0.1:3100');
-  console.log(`  · DeepSeek Harness: ${baseUrl}`);
-  rl.close();
+  console.log('');
+  console.log('  · Web 控制台 : http://127.0.0.1:3100');
+  console.log('  · DSH 地址   : ' + ctx.baseUrl);
+  if (logFile) console.log('  · 启动日志   : ' + logFile);
+  if (!failures.length) console.log('\n✅ 完成！');
+  else console.log('\n⚠️ 部分步骤未成功：其余部分已照常启动，按上面的「手动命令」补齐即可。');
+  closeRl();
 }
 
-main().catch((error) => {
-  console.error('启动出错:', error?.message ?? error);
-  process.exit(1);
-});
+// 仅当**直接运行**（node start.mjs / 双击 start.bat）才执行 main()；被测试 import 时什么都不做。
+if (isDirectRun()) {
+  main().catch((error) => {
+    const logFile = ensureStartLog();
+    const first = String(error?.stack ?? error?.message ?? error).split('\n')[0];
+    console.error('启动出错: ' + first);
+    console.error('  日志文件: ' + (logFile ?? '（未能写入）'));
+    console.error('  下一步  : 重跑 start.bat 复现；若仍失败，把上面的日志文件发给维护者。');
+    closeRl();
+    process.exit(1);
+  });
+}
