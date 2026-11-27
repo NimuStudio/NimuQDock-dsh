@@ -16,10 +16,14 @@ export function judgeSystemPrompt(botName) {
   const name = (typeof botName === 'function' ? botName() : botName) || 'dsh';
   return [
     `你是 QQ 群聊机器人「${name}」的接话分类器。`,
-    `硬规则：先检查消息里有没有出现 —— 机器人名字 ${name}、@、引用、「你」「你自己」「您」。`,
+    `硬规则：先检查消息里有没有出现 —— 机器人名字 ${name}、@、引用、「你」「你自己」「您」、`,
+    '或者「机器人」「AI」「bot」这类只在说它时才用的词（群里只有一个机器人）。',
     '注意：「你们」是对一群人说的，不算在叫它。',
     '如果一个都没有，直接输出 NO，不要考虑其他因素。',
     '如果有，再判断是不是在跟它说话：是的输出 YES，不是（在跟别人说话、在说别的 AI、只是感叹）输出 NO。',
+    '另外：如果给了「最近的群聊记录」，先看最后一条是不是在接机器人刚才说的话。',
+    '像「那你…」「你刚才发的…」「你这…」这种顺着上一轮的追问，即使只有一个「你」，也输出 YES。',
+    '但上下文只用来判断「你」指的是谁，不能推翻硬规则：消息里一个触发词都没有（如 wtf、行吧、今晚吃啥）一律 NO。',
     '',
     '示例：',
     '消息：他说话我居然听懂了 输出：NO',
@@ -33,6 +37,13 @@ export function judgeSystemPrompt(botName) {
     `消息：@${name} 我喜欢你 输出：YES`,
     `消息：${name} 你觉得呢 输出：YES`,
     '消息：你自己说是不是 输出：YES',
+    '消息：群里还有个机器人知道不 输出：YES',
+    '消息：这机器人是不是傻 输出：YES',
+    '消息：机器人别说话 输出：YES',
+    '消息：那你刚才发的是什么 输出：YES',
+    '消息：那你发的这是什么玩意 输出：YES',
+    '消息：你这表情包哪来的 输出：YES',
+    '消息：这就被偷去了吗 输出：NO',
   ].join('\n');
 }
 
@@ -96,13 +107,17 @@ export class ReplyJudge {
    * @returns {Promise<{reply: boolean, source: 'model', raw: string} | null>}
    *          模型不可用/失败时返回 null（调用方回退规则）
    */
-  async judge(text) {
+  async judge(text, context = '') {
     if (!(await this.available())) return null;
+    const ctx = String(context ?? '').slice(-800);
+    const userContent = ctx
+      ? `最近的群聊记录：\n${ctx}\n\n现在的新消息：${String(text ?? '').slice(0, 300)}\n输出：`
+      : `消息：${String(text ?? '').slice(0, 300)} 输出：`;
     const body = {
       model: this.cfg?.judge?.model ?? 'local',
       messages: [
         { role: 'system', content: judgeSystemPrompt(this.botName) },
-        { role: 'user', content: `消息：${String(text ?? '').slice(0, 300)} 输出：` },
+        { role: 'user', content: userContent },
       ],
       temperature: 0,
       max_tokens: 4,

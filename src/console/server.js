@@ -18,18 +18,260 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import childProcess from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { readActivityTail } from '../log.js';
+import { readActivityTail, appendActivity } from '../log.js';
 import { splitForQQ } from '../lib/md-to-plain.js';
 import { writeRoleState, readRoleState } from '../state.js';
 import { sanitizeRoleName, sleep, normalizeIdList } from '../lib/utils.js';
 import { imageBufferFromGetImage as getImageBuffer, sniffImageMime } from '../lib/qq-image.js';
 import { SENSITIVE_RE } from '../lib/sensitive.js';
 import { isAllowed } from '../policy/allowlist.js';
-import { segmentsToPlain } from '../transport/onebot11.js';
+import { segmentsToPlain, segImage, segAt } from '../transport/onebot11.js';
 import { listPersonas } from '../persona/definition.js';
+import { pickSticker, listStickers, ingestWebImage } from '../persona/stickers.js';
 import { blocksToText } from '../core/turn-collector.js';
+import { senderDirectory } from '../memory/store.js';
+
+// ── @人解析（模型只给名字，这里负责猜对人）──────────────────────────────
+// 优先级：QQ号精确 > 名字完全相等 > 前缀 > 包含 > 去@/全角归一后编辑距离容错；
+// 同分时优先最近说过话的人（避免重名或「小明」猜错成路人甲）。
+const MEMBER_CACHE = new Map(); // groupId -> { at, list: [{id,names}] }
+const MEMBER_TTL_MS = 120000;
+
+function normName(s) {
+  return String(s ?? '')
+    .normalize('NFKC')
+    .replace(/^[@＠\s]+/, '')
+    .replace(/[\s\u3000]+/g, '')
+    .toLowerCase();
+}
+
+function editDistance(a, b) {
+  if (a === b) return 0;
+  if (!a.length || !b.length) return Math.max(a.length, b.length);
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+function nameScore(names, want) {
+  let best = 0;
+  for (const raw of names) {
+    const n = normName(raw);
+    if (!n) continue;
+    if (n === want) return 100;
+    if (n.startsWith(want)) best = Math.max(best, 88);
+    else if (want.startsWith(n) && n.length >= 2) best = Math.max(best, 84);
+    else if (n.includes(want)) best = Math.max(best, 74);
+    else if (want.includes(n) && n.length >= 2) best = Math.max(best, 64);
+    if (n.length >= 2) {
+      const d = editDistance(n, want);
+      const lim = want.length >= 4 ? 2 : 1;
+      if (d <= lim) best = Math.max(best, 56 - d * 6);
+    }
+  }
+  return best;
+}
+
+async function groupMembersCached(bot, groupId) {
+  const hit = MEMBER_CACHE.get(String(groupId));
+  if (hit && Date.now() - hit.at < MEMBER_TTL_MS) return hit.list;
+  const r = await bot.getGroupMemberList(groupId);
+  const list = (r?.data ?? []).map((m) => ({
+    id: String(m.user_id),
+    names: [m.card, m.nickname].filter(Boolean).map((x) => String(x).trim()),
+  }));
+  MEMBER_CACHE.set(String(groupId), { at: Date.now(), list });
+  return list;
+}
+
+/** 把模型给的名字数组解析成 QQ 号；返回 { ids, matched, missed }。 */
+async function resolveAtTargets({ bot, key, groupId, wanted, recentRank, directory }) {
+  const names = [...new Set((wanted ?? []).map((s) => String(s ?? '').trim()).filter(Boolean))];
+  if (!names.length) return { ids: [], matched: [], missed: [] };
+  let members = [];
+  try { members = await groupMembersCached(bot, groupId); } catch { members = []; }
+  // 成员表可能为空（部分协议端不支持 get_group_member_list），
+  // 用记忆库里这个群说过话的人补齐：id + 最近用过的名字 + 发言先后。
+  const byId = new Map();
+  for (const m of members) byId.set(m.id, { id: m.id, names: [...m.names] });
+  (directory ?? []).forEach((d, i) => {
+    const cur = byId.get(d.id);
+    if (cur) {
+      if (d.name && !cur.names.includes(d.name)) cur.names.push(d.name);
+    } else {
+      byId.set(d.id, { id: d.id, names: d.name ? [d.name] : [] });
+    }
+    if (!recentRank.has(d.id)) recentRank.set(d.id, recentRank.size + i);
+  });
+  const ids = [];
+  const matched = [];
+  const missed = [];
+  for (const raw of names) {
+    if (/^\d{5,}$/.test(raw)) { // 直接给了 QQ 号
+      ids.push(raw);
+      matched.push({ want: raw, id: raw, name: raw, score: 100, how: 'id' });
+      continue;
+    }
+    const want = normName(raw);
+    let best = null;
+    for (const m of byId.values()) {
+      const score = nameScore(m.names, want);
+      if (score <= 0) continue;
+      const rank = recentRank.get(m.id) ?? 9999;
+      if (!best || score > best.score || (score === best.score && rank < best.rank)) {
+        best = { id: m.id, score, rank, name: m.names[0] ?? m.id };
+      }
+    }
+    if (best && best.score >= 40) {
+      if (!ids.includes(best.id)) ids.push(best.id);
+      matched.push({ want: raw, id: best.id, name: best.name, score: best.score, how: 'name' });
+    } else {
+      missed.push(raw);
+    }
+  }
+  return {
+    ids,
+    matched,
+    missed,
+    // 没猜中时把「最近在这个群说过话的人」回给模型，方便它换个写法重试
+    candidates: [...byId.values()]
+      .map((m) => ({ id: m.id, name: m.names[0] ?? m.id, rank: recentRank.get(m.id) ?? 9999 }))
+      .sort((a, b) => a.rank - b.rank)
+      .slice(0, 8)
+      .map(({ id, name }) => ({ id, name })),
+  };
+}
+
+// 从网络下载图片进表情包库用（限 8MB，带 UA/Referer 防常见防盗链）
+async function downloadImage(url, maxBytes = 8 * 1024 * 1024) {
+  const res = await fetch(url, {
+    headers: {
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+      referer: 'https://www.baidu.com/',
+      accept: 'image/avif,image/webp,image/png,image/*,*/*;q=0.8',
+    },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const mime = String(res.headers.get('content-type') ?? '').split(';')[0].trim();
+  const ab = await res.arrayBuffer();
+  if (ab.byteLength > maxBytes) throw new Error('图片过大');
+  return { buf: Buffer.from(ab), mime: mime || 'image/png' };
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const MEDIA_DIR = path.join(__dirname, '..', '..', 'state', 'media');
+const APP_STATE_DIR = path.join(__dirname, '..', '..', 'state');
+
+// ---- Breeze 语音额度（按天累计）----
+const VOICE_CREDIT_FILE = path.join(APP_STATE_DIR, 'voice-credits.json');
+function voiceDayKey(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function readVoiceCredits() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(VOICE_CREDIT_FILE, 'utf8'));
+    const day = voiceDayKey();
+    if (!raw || raw.day !== day) return { day, used: 0 };
+    return { day, used: Number(raw.used) || 0 };
+  } catch {
+    return { day: voiceDayKey(), used: 0 };
+  }
+}
+function writeVoiceCredits(used) {
+  try {
+    fs.writeFileSync(VOICE_CREDIT_FILE, JSON.stringify({ day: voiceDayKey(), used: Math.round(used * 100) / 100 }));
+  } catch {}
+}
+function estimateVoiceCredits(text) {
+  let units = 0;
+  for (const ch of String(text ?? '')) {
+    const cp = ch.codePointAt(0);
+    const cjk = (cp >= 0x3000 && cp <= 0x30ff) || (cp >= 0x3400 && cp <= 0x9fff) ||
+      (cp >= 0xac00 && cp <= 0xd7af) || (cp >= 0xf900 && cp <= 0xfaff);
+    units += cjk ? 2 : 1;
+  }
+  return Math.max(0.1, Math.round((units / 10) * 100) / 100);
+}
+
+function isSendableImagePath(abs) {
+  const norm = path.resolve(abs).toLowerCase();
+  const root = path.resolve(APP_STATE_DIR).toLowerCase();
+  return norm.startsWith(root + path.sep);
+}
+
+function newMediaFile(prefix, ext) {
+  fs.mkdirSync(MEDIA_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+  return path.join(MEDIA_DIR, `${prefix}-${stamp}.${ext}`);
+}
+
+// ── 定时提醒（qq_remind 写入；桥接重启后自动重新挂载） ─────────────────────────
+const REMIND_FILE = path.join(__dirname, '../../state/reminders.json');
+let reminders = [];
+const remindTimers = new Map();
+let remindCtx = null; // { bot }
+
+function loadReminders() {
+  try { reminders = JSON.parse(fs.readFileSync(REMIND_FILE, 'utf8')) ?? []; } catch { reminders = []; }
+  if (!Array.isArray(reminders)) reminders = [];
+}
+function saveReminders() {
+  try {
+    fs.mkdirSync(path.dirname(REMIND_FILE), { recursive: true });
+    fs.writeFileSync(REMIND_FILE, JSON.stringify(reminders, null, 2));
+  } catch {}
+}
+function parseWhen(input) {
+  const s = String(input ?? '').trim();
+  let m;
+  if ((m = s.match(/^\+?(\d{1,3})\s*(m|min|mins|分钟|分)$/i))) return Date.now() + Number(m[1]) * 60000;
+  if ((m = s.match(/^(\d{1,2}):(\d{2})$/))) {
+    const now = new Date(); const t = new Date(now);
+    t.setHours(Number(m[1]), Number(m[2]), 0, 0);
+    if (t.getTime() <= Date.now()) t.setDate(t.getDate() + 1);
+    return t.getTime();
+  }
+  if ((m = s.match(/^(\d{1,3})$/))) return Date.now() + Number(m[1]) * 60000;
+  return null;
+}
+async function fireReminder(r) {
+  try {
+    const segs = [];
+    if (r.atUserId) segs.push(segAt(r.atUserId));
+    segs.push({ type: 'text', data: { text: r.text } });
+    if (r.key.startsWith('group:')) await remindCtx?.bot?.sendGroupMessage(r.key.slice(6), segs);
+    else if (r.key.startsWith('private:')) await remindCtx?.bot?.sendPrivateMessage(r.key.slice(8), segs);
+    appendActivity(`${r.key} 定时提醒已发送：${String(r.text).slice(0, 60)}`);
+  } catch (e) {
+    appendActivity(`${r.key} 定时提醒发送失败：${e?.message ?? e}`);
+  }
+  reminders = reminders.filter((x) => x.id !== r.id);
+  saveReminders();
+}
+function armReminder(r) {
+  const delay = Math.max(0, Number(r.fireAt) - Date.now());
+  if (delay > 24 * 3600 * 1000) return; // 超过一天不挂内存定时器，等下次重启再算
+  const t = setTimeout(() => { remindTimers.delete(r.id); fireReminder(r).catch(() => {}); }, delay);
+  if (t.unref) t.unref();
+  remindTimers.set(r.id, t);
+}
+function armAllReminders() {
+  loadReminders();
+  const now = Date.now();
+  reminders = reminders.filter((r) => Number(r.fireAt) > now - 10 * 60 * 1000);
+  saveReminders();
+  for (const r of reminders) armReminder(r);
+}
+
 const ROOT = path.resolve(__dirname, '../..');
 const CONFIG_FILE = path.join(ROOT, 'config.json');
 
@@ -146,6 +388,7 @@ function buildAgentPrompt(router, key, stateStore) {
 export function startConsoleServer({ port, token, deps }) {
   const { cfg, router, sessions, bot, api, getStatus } = deps;
   const waitingKeys = new Set(); // /agent/v1/wait 在途 key（每会话互斥）
+  const lastSentByKey = new Map(); // key -> { sig, at } 防重复发送风暴
 
   // ── 远程指令面板：独立完整工具会话（不映射 QQ），轮询 history 收集结果 ──
   let remoteWorkspaceId = null; // 用户选择的工作区（可切换/新建）
@@ -300,6 +543,8 @@ export function startConsoleServer({ port, token, deps }) {
   // 一次性登录码：启动时生成，浏览器用它换 token（避免 token 出现在命令行/浏览器历史）
   const loginCodes = new Map();
 
+  remindCtx = { bot };
+  armAllReminders();
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
     const pathname = url.pathname;
@@ -308,12 +553,38 @@ export function startConsoleServer({ port, token, deps }) {
     const supplied = bearer || url.searchParams.get('token') || '';
     // 静态页面/资源免鉴权（页面内的 API 调用带 token）；/agent/v1 走 body 内令牌校验
     const isStatic = pathname === '/' || pathname === '/index.html' || pathname === '/console.html'
+      || pathname === '/qr'
       || /\.(css|js|png|jpg|svg|woff2?)$/.test(pathname);
     if (!isStatic && !pathname.startsWith('/agent/v1/') && pathname !== '/health' && pathname !== '/api/auth/login' && !safeTokenEqual(supplied, token)) {
       return sendJson(res, { error: 'unauthorized' }, 401);
     }
 
     try {
+      // 免登录二维码页：NapCat 掉线要重扫时，直接开 http://127.0.0.1:3100/qr
+      if (pathname === '/qr' || pathname === '/qr.png') {
+        const dataDir = process.env.NAPCAT_QQ_DATA_DIR
+          || path.join(process.env.USERPROFILE || 'C:\\Users\\z1536', 'data');
+        const qrFile = process.env.NAPCAT_QR_FILE || path.join(dataDir, 'NapCat', 'cache', 'qrcode.png');
+        if (!fs.existsSync(qrFile)) return sendJson(res, { error: '暂无二维码（QQ 已登录或 NapCat 未启动）' }, 404);
+        const st = fs.statSync(qrFile);
+        if (pathname === '/qr.png') {
+          res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+          res.end(fs.readFileSync(qrFile));
+          return;
+        }
+        const when = new Date(st.mtimeMs).toLocaleString('zh-CN', { hour12: false });
+        const html = '<!doctype html><meta charset="utf-8"><title>QQ 登录二维码</title>'
+          + '<style>body{background:#111;color:#eee;font-family:system-ui;text-align:center;padding:24px}'
+          + 'img{width:min(78vw,460px);image-rendering:pixelated;background:#fff;padding:8px;border-radius:8px}</style>'
+          + '<h3>NapCat 登录二维码</h3>'
+          + `<p>最后更新：${when}</p>`
+          + `<img id="q" src="/qr.png?t=${st.mtimeMs}" alt="QR">`
+          + '<p style="color:#888;font-size:13px">用手机 QQ 以小号扫码；页面每 5 秒自动刷新，过期后协议端会生成新码。</p>'
+          + '<script>setInterval(function(){var q=document.getElementById("q");q.src="/qr.png?t="+Date.now();},5000)</script>';
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(html);
+        return;
+      }
       if (pathname === '/health') return sendJson(res, { ok: true });
       if (pathname === '/api/auth/login' && req.method === 'POST') {
         const body = await readBody(req);
@@ -886,10 +1157,46 @@ export function startConsoleServer({ port, token, deps }) {
               return sendJson(res, { error: '不允许 @全体成员' }, 403);
             }
             const replyToMessageId = body.reply_to_message_id ?? null;
-            const atUserId = body.at_user_id ?? null;
+            // @ 人：可以直接给 QQ 号（at_user_id），也可以给名字（at_name / at_names 数组），
+            // 这里负责模糊匹配 + 最近发言优先，并把没找到的名字回给模型。
+            let atUserIds = body.at_user_id ? [String(body.at_user_id)] : [];
+            let atInfo = { matched: [], missed: [] };
+            const atNameWanted = [body.at_name, ...(Array.isArray(body.at_names) ? body.at_names : [])]
+              .map((s) => String(s ?? '').trim())
+              .filter(Boolean);
+            if (target.kind === 'group' && !atUserIds.length && atNameWanted.length) {
+              const recentRank = new Map();
+              try {
+                const recent = router?.recentMessages?.(key, 60) ?? [];
+                recent.forEach((m, i) => { if (m?.userId != null) recentRank.set(String(m.userId), i); });
+              } catch {}
+              let directory = [];
+              try { directory = senderDirectory(key, { limit: 300 }); } catch {}
+              const at = await resolveAtTargets({ bot, key, groupId: target.id, wanted: atNameWanted.slice(0, 3), recentRank, directory });
+              atUserIds = at.ids;
+              atInfo = { matched: at.matched, missed: at.missed, candidates: at.candidates };
+              if (at.matched.length) appendActivity(`${key} @ ${at.matched.map((m) => m.name).join('、')}`);
+              if (at.missed.length) appendActivity(`${key} @ 没找到：${at.missed.join('、')}`);
+            }
+            // 可选：文字+表情包一起发（sticker_tag=true 表示随便挑一张，字符串表示按标签挑）
+            let stickerSeg = null;
+            let stickerWanted = body.sticker_tag !== undefined && body.sticker_tag !== null && body.sticker_tag !== false && body.sticker_tag !== '';
+            // 没显式要表情时，按配置概率自动补一张（老大要求"表情包多一点"）
+            const autoChance = Number(cfg?.stickers?.textChance ?? 0);
+            if (!stickerWanted && autoChance > 0 && !body.no_sticker && Math.random() < autoChance) {
+              stickerWanted = true;
+              body.sticker_tag = true;
+            }
+            if (stickerWanted) {
+              const tag = body.sticker_tag === true ? '' : String(body.sticker_tag);
+              const picked = pickSticker({ tag, preferSelf: router?.preferSelfImage?.(key) ?? false });
+              if (picked) stickerSeg = segImage(picked.file);
+            }
             const sent = [];
             const blocked = [];
             const agentTokens = router?.knownAgentTokens ?? new Set();
+            // 先把所有合法文本展开成分段，最后一段再挂表情包，保证"一条消息里图文同时到"
+            const parts = [];
             for (const text of messages) {
               if (SENSITIVE_RE.test(text)) {
                 blocked.push(text.slice(0, 80));
@@ -901,19 +1208,380 @@ export function startConsoleServer({ port, token, deps }) {
                 continue;
               }
               // 复用 sender 的超长分段，避免单条过长被协议层拒绝
-              const parts = splitForQQ(text, cfg.maxReplyChars ?? 1000);
-              for (const part of parts) {
-                let sendRes;
-                if (target.kind === 'group') {
-                  sendRes = await bot.sendGroupMessage(target.id, part, { replyToMessageId, atUserId });
-                } else {
-                  sendRes = await bot.sendPrivateMessage(target.id, part, { replyToMessageId });
-                }
-                sent.push(sendRes?.message_id ?? null);
+              for (const part of splitForQQ(text, cfg.maxReplyChars ?? 1000)) parts.push(part);
+            }
+            // 防重复风暴：同一会话 60 秒内发完全相同的文本块，直接判为重复调用跳过
+            const sig = parts.join('\n');
+            if (sig) {
+              const prev = lastSentByKey.get(key);
+              if (prev && prev.sig === sig && Date.now() - prev.at < 60000) {
+                appendActivity(`${key} 重复发送已跳过（60s 内同文本）`);
+                return sendJson(res, { sent: [], blocked, skipped: 'duplicate' });
               }
+              lastSentByKey.set(key, { sig, at: Date.now() });
+            }
+            // 文字逐条发（@ 与引用只挂在第一条上）；表情包单独作为下一条发出，
+            // 不跟文字挤在同一条消息里（老大要求：文字一条、表情一条）
+            for (let i = 0; i < parts.length; i += 1) {
+              const opts = { replyToMessageId: i === 0 ? replyToMessageId : null, atUserIds: i === 0 ? atUserIds : [] };
+              const sendRes = target.kind === 'group'
+                ? await bot.sendGroupMessage(target.id, parts[i], opts)
+                : await bot.sendPrivateMessage(target.id, parts[i], { replyToMessageId: opts.replyToMessageId });
+              sent.push(sendRes?.message_id ?? null);
+            }
+            if (stickerSeg) {
+              const gap = Number(cfg.sendDelayMs ?? 0) > 0 ? Number(cfg.sendDelayMs) : 600;
+              if (parts.length) await sleep(gap);
+              const stickerRes = target.kind === 'group'
+                ? await bot.sendGroupMessage(target.id, [stickerSeg], { atUserIds: parts.length ? [] : atUserIds })
+                : await bot.sendPrivateMessage(target.id, [stickerSeg]);
+              sent.push(stickerRes?.message_id ?? null);
+              appendActivity(`${key} 表情包已单独发送`);
             }
             // 状态结算由 pump 的 onAgentTurnEnd(replied:true) 统一执行（避免双重结算）
-            return sendJson(res, { sent, blocked });
+            return sendJson(res, {
+              sent,
+              blocked,
+              at: atInfo.matched,
+              at_missed: atInfo.missed,
+              at_candidates: atInfo.missed.length ? atInfo.candidates : undefined,
+            });
+          }
+          case 'send_sticker': {
+            const target = parseKey(key);
+            if (!target) return sendJson(res, { error: 'key 非法' }, 400);
+            if (!isAllowed(target.kind, target.id, cfg)) {
+              return sendJson(res, { error: '目标不在白名单内' }, 403);
+            }
+            const picked = pickSticker({ tag: String(body.tag ?? ''), preferSelf: router?.preferSelfImage?.(key) ?? false });
+            if (!picked) return sendJson(res, { sent: [], reason: '库里还没有合适表情' });
+            const stickerSegs = [segImage(picked.file)];
+            let r;
+            if (target.kind === 'group') {
+              r = await bot.sendGroupMessage(target.id, stickerSegs, {
+                replyToMessageId: body.reply_to_message_id ?? null,
+                atUserId: body.at_user_id ?? null,
+              });
+            } else {
+              r = await bot.sendPrivateMessage(target.id, stickerSegs, {
+                replyToMessageId: body.reply_to_message_id ?? null,
+              });
+            }
+            appendActivity(`${key} agent 发表情包：[${(picked.item.tags ?? []).join('、')}]${picked.item.selfImage ? '（自画像）' : ''}`);
+            router?.noteSelfMessage?.(key, `（我发了一张表情包：${(picked.item.tags ?? []).join('、') || picked.item.id}）`);
+            return sendJson(res, {
+              sent: [r?.message_id ?? null],
+              sticker: { id: picked.item.id, tags: picked.item.tags, selfImage: !!picked.item.selfImage },
+            });
+          }
+          case 'list_windows': {
+            const target = parseKey(key);
+            if (!target) return sendJson(res, { error: 'key 非法' }, 400);
+            const ownerId = String(cfg.ownerQQ ?? '');
+            if (target.kind !== 'private' || String(target.id) !== ownerId) {
+              return sendJson(res, { error: '列窗口只允许在老大私聊里用' }, 403);
+            }
+            const ps1 = path.join(__dirname, '..', '..', 'scripts', 'screenshot.ps1');
+            try {
+              const out = childProcess.execFileSync('powershell.exe',
+                ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1, '-List'],
+                { timeout: 20000, windowsHide: true, encoding: 'utf8' });
+              const windows = String(out || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean).slice(0, 40);
+              return sendJson(res, { windows });
+            } catch (e) {
+              return sendJson(res, { error: `列窗口失败：${e.message}` }, 500);
+            }
+          }
+          case 'send_image': {
+            const target = parseKey(key);
+            if (!target) return sendJson(res, { error: 'key 非法' }, 400);
+            if (!isAllowed(target.kind, target.id, cfg)) {
+              return sendJson(res, { error: '目标不在白名单内' }, 403);
+            }
+            let abs = '';
+            const wantUrl = String(body.url ?? '').trim();
+            if (wantUrl) {
+              if (!/^https?:\/\//i.test(wantUrl)) return sendJson(res, { error: 'url 必须是 http(s)' }, 400);
+              try {
+                const dl = await downloadImage(wantUrl, 8 * 1024 * 1024);
+                const ext = String(dl.mime.split('/')[1] || 'png').replace('jpeg', 'jpg').replace('svg+xml', 'png');
+                abs = newMediaFile('web', ext);
+                fs.writeFileSync(abs, dl.buf);
+              } catch (e) {
+                return sendJson(res, { error: `图片下载失败：${e.message}` }, 400);
+              }
+            } else {
+              abs = path.resolve(String(body.file ?? ''));
+              if (!isSendableImagePath(abs)) return sendJson(res, { error: '只允许发 state 目录下的图片' }, 403);
+            }
+            if (!fs.existsSync(abs)) return sendJson(res, { error: '文件不存在' }, 404);
+            const imgBuf = fs.readFileSync(abs);
+            if (imgBuf.length > 8 * 1024 * 1024) return sendJson(res, { error: '图片过大（>8MB）' }, 400);
+            if (!sniffImageMime(imgBuf)) return sendJson(res, { error: '不是可发送的图片格式' }, 400);
+            const imgSegs = [segImage(abs)];
+            let ir;
+            if (target.kind === 'group') {
+              ir = await bot.sendGroupMessage(target.id, imgSegs, {
+                replyToMessageId: body.reply_to_message_id ?? null,
+                atUserId: body.at_user_id ?? null,
+              });
+            } else {
+              ir = await bot.sendPrivateMessage(target.id, imgSegs, {
+                replyToMessageId: body.reply_to_message_id ?? null,
+              });
+            }
+            appendActivity(`${key} agent 发了图片：${path.basename(abs)}`);
+            router?.noteSelfMessage?.(key, '（我发了一张图片）');
+            return sendJson(res, { sent: [ir?.message_id ?? null], file: path.basename(abs) });
+          }
+          case 'screenshot': {
+            const target = parseKey(key);
+            if (!target) return sendJson(res, { error: 'key 非法' }, 400);
+            if (!isAllowed(target.kind, target.id, cfg)) {
+              return sendJson(res, { error: '目标不在白名单内' }, 403);
+            }
+            const shot = newMediaFile('shot', 'png');
+            const ps1 = path.join(__dirname, '..', '..', 'scripts', 'screenshot.ps1');
+            const winArg = String(body.window ?? '').trim();
+            if (target.kind === 'group' && !winArg) {
+              return sendJson(res, { error: '往群里截图必须指定 window（只截指定窗口）' }, 400);
+            }
+            const shotArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1, '-OutFile', shot];
+            if (winArg) shotArgs.push('-Window', winArg);
+            try {
+              const out = childProcess.execFileSync('powershell.exe', shotArgs,
+                { timeout: 45000, windowsHide: true, encoding: 'utf8' });
+              if (!fs.existsSync(shot)) throw new Error(String(out || '').slice(0, 120) || '没有生成文件');
+            } catch (e) {
+              return sendJson(res, { error: `截图失败：${e.message}` }, 500);
+            }
+            let sr;
+            if (target.kind === 'group') {
+              sr = await bot.sendGroupMessage(target.id, [segImage(shot)], {
+                replyToMessageId: body.reply_to_message_id ?? null,
+                atUserId: body.at_user_id ?? null,
+              });
+            } else {
+              sr = await bot.sendPrivateMessage(target.id, [segImage(shot)], {
+                replyToMessageId: body.reply_to_message_id ?? null,
+              });
+            }
+            appendActivity(`${key} agent 截屏并发送：${path.basename(shot)}${winArg ? `（窗口：${winArg}）` : '（全屏）'}`);
+            router?.noteSelfMessage?.(key, `（我截了一张${winArg ? `「${winArg}」窗口的` : '全屏'}图）`);
+            return sendJson(res, { sent: [sr?.message_id ?? null], file: path.basename(shot), window: winArg || null });
+          }
+          case 'voice_usage': {
+            const cap = Number(cfg?.social?.voice?.breeze?.dailyCreditCap ?? 0);
+            const st = readVoiceCredits();
+            return sendJson(res, {
+              day: st.day,
+              used: Math.round(st.used * 100) / 100,
+              cap,
+              remaining: cap > 0 ? Math.max(0, Math.round((cap - st.used) * 100) / 100) : null,
+              backend: cfg?.social?.voice?.backend ?? 'edge',
+            });
+          }
+          case 'send_voice': {
+            const target = parseKey(key);
+            if (!target) return sendJson(res, { error: 'key 非法' }, 400);
+            if (!isAllowed(target.kind, target.id, cfg)) {
+              return sendJson(res, { error: '目标不在白名单内' }, 403);
+            }
+            let file = String(body.file ?? '').trim();
+            let text = String(body.text ?? '').trim();
+            if (!file) {
+              if (!text) return sendJson(res, { error: 'text 或 file 至少给一个' }, 400);
+              const vcfg = cfg?.social?.voice ?? {};
+              const maxChars = Number(vcfg.maxChars ?? 120);
+              if (text.length > maxChars) text = text.slice(0, maxChars);
+              const dir = path.join(__dirname, '../../state/tmp');
+              fs.mkdirSync(dir, { recursive: true });
+              const stamp = Date.now() + '-' + crypto.randomBytes(3).toString('hex');
+              const txt = path.join(dir, 'tts-' + stamp + '.txt');
+              fs.writeFileSync(txt, text, 'utf8');
+              const backend = String(vcfg.backend ?? 'sapi').toLowerCase();
+              // 含假名就当日语念（中文音色读假名会变成乱码音）；可在 social.voice.voiceJa 里换音色
+              const isJa = vcfg.autoLang === false ? false : /[\u3040-\u30ff]/.test(text);
+              const voiceName = isJa
+                ? String(vcfg.voiceJa ?? 'ja-JP-NanamiNeural')
+                : String(vcfg.voice ?? 'zh-CN-XiaoyiNeural');
+              let file2 = '';
+              if (!file2 && backend === 'breeze') {
+                try {
+                  const b = vcfg.breeze ?? {};
+                  const keyFile = String(b.apiKeyFile ?? '');
+                  let apiKey = String(b.apiKey ?? '');
+                  if (!apiKey && keyFile && fs.existsSync(keyFile)) apiKey = fs.readFileSync(keyFile, 'utf8').trim();
+                  if (!apiKey) throw new Error('缺少 API key（把 key 写进 ' + (keyFile || 'social.voice.breeze.apiKeyFile') + '）');
+                  const voiceId = String(b.voiceId ?? '');
+                  const cap = Number(b.dailyCreditCap ?? 0);
+                  const est = estimateVoiceCredits(text);
+                  const spent = readVoiceCredits();
+                  if (cap > 0 && spent.used + est > cap) {
+                    throw new Error('今日额度已用完（' + spent.used.toFixed(1) + '/' + cap + ' credits），改用本地音色');
+                  }
+                  if (!voiceId) throw new Error('缺少 voiceId');
+                  const base = String(b.baseUrl ?? 'https://api.breeze.blue').replace(/\/$/, '');
+                  const fmt = String(b.outputFormat ?? 'wav');
+                  const payload = { text, voice_settings: {} };
+                  if (b.modelId) payload.model_id = String(b.modelId);
+                  if (b.languageCode) payload.language_code = String(b.languageCode);
+                  if (b.instructions) payload.instructions = String(b.instructions);
+                  if (b.speed != null) payload.voice_settings.speed = Number(b.speed);
+                  if (b.guidanceScale != null) payload.voice_settings.guidance_scale = Number(b.guidanceScale);
+                  const ctrl = new AbortController();
+                  const timer = setTimeout(() => ctrl.abort(), Number(b.timeoutMs ?? 60000));
+                  let r;
+                  try {
+                    r = await fetch(base + '/v1/text-to-speech/' + encodeURIComponent(voiceId) + '?output_format=' + encodeURIComponent(fmt), {
+                      method: 'POST',
+                      headers: {
+                        'xi-api-key': apiKey,
+                        'content-type': 'application/json',
+                        accept: fmt.startsWith('wav') ? 'audio/wav' : 'audio/mpeg',
+                      },
+                      body: JSON.stringify(payload),
+                      signal: ctrl.signal,
+                    });
+                  } finally {
+                    clearTimeout(timer);
+                  }
+                  if (!r.ok) {
+                    const detail = (await r.text().catch(() => '')).slice(0, 160);
+                    throw new Error('HTTP ' + r.status + ' ' + detail);
+                  }
+                  const buf = Buffer.from(await r.arrayBuffer());
+                  if (buf.length < 1000) throw new Error('返回音频过小（' + buf.length + ' 字节）');
+                  const out = path.join(dir, 'breeze-' + stamp + '.' + (fmt.startsWith('wav') ? 'wav' : 'mp3'));
+                  fs.writeFileSync(out, buf);
+                  writeVoiceCredits(spent.used + est);
+                  file2 = out;
+                } catch (e) {
+                  console.log('[voice] breeze 合成失败（不回退本地克隆）：' + (e?.message ?? e));
+                }
+              }
+              if (!file2 && backend === 'edge') {
+                const mp3 = path.join(dir, 'tts-' + stamp + '.mp3');
+                const args = ['-3', '-m', 'edge_tts',
+                  '--voice', voiceName,
+                  '--file', txt, '--write-media', mp3];
+                if (vcfg.rate) args.push('--rate', String(vcfg.rate));
+                if (vcfg.pitch) args.push('--pitch', String(vcfg.pitch));
+                if (vcfg.volume) args.push('--volume', String(vcfg.volume));
+                try {
+                  childProcess.execFileSync('py', args, { timeout: 60000, windowsHide: true });
+                  if (fs.existsSync(mp3) && fs.statSync(mp3).size > 1000) file2 = mp3;
+                } catch (e) {
+                  console.log('[voice] edge-tts 失败：' + (e?.message ?? e));
+                }
+              }
+              if (!file2) {
+                // 不用本地 SAPI（音质差，老大明确不要本地音色）。
+                // 在线合成本身失败（额度用完 / 网络不通）就当「今天说不了话」，让模型用文字告知。
+                const say = String(vcfg.exhaustedSay ?? '今天的话说完了，不能说了');
+                console.log('[voice] 在线合成失败，不回退本地 TTS：' + (isJa ? 'ja' : 'zh'));
+                appendActivity(key + ' 语音合成失败（在线额度或网络），改为文字告知');
+                return sendJson(res, { sent: [], reason: 'voice_exhausted', say });
+              }
+              file = file2;
+            } else if (!fs.existsSync(file)) {
+              return sendJson(res, { error: '文件不存在：' + file }, 400);
+            }
+            const segs = [{ type: 'record', data: { file } }];
+            const r = target.kind === 'group'
+              ? await bot.sendGroupMessage(target.id, segs, { replyToMessageId: body.reply_to_message_id ?? null })
+              : await bot.sendPrivateMessage(target.id, segs, { replyToMessageId: body.reply_to_message_id ?? null });
+            appendActivity(key + ' agent 发语音：' + (text || path.basename(file)));
+            router?.noteSelfMessage?.(key, '（我发了一条语音：' + (text || '语音') + '）');
+            return sendJson(res, { sent: [r?.message_id ?? null], file: path.basename(file) });
+          }
+          case 'sticker_collect': {
+            const tags0 = Array.isArray(body.tags) ? body.tags : (body.tag ? [String(body.tag)] : []);
+            // 模式一：从某条 QQ 消息里取图（群友发的图，不需要外链）
+            if (body.message_id !== undefined && body.message_id !== null && String(body.message_id).trim() !== '') {
+              const m = await bot.getMessage(String(body.message_id));
+              if (!m) return sendJson(res, { error: '消息不存在' }, 404);
+              const files = (m.message || [])
+                .filter((seg) => seg?.type === 'image')
+                .map((seg) => seg.data?.file || seg.data?.url)
+                .filter(Boolean);
+              if (!files.length) return sendJson(res, { error: '这条消息里没有图片' }, 400);
+              const idx = Math.max(0, Number(body.index) || 0);
+              const file = files[idx];
+              if (!file) return sendJson(res, { error: `这条消息只有 ${files.length} 张图，没有第 ${idx + 1} 张` }, 400);
+              let buf;
+              try { buf = await getImageBuffer(file); }
+              catch (e) { return sendJson(res, { error: `取图失败：${e?.message ?? e}` }, 502); }
+              const mime = sniffImageMime(buf);
+              if (!mime) return sendJson(res, { error: '不是可识别的图片格式' }, 400);
+              const r0 = await ingestWebImage({ buf, mime, url: '', tags: tags0, source: 'group', messageId: String(body.message_id) });
+              appendActivity(`${key} 收藏表情（群图 ${body.message_id}）：${(r0?.tags ?? []).join('、') || '-'} ${r0?.kept ? '入库' : (r0?.reason ?? '跳过')}`);
+              return sendJson(res, r0);
+            }
+            const url = String(body.url ?? '').trim();
+            if (!/^https?:\/\//i.test(url)) return sendJson(res, { error: 'url 非法（也可以传 message_id 收群里的图）' }, 400);
+            let got;
+            try { got = await downloadImage(url); }
+            catch (e) { return sendJson(res, { error: `下载失败：${e?.message ?? e}` }, 502); }
+            const tags = Array.isArray(body.tags) ? body.tags : (body.tag ? [String(body.tag)] : []);
+            const r = await ingestWebImage({ buf: got.buf, mime: got.mime, url, tags });
+            appendActivity(`${key} 收藏表情（网络）：${(r?.tags ?? []).join('、') || '-'} ${r?.kept ? '入库' : (r?.reason ?? '跳过')}`);
+            return sendJson(res, r);
+          }
+          case 'sticker_list': {
+            return sendJson(res, listStickers({ limit: Math.min(50, Number(body.limit) || 20) }));
+          }
+          case 'find_member': {
+            const target = parseKey(key);
+            if (!target || target.kind !== 'group') return sendJson(res, { error: '只有群里能点名' }, 400);
+            const q = String(body.query ?? '').trim().toLowerCase();
+            let list = [];
+            try {
+              const r = await bot.getGroupMemberList(target.id);
+              list = (r?.data ?? []).map((m) => ({
+                id: String(m.user_id),
+                name: m.card || m.nickname || '',
+                nickname: m.nickname || '',
+                role: m.role || 'member',
+              }));
+            } catch {
+              list = []; // 协议端不支持时别整个失败，下面用记忆库补齐
+            }
+            // 有些协议端 get_group_member_list 返回空，用这个群说过话的人补上（按最近发言排序）
+            try {
+              const dir = senderDirectory(key, { limit: 300 });
+              const known = new Set(list.map((m) => m.id));
+              for (const d of dir) {
+                if (!d.name || known.has(d.id)) continue;
+                known.add(d.id);
+                list.push({ id: d.id, name: d.name, nickname: d.name, role: 'member' });
+              }
+            } catch {}
+            const hit = q
+              ? list.filter((m) => `${m.name} ${m.nickname}`.toLowerCase().includes(q))
+              : list;
+            return sendJson(res, { total: list.length, members: hit.slice(0, 10) });
+          }
+          case 'remind': {
+            const target = parseKey(key);
+            if (!target) return sendJson(res, { error: 'key 非法' }, 400);
+            const text = String(body.text ?? '').trim();
+            if (!text) return sendJson(res, { error: 'text 不能为空' }, 400);
+            const fireAt = parseWhen(body.when ?? body.minutes);
+            if (!fireAt) return sendJson(res, { error: 'when 不合法：用 18:10 / +10m / 10（分钟）' }, 400);
+            const r = {
+              id: crypto.randomUUID().slice(0, 8),
+              key,
+              text,
+              atUserId: body.at_user_id ? String(body.at_user_id) : null,
+              fireAt,
+              createdAt: Date.now(),
+            };
+            reminders.push(r);
+            saveReminders();
+            armReminder(r);
+            appendActivity(`${key} 已登记提醒 ${new Date(fireAt).toLocaleString('zh-CN')}：${text.slice(0, 60)}`);
+            return sendJson(res, { id: r.id, fireAt: new Date(fireAt).toISOString(), text, atUserId: r.atUserId });
           }
           case 'mark_read': {
             router.markRead(key, body.upto_seq != null ? Number(body.upto_seq) : null);

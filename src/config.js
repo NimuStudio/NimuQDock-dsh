@@ -35,7 +35,19 @@ export const DEFAULTS = {
     wakeKeywords: [],
     engagement: { wAttention: 2.5, wInterest: 1.8, wEnergy: 1.0, wMood: 0.8, wNoise: 0.6, threshold: 1.7, cooldownMs: 25000 },
     heartbeat: { enabled: true, minIntervalMs: 300000, maxIntervalMs: 900000, idleThresholdMs: 300000, probability: 0.5 },
-    memory: { maxEntries: 200, injectMax: 6, decayDays: 30 },
+    memory: { maxEntries: 200, injectMax: 6, decayDays: 30, recallMax: 3 },
+    // 上下文轮换（A+C）：闲置边界换会话，交接摘要 + 最近原文接棒。详见 core/rotation.js
+    rotation: {
+      enabled: true,
+      minTokens: 550000,        // 达到窗口 55% 进入「可轮换」状态
+      hardRatio: 0.9,           // 硬顶：投递前超 90% 立刻换（不等闲置）
+      idleMs: 1800000,          // 闲置 30 分钟才在后台换（避开 KV cache 热区）
+      keepHistory: 30,          // 交接单带多少条最近原文
+      checkIntervalMs: 300000,  // 后台巡检间隔
+      usageCacheMs: 60000,      // 上下文占用读取缓存（避免每条消息全量解日志）
+      summaryTimeoutMs: 90000,  // 等旧会话写摘要的上限
+      cooldownMs: 600000,       // 同一会话两次轮换的最小间隔
+    },
     topics: { windowSize: 200, minCount: 3, maxTopics: 20 },
     unread: { maxPerSession: 100 },
     noActionLimit: 3,
@@ -103,4 +115,9 @@ export function loadConfig(file = CONFIG_FILE) {
   for (const k of ['minIntervalMs', 'maxIntervalMs', 'idleThresholdMs']) hb[k] = Math.max(1000, toFinite(hb[k], 0));
   hb.probability = Math.min(1, Math.max(0, toFinite(hb.probability, 0.3)));
   return cfg;
+}
+
+/** 把当前配置写回 config.json（管理命令 /allow /deny 用）。 */
+export function saveConfig(cfg, file = CONFIG_FILE) {
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2), 'utf8');
 }
