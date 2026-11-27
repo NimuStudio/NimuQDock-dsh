@@ -68,6 +68,11 @@ export function computeAttention(text, { directed = false, aliases = [], wakeKey
   if (!toOthers && SECOND_PERSON.test(s) && containsAny(s, QUESTION_MARKERS)) {
     return recentBotTurn ? 0.7 : 0.6;
   }
+  // 第二人称 + 指示/时间指代（「你刚发的这个」「你这表情包」「那你刚才说的」）：
+  // 这种句式没有问号也不含动作词，但明显在指着机器人刚做的事说话。
+  if (!toOthers && /你(?:刚才|刚刚|刚|这|那)/.test(s)) {
+    return recentBotTurn ? 0.8 : 0.6;
+  }
   // 第二人称 + 动作词（「你看这个」「你说呢」等，无问号）：
   // 真人对话里对方刚被你回过话、接着不带 @ 追问很常见，不给够权重就会被迫句句 @。
   // 但若消息在 @/引用别人，则"你"多半指对方 → 不加权（防止 A↔B 互聊时机器人凑热闹）。
@@ -132,14 +137,16 @@ export function computeScore(input, cfg) {
 
   // 最低关注门槛：既没被 @/引用，也不是在问它（纯陈述）→ 不插话。
   // 否则「精力+话题兴趣+随机扰动」会把每句闲聊都推过阈值，变成没话硬接。
-  if (attention < 0.25 && !continuing) {
+  const minAttention = Number.isFinite(e.minAttention) ? e.minAttention : 0.25;
+  if (attention < minAttention && !continuing) {
     return { score: 0, verdict: 'skip', reason: 'not-addressed' };
   }
 
   // 连续接话上限：已经连着回了 N 轮（且都不是被点名）就别再没话硬接——
   // 真人不会对同一个人的每句话都回应；要它继续，得有人明确叫它（@/引用/第二人称/名字）。
   const consecutive = Number(input.consecutive ?? 0);
-  if (consecutive >= 2 && attention < 0.6) {
+  const consecutiveCap = Number.isFinite(e.consecutiveCap) ? e.consecutiveCap : 2;
+  if (consecutive >= consecutiveCap && attention < 0.6) {
     return { score: 0, verdict: 'skip', reason: 'consecutive-cap' };
   }
 

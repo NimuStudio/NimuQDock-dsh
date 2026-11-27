@@ -260,7 +260,17 @@ export class OneBot11Client extends EventEmitter {
       socket.addEventListener('error', () => {
         clearTimeout(handshakeTimer);
         this.connected = false;
-        if (!opened) notifyFirstError(new Error(`NapCat WebSocket 连接失败：${url}`));
+        if (!opened) {
+          notifyFirstError(new Error(`NapCat WebSocket 连接失败：${url}`));
+          // 关键：error 不保证随后一定有 close 事件。不在这里收尾，
+          // _openOnce 的 Promise 会永远挂起，重连循环随之卡死（表现为 NapCat
+          // 恢复后桥接一直 napcatConnected:false，只能手工重启）。
+          if (!settled) {
+            settled = true;
+            try { socket.close(); } catch {}
+            resolve(false);
+          }
+        }
       });
     });
   }
@@ -340,12 +350,17 @@ export class OneBot11Client extends EventEmitter {
   setMsgEmojiLike(messageId, emojiId) { return this.action('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId) }); }
   deleteMessage(messageId) { return this.action('delete_msg', { message_id: messageId }); }
 
-  /** 发群消息。message 接受字符串或段数组；replyToMessageId 可选（引用回复）。 */
-  async sendGroupMessage(groupId, message, { replyToMessageId = null, atUserId = null } = {}) {
+  /** 发群消息。message 接受字符串或段数组；replyToMessageId 可选（引用回复）；atUserIds 可一次 @ 多人。 */
+  async sendGroupMessage(groupId, message, { replyToMessageId = null, atUserId = null, atUserIds = null } = {}) {
     const segments = normalizeSegments(message);
     const out = [];
     if (replyToMessageId != null && String(replyToMessageId) !== '') out.push(segReply(replyToMessageId));
-    if (atUserId != null && String(atUserId) !== '') out.push(segAt(atUserId));
+    const ats = [];
+    for (const id of Array.isArray(atUserIds) ? atUserIds : [atUserId]) {
+      const s = id == null ? '' : String(id).trim();
+      if (s && !ats.includes(s)) ats.push(s);
+    }
+    for (const id of ats) out.push(segAt(id));
     out.push(...segments);
     return this.action('send_group_msg', { group_id: String(groupId), message: out });
   }

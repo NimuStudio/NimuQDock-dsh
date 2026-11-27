@@ -19,8 +19,34 @@ import { SENSITIVE_RE } from '../lib/sensitive.js';
 import { appendActivity } from '../log.js';
 
 /** 发送类工具：本回合 AI 调用成功过这些工具 → 跳过自动转发，避免重复发送。 */
-const SEND_TOOL_RE = /^mcp__napcat__qq_(send_group_message|send_private_message|reply|send_message|send_burst)$/;
+const SEND_TOOL_RE = /^mcp__napcat__qq_(send_group_message|send_private_message|reply|send_message|send_burst|send_sticker|send_image|screenshot)$/;
 const isSendTool = (name) => SEND_TOOL_RE.test(String(name ?? ''));
+
+/** 去掉「（旁观/内心戏/内部备注）」式旁白行；全是旁白则返回空串（agent 私聊兜底不该把旁白发出去）。 */
+export function stripNarration(text) {
+  const out = String(text ?? '')
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return false;
+      // 整行就是一个括号/方括号旁白：一律不发（心理活动只该留在脑子里）
+      if (/^[（(【\[].*[）)】\]]$/.test(line)) return false;
+      // 空转/潜水类自述：模型把「没什么可说」当成了台词
+      if (/(没新动静|没有新动静|群安静|安静着|继续潜水|先潜水|潜水了|静默|没人说话|没话说|那就不说了|不说了)/.test(line) && line.length <= 30) return false;
+      // 明确的内部备注口吻
+      if (/^(没有新消息|没新消息|先不冒泡|晾着|内部输出|无需回复|决定不回复|先不说话|不回复)/.test(line)) return false;
+      // 解释「我为什么没接话」这类内心独白：一律不发到群里
+      if (/(这轮|接话|插话|不乱插|没点我|没叫我|没喊我|不搭腔|先不接)/.test(line) && line.length >= 18) return false;
+      // 系统/流程口吻：唤醒、重复投递、评分、阈值、judge 这类词只可能出现在它的思考里
+      if (/(唤醒|重复(发送|投递)|上一轮|免得重复|不再(在群里)?发|系统提示|内部|judge|attention|评分|阈值|规则模式|跳过)/i.test(line) && line.length >= 10) return false;
+      if (/^(我)?(判断|决定|觉得).{0,12}(不|先不|不用)(回|发|说|接)/.test(line)) return false;
+      if (/^(小鲸鱼)?(这轮|本轮)?(没接|不接了|先不接|观察一下|看看再说)/.test(line)) return false;
+      return true;
+    })
+    .join('\n')
+    .trim();
+  return out;
+}
 
 /** 从发送工具的调用参数里提取「要发出去的话」（messages 数组 / message 字符串 → 文本数组）。 */
 function extractSendTexts(raw) {
@@ -102,7 +128,7 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
               sendToolTexts.delete(frame.sessionId);
               // 捕获本回合开始时的运行模式快照：回合结束决策用快照，
               // 防「turn 在途时模式切换」导致该发的不发/不该发的发
-              turnStartMode.set(frame.sessionId, router.getMode());
+              turnStartMode.set(frame.sessionId, router.modeFor?.(sessions.keyOf(frame.sessionId) ?? '') ?? router.getMode());
             }
             if (event.type === 'tool/call') {
               const toolName = String(event.data?.name ?? '');
@@ -163,6 +189,13 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
             const turnMode = turnStartMode.get(frame.sessionId) ?? router.getMode();
             turnStartMode.delete(frame.sessionId);
 
+            // 维护回合（上下文轮换让旧会话写交接摘要）：输出只落会话日志，不往群里发
+            if (router.takeSuppressedTurn?.(frame.sessionId)) {
+              log(`维护回合输出已丢弃，不发群 (${key})`);
+              safeAgentTurnEnd(key, { replied: false });
+              continue;
+            }
+
             // agent 模式：本回合已通过 MCP 发送工具成功发出消息 → 跳过自动转发（避免重复），
             // 并把真实发言记入活动日志。chat 模式不适用（发送工具不可达，文本照常自动转发）。
             if (sendToolSucceededNow && turnMode === 'agent') {
@@ -170,6 +203,8 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
               if (sentTexts.length) {
                 const text = sentTexts.join(' ｜ ');
                 appendActivity(`${key} agent 回复：${text.slice(0, 80)}${text.length > 80 ? '…' : ''}`);
+                // 记进自己的上下文，否则下轮唤醒它看不到自己说过什么
+                router.noteSelfMessage?.(key, text);
               }
               safeAgentTurnEnd(key, { replied: true });
               continue;
@@ -182,11 +217,23 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
                 log(`agent 回复为空（仅格式/空白）(${key})`);
                 continue;
               }
+              // 记录这条回复的语气：连续自我贬低/道歉 → 下轮 prompt 追加纠偏
+              router.noteReply?.(key, plain);
               // agent 模式：纯文本输出只是思考、不自动转发；真实发言走发送工具
               // （turn/end 的 sendToolSucceededNow 分支已记活动日志）。私聊兜底除外。
+              // agent 群聊也兜底：判分已决定「该接话」，模型只输出了文本（没调发送工具）时
+              // 直接发出去，否则群里永远收不到回复（旁白/内部备注仍过滤）。
               if (turnMode === 'agent' && !key.startsWith('private:')) {
-                log(`[agent] AI 内部输出 (${key}): ${plain.slice(0, 80)}`);
-                safeAgentTurnEnd(key, { replied: false });
+                const outText = stripNarration(plain);
+                if (!outText || outText.length > 300) {
+                  log(`[agent] 群聊兜底跳过（旁白/过长）(${key}): ${plain.slice(0, 60)}`);
+                  safeAgentTurnEnd(key, { replied: false });
+                  continue;
+                }
+                log(`[agent] 群聊纯文本兜底发送 (${key}): ${outText.slice(0, 60)}`);
+                appendActivity(`${key} agent 回复：${outText.slice(0, 80)}`);
+                await safeSend('agent 群聊兜底', () => sender.sendToQQ(key, outText, { alreadyPlain: true }));
+                safeAgentTurnEnd(key, { replied: true });
                 continue;
               }
               // 敏感审计（与 Sender 内部审计一致；此处区分拦截以便提示）
@@ -196,17 +243,23 @@ export function startPump({ api, cfg, sessions, sender, router, log, signal }) {
                 log(`⚠️ 回复被安全策略拦截 (${key})：${reason}`);
                 appendActivity(`${key} agent 回复被拦截（${reason}）`);
                 if (cfg.security?.interceptNotify !== false) {
-                  await safeSend('拦截通知', () => sender.notify(key, '⚠️ 本条回复因疑似包含敏感信息（路径/凭据/会话令牌）被安全策略拦截，已记录并通知管理员。'));
+                  await safeSend('拦截通知', () => sender.notify(key, '⚠️ 本条回复因疑似包含敏感信息（路径/凭据/会话令牌）被安全策略拦截，已记录并通知老大。'));
                 }
                 safeAgentTurnEnd(key, { replied: false });
                 continue;
               }
               log(`agent 回复 (${key}) ${plain.length} 字`);
-              appendActivity(`${key} agent 回复：${plain.slice(0, 80)}${plain.length > 80 ? '…' : ''}`);
+              appendActivity(`${key} agent 回复：${stripNarration(plain).slice(0, 80)}`);
               // agent 私聊兜底：一对一没有「潜水」语义——AI 输出纯文本（未调发送工具）视为直接回复
               if (turnMode === 'agent') {
-                log(`[agent] 私聊纯文本兜底发送 (${key}): ${plain.slice(0, 60)}`);
-                await safeSend('agent 私聊兜底', () => sender.sendToQQ(key, plain, { alreadyPlain: true }));
+                const outText = stripNarration(plain);
+                if (!outText) {
+                  log(`[agent] 私聊兜底跳过（只有旁白/内部备注）(${key}): ${plain.slice(0, 60)}`);
+                  safeAgentTurnEnd(key, { replied: false });
+                  continue;
+                }
+                log(`[agent] 私聊纯文本兜底发送 (${key}): ${outText.slice(0, 60)}`);
+                await safeSend('agent 私聊兜底', () => sender.sendToQQ(key, outText, { alreadyPlain: true }));
                 safeAgentTurnEnd(key, { replied: true });
                 continue;
               }

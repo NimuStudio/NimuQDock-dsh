@@ -5,6 +5,13 @@ pnpm-tool/
 .dsh/
 config.json
 state/
+*.bak
+*.bak-*
+snowluma/
+snowluma-webui.cmd
+breeze-api-key.txt
+*.key
+nohup.out
 *.log
 .env
 .env.*
